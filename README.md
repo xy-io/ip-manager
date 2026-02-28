@@ -21,10 +21,11 @@ Managing a home lab network across Proxmox hosts, LXC containers, VMs, cameras, 
 - **Release IPs** back to the free pool when you decommission something
 - **Export to Excel** — downloads a fully formatted `.xlsx` with all your changes, preserving the original spreadsheet structure
 - **Switch views** between Cards (visual) and Table (dense) layouts
+- **Configure your network** — set your subnet, DHCP range, static range, and fixed reservations via the built-in Settings panel — no code editing required
 
 ### Network-Aware
 
-The app understands your network layout:
+The app understands your network layout and is fully configurable via the ⚙️ Settings panel:
 
 | Range | Type |
 |---|---|
@@ -32,6 +33,8 @@ The app understands your network layout:
 | `.6`, `.50` | Fixed reservations within the DHCP range |
 | `.171` – `.254` | Static assignments |
 | Green entries | Free — available to claim |
+
+All ranges are configurable — works with any subnet (192.168.x, 10.x.x, 172.16.x, etc.).
 
 ---
 

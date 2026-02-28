@@ -1,15 +1,167 @@
 import React, { useState, useMemo } from 'react';
-import { Search, Server, Monitor, Wifi, HardDrive, Camera, Shield, Globe, Filter, X, MapPin, Cpu, Box, CircleDot, ChevronDown, ChevronUp, Copy, Check, Zap, Download, Edit3, Plus, Trash2, Save, AlertCircle } from 'lucide-react';
+import { Search, Server, Monitor, Wifi, HardDrive, Camera, Shield, Globe, Filter, X, MapPin, Cpu, Box, CircleDot, ChevronDown, ChevronUp, Copy, Check, Zap, Download, Edit3, Plus, Trash2, Save, AlertCircle, Settings } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
-// Network configuration
-const NETWORK_CONFIG = {
+// Default network configuration (overridden by Settings modal / localStorage)
+const DEFAULT_NETWORK_CONFIG = {
+  networkName: "Home Network",
+  subnet: "192.168.0",
   dhcpStart: 1,
   dhcpEnd: 170,
   staticStart: 171,
   staticEnd: 254,
   fixedInDHCP: [6, 50],
 };
+
+// Load saved config from localStorage, falling back to defaults
+function loadNetworkConfig() {
+  try {
+    const saved = localStorage.getItem('ip-manager-network-config');
+    if (saved) return { ...DEFAULT_NETWORK_CONFIG, ...JSON.parse(saved) };
+  } catch {}
+  return { ...DEFAULT_NETWORK_CONFIG };
+}
+
+// Settings Modal Component
+function SettingsModal({ config, onSave, onClose }) {
+  const [form, setForm] = useState({
+    networkName: config.networkName,
+    subnet: config.subnet,
+    dhcpStart: config.dhcpStart,
+    dhcpEnd: config.dhcpEnd,
+    staticStart: config.staticStart,
+    staticEnd: config.staticEnd,
+    fixedInDHCP: config.fixedInDHCP.join(', '),
+  });
+  const [error, setError] = useState('');
+
+  const handleSave = (e) => {
+    e.preventDefault();
+    setError('');
+
+    const dhcpStart = parseInt(form.dhcpStart);
+    const dhcpEnd   = parseInt(form.dhcpEnd);
+    const staticStart = parseInt(form.staticStart);
+    const staticEnd   = parseInt(form.staticEnd);
+
+    if ([dhcpStart, dhcpEnd, staticStart, staticEnd].some(isNaN))
+      return setError('All range values must be numbers.');
+    if (dhcpStart >= dhcpEnd)
+      return setError('DHCP start must be less than DHCP end.');
+    if (staticStart >= staticEnd)
+      return setError('Static start must be less than static end.');
+    if (!form.subnet.match(/^\d{1,3}\.\d{1,3}\.\d{1,3}$/))
+      return setError('Subnet must be in the format 192.168.0');
+
+    const fixedInDHCP = form.fixedInDHCP
+      .split(',')
+      .map(s => parseInt(s.trim()))
+      .filter(n => !isNaN(n));
+
+    const newConfig = { networkName: form.networkName, subnet: form.subnet, dhcpStart, dhcpEnd, staticStart, staticEnd, fixedInDHCP };
+    try { localStorage.setItem('ip-manager-network-config', JSON.stringify(newConfig)); } catch {}
+    onSave(newConfig);
+  };
+
+  const f = (key) => ({ value: form[key], onChange: e => setForm(p => ({ ...p, [key]: e.target.value })) });
+  const inputCls = "w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm";
+  const labelCls = "block text-sm font-medium text-slate-700 mb-1";
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="p-6 border-b border-slate-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                <Settings className="w-5 h-5 text-slate-500" />
+                Network Settings
+              </h2>
+              <p className="text-sm text-slate-500 mt-1">Configure to match your network layout</p>
+            </div>
+            <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
+              <X className="w-5 h-5 text-slate-500" />
+            </button>
+          </div>
+        </div>
+
+        <form onSubmit={handleSave} className="p-6 space-y-5">
+
+          {/* Network identity */}
+          <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-4">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Network Identity</p>
+            <div>
+              <label className={labelCls}>Network Name</label>
+              <input type="text" className={inputCls} placeholder="e.g. Home Network" {...f('networkName')} />
+            </div>
+            <div>
+              <label className={labelCls}>Subnet Prefix</label>
+              <input type="text" className={inputCls} placeholder="e.g. 192.168.0" {...f('subnet')} />
+              <p className="text-xs text-slate-400 mt-1">The first three octets of your network — e.g. <span className="font-mono">192.168.1</span> for a 192.168.1.x network</p>
+            </div>
+          </div>
+
+          {/* DHCP range */}
+          <div className="p-4 bg-amber-50 rounded-xl border border-amber-200 space-y-4">
+            <p className="text-xs font-semibold text-amber-700 uppercase tracking-wider">⚡ DHCP Pool</p>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className={labelCls}>Start (.x)</label>
+                <input type="number" min="1" max="254" className={inputCls} {...f('dhcpStart')} />
+              </div>
+              <div>
+                <label className={labelCls}>End (.x)</label>
+                <input type="number" min="1" max="254" className={inputCls} {...f('dhcpEnd')} />
+              </div>
+            </div>
+            <div>
+              <label className={labelCls}>Fixed reservations within DHCP range</label>
+              <input type="text" className={inputCls} placeholder="e.g. 6, 50" {...f('fixedInDHCP')} />
+              <p className="text-xs text-slate-400 mt-1">Comma-separated last octets of IPs that are fixed within the DHCP pool (e.g. devices with DHCP reservations)</p>
+            </div>
+          </div>
+
+          {/* Static range */}
+          <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-200 space-y-4">
+            <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wider">🖥 Static Range</p>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className={labelCls}>Start (.x)</label>
+                <input type="number" min="1" max="254" className={inputCls} {...f('staticStart')} />
+              </div>
+              <div>
+                <label className={labelCls}>End (.x)</label>
+                <input type="number" min="1" max="254" className={inputCls} {...f('staticEnd')} />
+              </div>
+            </div>
+          </div>
+
+          {error && (
+            <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              {error}
+            </div>
+          )}
+
+          {/* Preview */}
+          <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs font-mono text-slate-500 space-y-1">
+            <p><span className="text-slate-400">DHCP pool:  </span>{form.subnet}.{form.dhcpStart} – {form.subnet}.{form.dhcpEnd}</p>
+            <p><span className="text-slate-400">Static range: </span>{form.subnet}.{form.staticStart} – {form.subnet}.{form.staticEnd}</p>
+            {form.fixedInDHCP && <p><span className="text-slate-400">Fixed IPs:  </span>{form.fixedInDHCP.split(',').map(s => `${form.subnet}.${s.trim()}`).join(', ')}</p>}
+          </div>
+
+          <button
+            type="submit"
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-lg transition-colors"
+          >
+            <Save className="w-4 h-4" />
+            Save Settings
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
 
 // Initial IP address data from the Excel spreadsheet
 const initialIpData = [
@@ -316,6 +468,10 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types }) {
 
 // Main Component
 export default function IPAddressManager() {
+  // Network config state (persisted to localStorage)
+  const [networkConfig, setNetworkConfig] = useState(loadNetworkConfig);
+  const [showSettings, setShowSettings] = useState(false);
+
   // Editable state
   const [ipData, setIpData] = useState(initialIpData);
   const [hasChanges, setHasChanges] = useState(false);
@@ -373,7 +529,7 @@ export default function IPAddressManager() {
     const active = ipData.filter(i => i.assetName !== 'Reserved' && i.assetName !== 'Free');
     const staticAssigned = ipData.filter(i => {
       const lastOctet = parseInt(i.ip.split('.')[3]);
-      return lastOctet >= NETWORK_CONFIG.staticStart && lastOctet <= NETWORK_CONFIG.staticEnd &&
+      return lastOctet >= networkConfig.staticStart && lastOctet <= networkConfig.staticEnd &&
              i.assetName !== 'Reserved' && i.assetName !== 'Free';
     });
     return {
@@ -384,9 +540,9 @@ export default function IPAddressManager() {
       reserved: ipData.filter(i => i.assetName === 'Reserved').length,
       freeStatic: freeStaticIPs.length,
       staticAssigned: staticAssigned.length,
-      dhcpPoolSize: NETWORK_CONFIG.dhcpEnd - NETWORK_CONFIG.dhcpStart + 1 - NETWORK_CONFIG.fixedInDHCP.length,
+      dhcpPoolSize: networkConfig.dhcpEnd - networkConfig.dhcpStart + 1 - networkConfig.fixedInDHCP.length,
     };
-  }, [ipData, freeStaticIPs]);
+  }, [ipData, freeStaticIPs, networkConfig]);
 
   // Actions
   const clearFilters = () => {
@@ -459,8 +615,21 @@ export default function IPAddressManager() {
 
   const hasActiveFilters = searchTerm || selectedType || selectedLocation;
 
+  // Use networkConfig-aware versions of the helper functions
+  const isInDHCPRangeConfig  = (ip) => { const n = parseInt(ip.split('.')[3]); return n >= networkConfig.dhcpStart && n <= networkConfig.dhcpEnd; };
+  const isFixedInDHCPConfig  = (ip) => { const n = parseInt(ip.split('.')[3]); return networkConfig.fixedInDHCP.includes(n); };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+      {/* Settings Modal */}
+      {showSettings && (
+        <SettingsModal
+          config={networkConfig}
+          onSave={(cfg) => { setNetworkConfig(cfg); setShowSettings(false); }}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
+
       {/* Edit Modal */}
       {editingItem && (
         <EditModal
@@ -479,7 +648,7 @@ export default function IPAddressManager() {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h1 className="text-2xl font-bold text-slate-800">IP Address Manager</h1>
-              <p className="text-sm text-slate-500">Home Network · 192.168.0.0/24</p>
+              <p className="text-sm text-slate-500">{networkConfig.networkName} · {networkConfig.subnet}.0/24</p>
             </div>
             <div className="flex gap-2 items-center">
               {hasChanges && (
@@ -494,6 +663,13 @@ export default function IPAddressManager() {
               >
                 <Download className="w-4 h-4" />
                 Download Excel
+              </button>
+              <button
+                onClick={() => setShowSettings(true)}
+                className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium rounded-lg transition-colors"
+                title="Network Settings"
+              >
+                <Settings className="w-4 h-4" />
               </button>
               <button
                 onClick={() => setViewMode('cards')}
@@ -524,23 +700,25 @@ export default function IPAddressManager() {
               <div className="flex items-center gap-2">
                 <Zap className="w-4 h-4 text-amber-500" />
                 <span className="text-slate-600">
-                  <span className="font-medium">DHCP Pool:</span> .1–.170
+                  <span className="font-medium">DHCP Pool:</span> .{networkConfig.dhcpStart}–.{networkConfig.dhcpEnd}
                   <span className="text-slate-400 ml-1">({stats.dhcpPoolSize} dynamic)</span>
                 </span>
               </div>
               <div className="flex items-center gap-2">
                 <Server className="w-4 h-4 text-emerald-500" />
                 <span className="text-slate-600">
-                  <span className="font-medium">Static Range:</span> .171–.254
+                  <span className="font-medium">Static Range:</span> .{networkConfig.staticStart}–.{networkConfig.staticEnd}
                   <span className="text-slate-400 ml-1">({stats.staticAssigned} assigned, {stats.freeStatic} free)</span>
                 </span>
               </div>
-              <div className="flex items-center gap-2">
-                <Shield className="w-4 h-4 text-blue-500" />
-                <span className="text-slate-600">
-                  <span className="font-medium">Fixed in DHCP:</span> .6, .50
-                </span>
-              </div>
+              {networkConfig.fixedInDHCP.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <Shield className="w-4 h-4 text-blue-500" />
+                  <span className="text-slate-600">
+                    <span className="font-medium">Fixed in DHCP:</span> {networkConfig.fixedInDHCP.map(n => `.${n}`).join(', ')}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -710,8 +888,8 @@ export default function IPAddressManager() {
               const isExpanded = expandedCard === index;
               const isReserved = item.assetName === 'Reserved';
               const isFree = item.assetName === 'Free';
-              const isDHCP = isInDHCPRange(item.ip);
-              const isFixed = isFixedInDHCP(item.ip);
+              const isDHCP = isInDHCPRangeConfig(item.ip);
+              const isFixed = isFixedInDHCPConfig(item.ip);
 
               return (
                 <div
@@ -816,7 +994,7 @@ export default function IPAddressManager() {
                           <div>
                             <div className="text-slate-400 text-xs uppercase tracking-wide">IP Range</div>
                             <div className="text-slate-700">
-                              {isDHCP ? (isFixed ? 'Fixed (DHCP)' : 'DHCP Pool') : 'Static'}
+                              {isDHCP ? (isFixed ? `Fixed (DHCP .${networkConfig.dhcpStart}–.${networkConfig.dhcpEnd})` : `DHCP Pool (.${networkConfig.dhcpStart}–.${networkConfig.dhcpEnd})`) : `Static (.${networkConfig.staticStart}–.${networkConfig.staticEnd})`}
                             </div>
                           </div>
                           <div>
