@@ -1,0 +1,13 @@
+{
+  "name": "ip-manager-api",
+  "version": "1.0.0",
+  "description": "IP Manager SQLite API server",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "better-sqlite3": "^9.4.3"
+  }
+}

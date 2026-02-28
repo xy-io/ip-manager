@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Search, Server, Monitor, Wifi, HardDrive, Camera, Shield, Globe, Filter, X, MapPin, Cpu, Box, CircleDot, ChevronDown, ChevronUp, Copy, Check, Zap, Download, Edit3, Plus, Trash2, Save, AlertCircle, Settings } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -59,8 +59,7 @@ function SettingsModal({ config, onSave, onClose }) {
       .filter(n => !isNaN(n));
 
     const newConfig = { networkName: form.networkName, subnet: form.subnet, dhcpStart, dhcpEnd, staticStart, staticEnd, fixedInDHCP };
-    try { localStorage.setItem('ip-manager-network-config', JSON.stringify(newConfig)); } catch {}
-    onSave(newConfig);
+    onSave(newConfig); // parent handles persistence (API or localStorage)
   };
 
   const f = (key) => ({ value: form[key], onChange: e => setForm(p => ({ ...p, [key]: e.target.value })) });
@@ -254,6 +253,42 @@ const initialIpData = [
   { assetName: "Reserved", hostname: "", ip: "192.168.0.253", type: "", location: "", apps: "" },
   { assetName: "OPNsense/Unifi Gateway Max", hostname: "opnsense.the-allens.uk", ip: "192.168.0.254", type: "Virtual", location: "Proxmox", apps: "Firewall" },
 ];
+
+// Load saved IP data from localStorage, falling back to the hardcoded defaults
+// (used for immediate render before API check completes)
+function loadIpData() {
+  try {
+    const saved = localStorage.getItem('ip-manager-ip-data');
+    if (saved) return JSON.parse(saved);
+  } catch {}
+  return initialIpData;
+}
+
+// ── API helpers (SQLite backend on LXC) ──────────────────────────────────────
+// Returns true if the API server is reachable. Falls back silently to
+// localStorage mode if running locally without the server.
+async function detectApi() {
+  try {
+    const res = await fetch('/api/health', { signal: AbortSignal.timeout(2000) });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function apiGet(path) {
+  const res = await fetch(path);
+  if (!res.ok) throw new Error(`API ${path} returned ${res.status}`);
+  return res.json();
+}
+
+async function apiPut(path, body) {
+  await fetch(path, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
 
 // Helper functions
 const getUniqueValues = (data, key) => {
@@ -468,13 +503,70 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types }) {
 
 // Main Component
 export default function IPAddressManager() {
-  // Network config state (persisted to localStorage)
+  // Persistence mode — 'loading' until API check completes, then 'api' or 'local'
+  const [persistMode, setPersistMode] = useState('loading');
+
+  // Network config state — seeded from localStorage for instant render, overridden by API if available
   const [networkConfig, setNetworkConfig] = useState(loadNetworkConfig);
   const [showSettings, setShowSettings] = useState(false);
 
-  // Editable state
-  const [ipData, setIpData] = useState(initialIpData);
+  // IP data — seeded from localStorage for instant render, overridden by API if available
+  const [ipData, setIpData] = useState(loadIpData);
   const [hasChanges, setHasChanges] = useState(false);
+
+  // ── On mount: detect API and load server data if available ─────────────────
+  useEffect(() => {
+    (async () => {
+      const hasApi = await detectApi();
+      if (hasApi) {
+        try {
+          const [ipsJson, configJson] = await Promise.all([
+            apiGet('/api/ips'),
+            apiGet('/api/config'),
+          ]);
+          // Seed DB with localStorage data if the server has nothing yet
+          if (ipsJson.data) {
+            setIpData(ipsJson.data);
+          } else {
+            // First run on this server — push local data up
+            const local = loadIpData();
+            await apiPut('/api/ips', local);
+          }
+          if (configJson.data) {
+            setNetworkConfig({ ...DEFAULT_NETWORK_CONFIG, ...configJson.data });
+          } else {
+            const local = loadNetworkConfig();
+            await apiPut('/api/config', local);
+          }
+          setPersistMode('api');
+        } catch {
+          setPersistMode('local');
+        }
+      } else {
+        setPersistMode('local');
+      }
+    })();
+  }, []);
+
+  // ── Auto-save IP data ───────────────────────────────────────────────────────
+  useEffect(() => {
+    if (persistMode === 'loading') return;
+    if (persistMode === 'api') {
+      apiPut('/api/ips', ipData).catch(() => {});
+    } else {
+      try { localStorage.setItem('ip-manager-ip-data', JSON.stringify(ipData)); } catch {}
+    }
+  }, [ipData, persistMode]);
+
+  // ── Auto-save network config ────────────────────────────────────────────────
+  useEffect(() => {
+    if (persistMode === 'loading') return;
+    if (persistMode === 'api') {
+      apiPut('/api/config', networkConfig).catch(() => {});
+    } else {
+      try { localStorage.setItem('ip-manager-network-config', JSON.stringify(networkConfig)); } catch {}
+    }
+  }, [networkConfig, persistMode]);
 
   // UI state
   const [searchTerm, setSearchTerm] = useState('');
@@ -651,7 +743,20 @@ export default function IPAddressManager() {
               <p className="text-sm text-slate-500">{networkConfig.networkName} · {networkConfig.subnet}.0/24</p>
             </div>
             <div className="flex gap-2 items-center">
-              {hasChanges && (
+              {/* Persistence mode badge */}
+              {persistMode === 'api' && (
+                <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-50 text-emerald-700 rounded-lg text-xs border border-emerald-200" title="Data is stored in SQLite on the server — shared across all users">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
+                  SQLite
+                </div>
+              )}
+              {persistMode === 'local' && (
+                <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-50 text-slate-500 rounded-lg text-xs border border-slate-200" title="Data is stored in this browser only — no API server detected">
+                  <div className="w-1.5 h-1.5 rounded-full bg-slate-400"></div>
+                  Local
+                </div>
+              )}
+              {hasChanges && persistMode !== 'api' && (
                 <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 text-amber-700 rounded-lg text-sm border border-amber-200">
                   <AlertCircle className="w-4 h-4" />
                   Unsaved changes
@@ -875,7 +980,8 @@ export default function IPAddressManager() {
       <div className="max-w-7xl mx-auto px-4 py-3">
         <p className="text-sm text-slate-500">
           Showing {filteredData.length} of {showReserved ? ipData.length : stats.active + stats.freeStatic} addresses
-          {hasChanges && <span className="ml-2 text-amber-600">• Changes pending export</span>}
+          {hasChanges && persistMode !== 'api' && <span className="ml-2 text-amber-600">• Changes pending export</span>}
+          {persistMode === 'api' && <span className="ml-2 text-emerald-600">• Auto-saved to SQLite</span>}
         </p>
       </div>
 

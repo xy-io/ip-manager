@@ -2,7 +2,9 @@
 # ============================================================
 #  IP Address Manager — LXC Install Script
 #  Target: Ubuntu 24.04 LXC on Proxmox
-#  Serves the built React app via Nginx on port 80
+#  - React frontend served by Nginx on port 80
+#  - SQLite API server (Node/Express) on 127.0.0.1:3001
+#  - Nginx proxies /api/ to the API server
 # ============================================================
 
 set -e  # Exit immediately if any command fails
@@ -11,6 +13,7 @@ set -e  # Exit immediately if any command fails
 REPO_URL="https://github.com/xy-io/ip-manager"
 APP_DIR="/opt/ip-manager"
 NGINX_SITE="ip-manager"
+SERVICE_NAME="ip-manager-api"
 NODE_VERSION="20"   # LTS
 
 # ── Colours ──────────────────────────────────────────────────
@@ -42,8 +45,9 @@ apt-get update -qq
 ok "Package lists updated"
 
 # ── 2. Install dependencies ──────────────────────────────────
-log "Installing dependencies (curl, git, nginx)..."
-apt-get install -y -qq curl git nginx
+# build-essential is needed to compile better-sqlite3 native bindings
+log "Installing dependencies (curl, git, nginx, build-essential)..."
+apt-get install -y -qq curl git nginx build-essential python3
 ok "Dependencies installed"
 
 # ── 3. Install Node.js ───────────────────────────────────────
@@ -68,21 +72,54 @@ else
   ok "Repository cloned to $APP_DIR"
 fi
 
-# ── 5. Install npm packages ──────────────────────────────────
-log "Installing npm packages..."
+# ── 5. Install frontend npm packages & build ─────────────────
+log "Installing frontend npm packages..."
 cd "$APP_DIR"
 npm install --silent
-ok "npm packages installed"
+ok "Frontend packages installed"
 
-# ── 6. Build the React app ───────────────────────────────────
 log "Building React app (this may take a moment)..."
 npm run build --silent
 ok "App built — output in $APP_DIR/dist"
 
-# ── 7. Configure Nginx ───────────────────────────────────────
+# ── 6. Install API server packages ───────────────────────────
+log "Installing API server packages (Express + better-sqlite3)..."
+cd "$APP_DIR/server"
+npm install --silent
+ok "API server packages installed"
+
+# ── 7. Create systemd service for the API ────────────────────
+log "Creating systemd service for the API server..."
+
+cat > /etc/systemd/system/${SERVICE_NAME}.service <<EOF
+[Unit]
+Description=IP Address Manager — SQLite API
+Documentation=https://github.com/xy-io/ip-manager
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=$APP_DIR/server
+ExecStart=/usr/bin/node index.js
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=$SERVICE_NAME
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable ${SERVICE_NAME} --quiet
+systemctl restart ${SERVICE_NAME}
+ok "API service created and started (${SERVICE_NAME})"
+
+# ── 8. Configure Nginx ───────────────────────────────────────
 log "Configuring Nginx..."
 
-# Get the container's IP for display at the end
 HOST_IP=$(hostname -I | awk '{print $1}')
 
 cat > /etc/nginx/sites-available/$NGINX_SITE <<EOF
@@ -93,7 +130,16 @@ server {
     root $APP_DIR/dist;
     index index.html;
 
-    # Serve the React SPA — all routes fall back to index.html
+    # Proxy /api/ requests to the Node API server
+    location /api/ {
+        proxy_pass http://127.0.0.1:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_read_timeout 30s;
+    }
+
+    # Serve the React SPA — all other routes fall back to index.html
     location / {
         try_files \$uri \$uri/ /index.html;
     }
@@ -113,29 +159,39 @@ server {
 }
 EOF
 
-# Enable site, disable default
 ln -sf /etc/nginx/sites-available/$NGINX_SITE /etc/nginx/sites-enabled/$NGINX_SITE
 rm -f /etc/nginx/sites-enabled/default
 
-# Test config and reload
 nginx -t -q 2>/dev/null || err "Nginx config invalid — check /etc/nginx/sites-available/$NGINX_SITE"
 systemctl enable nginx --quiet
 systemctl restart nginx
 ok "Nginx configured and running"
 
-# ── 8. Create update script ──────────────────────────────────
+# ── 9. Create update script ──────────────────────────────────
 log "Creating update helper script..."
-cat > /usr/local/bin/ip-manager-update <<'UPDATESCRIPT'
+cat > /usr/local/bin/ip-manager-update <<UPDATESCRIPT
 #!/bin/bash
+set -e
 echo "Pulling latest changes from GitHub..."
 git -C /opt/ip-manager pull
-echo "Installing any new packages..."
+
+echo "Installing frontend packages..."
 cd /opt/ip-manager && npm install --silent
-echo "Rebuilding app..."
+
+echo "Rebuilding React app..."
 npm run build --silent
+
+echo "Installing API server packages..."
+cd /opt/ip-manager/server && npm install --silent
+
+echo "Restarting API server..."
+systemctl restart ip-manager-api
+
 echo "Reloading Nginx..."
 systemctl reload nginx
-echo "Done! IP Manager updated."
+
+echo ""
+echo "Done! IP Manager updated. Your data is unchanged."
 UPDATESCRIPT
 chmod +x /usr/local/bin/ip-manager-update
 ok "Update script created at /usr/local/bin/ip-manager-update"
@@ -146,9 +202,11 @@ echo -e "${GREEN}============================================${NC}"
 echo -e "${GREEN}   Installation Complete!${NC}"
 echo -e "${GREEN}============================================${NC}"
 echo ""
-echo -e "  ${BLUE}App URL:${NC}     http://$HOST_IP"
-echo -e "  ${BLUE}App files:${NC}   $APP_DIR"
-echo -e "  ${BLUE}Nginx log:${NC}   /var/log/nginx/ip-manager.access.log"
+echo -e "  ${BLUE}App URL:${NC}      http://$HOST_IP"
+echo -e "  ${BLUE}App files:${NC}    $APP_DIR"
+echo -e "  ${BLUE}Database:${NC}     $APP_DIR/server/ip-manager.db"
+echo -e "  ${BLUE}API logs:${NC}     journalctl -u ip-manager-api -f"
+echo -e "  ${BLUE}Nginx log:${NC}    /var/log/nginx/ip-manager.access.log"
 echo ""
 echo -e "  To update the app later, run:"
 echo -e "  ${YELLOW}  ip-manager-update${NC}"

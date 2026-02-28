@@ -52,8 +52,10 @@ All ranges are configurable — works with any subnet (192.168.x, 10.x.x, 172.16
 |---|---|
 | Frontend | React 18, Tailwind CSS 3, Lucide Icons |
 | Build tool | Vite 4 |
+| API server | Node.js + Express |
+| Database | SQLite via `better-sqlite3` |
 | Excel export | SheetJS (xlsx) |
-| Web server | Nginx (production) |
+| Web server | Nginx (reverse proxy + static files) |
 | Runtime | Node.js 20 LTS |
 
 ---
@@ -144,27 +146,42 @@ Open the URL in your browser and you're done.
 
 ---
 
+## Data Persistence
+
+The app supports two persistence modes and switches between them automatically:
+
+| Mode | When | What it means |
+|---|---|---|
+| 🟢 **SQLite** | LXC/Nginx deployment | Data stored in `server/ip-manager.db` on the server — shared across all users and browsers |
+| ⚪ **Local** | Local dev (`npm run dev`) | Data stored in your browser's localStorage — private to that browser |
+
+On startup the app sends a quick health check to `/api/health`. If the API responds, it loads data from SQLite and shows the green **SQLite** badge in the header. If not (e.g. running locally without the server), it falls back to localStorage automatically and shows the **Local** badge.
+
+All saves happen automatically in both modes — there's nothing to click. The **Download Excel** button is still available any time you want a portable backup.
+
+**Resetting data (Local mode only):** open DevTools (`F12`) → Application → Local Storage → delete `ip-manager-ip-data`.
+
+---
+
 ## Updating
 
-### If you made changes in the app (new IPs, edits):
+When new code changes are pushed to GitHub, here's how to get them — your stored IP data is untouched by code updates.
 
-1. Use the **Download Excel** button in the app to save your updated `.xlsx`
+### LXC / Nginx deployment
 
-### If you pushed code changes to GitHub:
-
-SSH into the LXC container and run:
+SSH into the container and run:
 
 ```bash
 ip-manager-update
 ```
 
-This pulls the latest code, reinstalls packages if needed, rebuilds the app, and reloads Nginx — all in one command.
+This pulls the latest code, rebuilds the app, restarts the API service, and reloads Nginx — all in one command. Your SQLite database is untouched.
 
-### Local dev:
+### Local development
 
 ```bash
 git pull
-npm install  # only if dependencies changed
+npm install  # only needed if package.json changed
 npm run dev
 ```
 
@@ -178,6 +195,10 @@ ip-manager/
 │   ├── IPAddressManager.jsx   # Main React component (all logic and UI)
 │   ├── main.jsx               # React entry point
 │   └── index.css              # Tailwind base styles
+├── server/
+│   ├── index.js               # Express + SQLite API server (port 3001)
+│   ├── package.json           # Server dependencies
+│   └── ip-manager.db          # SQLite database (created on first run)
 ├── public/
 │   └── favicon.svg
 ├── index.html
@@ -195,7 +216,6 @@ ip-manager/
 
 See [`IP_Manager_Roadmap.docx`](./IP_Manager_Roadmap.docx) for the full three-phase roadmap. Key upcoming features:
 
-- **Local persistence** — edits survive browser restarts (localStorage)
 - **Import from Excel** — drag-and-drop to reload the data set
 - **Ping / reachability** — live status indicators per IP
 - **Proxmox integration** — auto-discover VMs and LXCs
@@ -206,19 +226,17 @@ See [`IP_Manager_Roadmap.docx`](./IP_Manager_Roadmap.docx) for the full three-ph
 
 ## Network Configuration
 
-To adapt this for your own network, edit the `NETWORK_CONFIG` object at the top of `src/IPAddressManager.jsx`:
+No code editing required. Click the **⚙️ Settings** icon in the app header to configure:
 
-```javascript
-const NETWORK_CONFIG = {
-  dhcpStart: 1,         // Start of DHCP pool
-  dhcpEnd: 170,         // End of DHCP pool
-  staticStart: 171,     // Start of static range
-  staticEnd: 254,       // End of static range
-  fixedInDHCP: [6, 50], // Fixed reservations within DHCP range
-};
-```
+| Setting | Description |
+|---|---|
+| Network name | Display name shown in the header |
+| Subnet | Your network prefix (e.g. `192.168.1`, `10.0.0`) |
+| DHCP range | Start and end of the DHCP pool |
+| Static range | Start and end of your static assignments |
+| Fixed in DHCP | Comma-separated last octets of fixed reservations |
 
-Then update the `initialIpData` array below it with your own IP assignments.
+Settings are saved to localStorage and persist across sessions. To pre-populate the IP list for your own network, update the `initialIpData` array in `src/IPAddressManager.jsx` — this is the baseline that loads when no saved data is found in the browser.
 
 ---
 
