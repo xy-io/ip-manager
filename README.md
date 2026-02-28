@@ -37,9 +37,9 @@ The app understands your network layout:
 
 ## Screenshots
 
-> Cards view with free IP panel expanded, and the Edit / Claim modal.
+> Cards view showing assigned and free IPs, with the Edit modal open.
 
-*(Add screenshots here once deployed)*
+![IP Address Manager Preview](./preview.png)
 
 ---
 
