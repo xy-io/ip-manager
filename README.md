@@ -214,13 +214,22 @@ ip-manager/
 
 ## Roadmap
 
-See [`IP_Manager_Roadmap.docx`](./IP_Manager_Roadmap.docx) for the full three-phase roadmap. Key upcoming features:
+See [`IP_Manager_Roadmap.docx`](./IP_Manager_Roadmap.docx) for the full three-phase roadmap.
 
+**Phase 1 — near-term (Q1–Q2 2026):**
+- **Notes / comments** — freetext notes per IP entry, visible on expanded cards
+- **Tag support** — custom tags per entry (e.g. `media`, `IoT`, `cameras`) with filter support
 - **Import from Excel** — drag-and-drop to reload the data set
+
+**Phase 2 — mid-term (Q3–Q4 2026):**
+- **Multiple IPs per host** — support servers/VMs with more than one NIC or lease (prerequisite for VLAN support)
+- **VLAN & multi-network** — tag IPs with one or more VLANs; manage multiple subnets side-by-side
 - **Ping / reachability** — live status indicators per IP
 - **Proxmox integration** — auto-discover VMs and LXCs
 - **Service health checks** — HTTP probes with UP/DOWN badges
-- **Change history** — full audit log of every edit
+
+**Phase 3 — longer-term (2027+):**
+- Network topology map, uptime alerts, REST API, network scanner, multi-user auth
 
 ---
 
