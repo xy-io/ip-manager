@@ -10,77 +10,68 @@ struct IPRowView: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // Left column
-            VStack(alignment: .leading, spacing: 4) {
+            // Status dot
+            Circle()
+                .fill(statusColor)
+                .frame(width: 9, height: 9)
+                .shadow(color: statusColor.opacity(0.6), radius: 3, x: 0, y: 0)
+
+            VStack(alignment: .leading, spacing: 3) {
+                // IP address + badge — must never wrap
                 HStack(spacing: 6) {
                     Text(entry.ip)
-                        .font(.system(.callout, design: .monospaced))
-                        .fontWeight(.semibold)
-                        .foregroundStyle(entry.isFree ? .green : .primary)
+                        .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .foregroundStyle(entry.isFree ? Color.green : Color.primary)
                     RangeBadge(type: rangeType)
+                    Spacer(minLength: 0)
                 }
 
+                // Display name
                 Text(entry.displayName)
                     .font(.subheadline)
-                    .foregroundStyle(entry.isFree ? Color.green : .primary)
+                    .fontWeight(entry.isFree ? .regular : .medium)
+                    .foregroundStyle(entry.isFree ? Color.secondary : Color.primary)
                     .lineLimit(1)
 
-                if let hostname = entry.hostname, !hostname.isEmpty {
-                    Text(hostname)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-
-                if let notes = entry.notes, !notes.isEmpty {
-                    Text(notes)
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                        .italic()
-                }
-            }
-
-            Spacer()
-
-            // Right column
-            VStack(alignment: .trailing, spacing: 4) {
-                if let location = entry.location, !location.isEmpty {
-                    Label(location, systemImage: "mappin")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-
-                if let apps = entry.apps, !apps.isEmpty {
-                    Text(apps)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-
-                if let tags = entry.tags, !tags.isEmpty {
-                    HStack(spacing: 3) {
-                        ForEach(tags.prefix(2), id: \.self) { tag in
-                            Text("#\(tag)")
-                                .font(.caption2)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Color.purple.opacity(0.12))
-                                .foregroundStyle(Color.purple)
-                                .clipShape(Capsule())
-                        }
-                        if tags.count > 2 {
-                            Text("+\(tags.count - 2)")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
+                // Secondary info row
+                HStack(spacing: 8) {
+                    if let loc = entry.location, !loc.isEmpty {
+                        Label(loc, systemImage: "mappin")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    if let hostname = entry.hostname, !hostname.isEmpty,
+                       entry.location == nil || entry.location!.isEmpty {
+                        Text(hostname)
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                    }
+                    if let tags = entry.tags, !tags.isEmpty {
+                        Text("#\(tags[0])")
+                            .font(.caption2)
+                            .foregroundStyle(Color.purple.opacity(0.8))
+                            .lineLimit(1)
                     }
                 }
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 6)
         .contentShape(Rectangle())
+    }
+
+    private var statusColor: Color {
+        if entry.isFree     { return .green }
+        if entry.isReserved { return Color(.systemGray3) }
+        switch rangeType {
+        case .dhcp:     return .orange
+        case .fixed:    return .blue
+        case .staticIP: return .teal
+        default:        return .teal
+        }
     }
 }
 
@@ -97,6 +88,6 @@ struct RangeBadge: View {
             .background(type.background)
             .foregroundStyle(type.color)
             .clipShape(Capsule())
-            .overlay(Capsule().stroke(type.color.opacity(0.3), lineWidth: 0.5))
+            .overlay(Capsule().stroke(type.color.opacity(0.25), lineWidth: 0.5))
     }
 }

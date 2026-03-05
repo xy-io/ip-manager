@@ -43,83 +43,93 @@ struct SidebarView: View {
         .safeAreaInset(edge: .bottom) { filterBar }
         .overlay {
             if vm.isLoading && vm.allIPs.isEmpty {
-                ProgressView("Loading from LXC…")
+                ProgressView("Loading…")
+                    .padding(20)
+                    .glassEffect(in: RoundedRectangle(cornerRadius: 16))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(.regularMaterial)
             }
         }
     }
 
+    // MARK: Toolbar
+
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .topBarLeading) {
-            HStack(spacing: 6) {
+            HStack(spacing: 5) {
                 Circle()
                     .fill(vm.lastError == nil ? Color.green : Color.orange)
-                    .frame(width: 8, height: 8)
+                    .frame(width: 7, height: 7)
+                    .shadow(color: (vm.lastError == nil ? Color.green : Color.orange).opacity(0.7),
+                            radius: 3, x: 0, y: 0)
                 Text(vm.modeLabel)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
         ToolbarItem(placement: .topBarTrailing) {
-            HStack(spacing: 12) {
+            HStack(spacing: 10) {
                 if vm.isSaving {
-                    ProgressView().scaleEffect(0.7)
+                    ProgressView().scaleEffect(0.75)
                 }
                 NavigationLink {
                     ServerSettingsView()
                 } label: {
-                    Image(systemName: "gearshape")
+                    Image(systemName: "gearshape.fill")
+                        .symbolRenderingMode(.hierarchical)
                 }
+                .buttonStyle(.glass)
             }
         }
     }
+
+    // MARK: Filter Bar (Liquid Glass)
 
     private var filterBar: some View {
         VStack(spacing: 0) {
             Divider()
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    FilterChip(label: "Free only", icon: "circle.dotted", active: vm.showFreeOnly) {
-                        vm.showFreeOnly.toggle()
-                    }
-                    FilterChip(label: "Reserved", icon: "lock", active: vm.showReserved) {
-                        vm.showReserved.toggle()
-                    }
+                GlassEffectContainer(spacing: 6) {
+                    HStack(spacing: 6) {
+                        FilterChip(label: "Free", icon: "circle.dotted", active: vm.showFreeOnly) {
+                            vm.showFreeOnly.toggle()
+                        }
+                        FilterChip(label: "Reserved", icon: "lock.fill", active: vm.showReserved) {
+                            vm.showReserved.toggle()
+                        }
 
-                    if vm.types.count > 1 {
-                        Divider().frame(height: 20)
-                        ForEach(vm.types.dropFirst(), id: \.self) { t in
-                            FilterChip(label: t, active: vm.selectedType == t) {
-                                vm.selectedType = vm.selectedType == t ? "All" : t
+                        if vm.types.count > 1 {
+                            ForEach(vm.types.dropFirst(), id: \.self) { t in
+                                FilterChip(label: t, active: vm.selectedType == t) {
+                                    vm.selectedType = vm.selectedType == t ? "All" : t
+                                }
                             }
                         }
-                    }
 
-                    if vm.allTags.count > 1 {
-                        Divider().frame(height: 20)
-                        ForEach(vm.allTags.dropFirst(), id: \.self) { tag in
-                            FilterChip(label: "#\(tag)", icon: "tag", active: vm.selectedTag == tag) {
-                                vm.selectedTag = vm.selectedTag == tag ? "All" : tag
+                        if vm.allTags.count > 1 {
+                            ForEach(vm.allTags.dropFirst(), id: \.self) { tag in
+                                FilterChip(label: "#\(tag)", icon: "tag", active: vm.selectedTag == tag) {
+                                    vm.selectedTag = vm.selectedTag == tag ? "All" : tag
+                                }
                             }
                         }
-                    }
 
-                    if vm.hasActiveFilters {
-                        Button { vm.resetFilters() } label: {
-                            Label("Clear", systemImage: "xmark.circle.fill")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                        if vm.hasActiveFilters {
+                            Button { vm.resetFilters() } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.glass)
                         }
-                        .buttonStyle(.plain)
                     }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
             }
+
             // Stats strip
-            HStack(spacing: 16) {
+            HStack(spacing: 14) {
                 Label("\(vm.assignedCount) assigned", systemImage: "server.rack")
                 Label("\(vm.freeCount) free", systemImage: "circle.dotted")
                 Spacer()
@@ -128,13 +138,13 @@ struct SidebarView: View {
             .font(.caption2)
             .foregroundStyle(.secondary)
             .padding(.horizontal, 16)
-            .padding(.bottom, 8)
+            .padding(.bottom, 10)
         }
         .background(.bar)
     }
 }
 
-// MARK: - Filter Chip
+// MARK: - Filter Chip (Liquid Glass)
 
 struct FilterChip: View {
     let label: String
@@ -145,15 +155,20 @@ struct FilterChip: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 4) {
-                if let icon { Image(systemName: icon).font(.caption2) }
-                Text(label).font(.caption).fontWeight(.medium)
+                if let icon {
+                    Image(systemName: icon)
+                        .font(.caption2)
+                        .symbolRenderingMode(.hierarchical)
+                }
+                Text(label)
+                    .font(.caption)
+                    .fontWeight(.medium)
             }
             .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(active ? Color.accentColor : Color(.systemGray5))
-            .foregroundStyle(active ? .white : .primary)
-            .clipShape(Capsule())
+            .padding(.vertical, 6)
+            .foregroundStyle(active ? Color.accentColor : Color.primary)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.glass)
+        .tint(active ? Color.accentColor : Color.clear)
     }
 }

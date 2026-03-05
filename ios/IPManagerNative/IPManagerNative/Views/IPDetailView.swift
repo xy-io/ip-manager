@@ -7,15 +7,15 @@ struct IPDetailView: View {
     let entry: IPEntry
     @Binding var selectedEntry: IPEntry?
 
-    @State private var showEdit            = false
-    @State private var showReleaseConfirm  = false
+    @State private var showEdit           = false
+    @State private var showReleaseConfirm = false
 
     private var live: IPEntry? { vm.allIPs.first { $0.ip == entry.ip } }
     private var rangeType: IPRangeType { (live ?? entry).rangeType(config: vm.config) }
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 20) {
+            VStack(spacing: 16) {
                 headerCard
                 if let e = live {
                     if e.isAssigned || e.isFree {
@@ -30,7 +30,7 @@ struct IPDetailView: View {
                 }
                 actionsSection
             }
-            .padding(24)
+            .padding(20)
         }
         .navigationTitle(entry.ip)
         .navigationBarTitleDisplayMode(.inline)
@@ -39,6 +39,7 @@ struct IPDetailView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Edit") { showEdit = true }
                         .fontWeight(.semibold)
+                        .buttonStyle(.glass)
                 }
             }
         }
@@ -64,91 +65,166 @@ struct IPDetailView: View {
         }
     }
 
-    // MARK: - Header
+    // MARK: - Header Card (Mesh Gradient + Glass)
 
     private var headerCard: some View {
-        VStack(spacing: 12) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(entry.ip)
-                        .font(.system(.title, design: .monospaced))
-                        .fontWeight(.bold)
-                        .foregroundStyle(entry.isFree ? .green : .primary)
+        ZStack(alignment: .bottomLeading) {
+            // Mesh gradient background
+            MeshGradient(
+                width: 3, height: 2,
+                points: [
+                    [0, 0], [0.5, 0], [1, 0],
+                    [0, 1], [0.5, 1], [1, 1]
+                ],
+                colors: headerGradientColors
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 20))
 
-                    HStack(spacing: 8) {
-                        RangeBadge(type: rangeType)
-                        if let type = live?.type, !type.isEmpty {
-                            Text(type)
-                                .font(.caption)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 3)
-                                .background(Color(.systemGray5))
-                                .clipShape(Capsule())
+            // Glass overlay with content
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(entry.ip)
+                            .font(.system(.largeTitle, design: .monospaced))
+                            .fontWeight(.bold)
+                            .foregroundStyle(.white)
+                            .shadow(color: .black.opacity(0.2), radius: 2, x: 0, y: 1)
+
+                        HStack(spacing: 8) {
+                            RangeBadge(type: rangeType)
+                            if let type = live?.type, !type.isEmpty {
+                                Text(type)
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .background(.white.opacity(0.2))
+                                    .foregroundStyle(.white)
+                                    .clipShape(Capsule())
+                            }
                         }
                     }
-                }
-                Spacer()
-                Image(systemName: iconName)
-                    .font(.system(size: 44))
-                    .foregroundStyle(iconColor)
-                    .symbolEffect(.pulse, isActive: entry.isFree)
-            }
 
-            if let name = live?.assetName, !entry.isFree {
-                Text(name)
-                    .font(.title2)
-                    .fontWeight(.semibold)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            } else if entry.isFree {
-                Text("Available to claim")
-                    .font(.title3)
-                    .foregroundStyle(.green)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    Spacer()
+
+                    Image(systemName: iconName)
+                        .font(.system(size: 48))
+                        .foregroundStyle(.white.opacity(0.9))
+                        .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
+                        .symbolEffect(.pulse, isActive: entry.isFree)
+                        .symbolRenderingMode(.hierarchical)
+                }
+
+                if let name = live?.assetName, !entry.isFree {
+                    Text(name)
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.white)
+                } else if entry.isFree {
+                    Text("Available to claim")
+                        .font(.title3)
+                        .fontWeight(.medium)
+                        .foregroundStyle(.white.opacity(0.9))
+                }
             }
+            .padding(20)
         }
-        .padding(20)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .frame(minHeight: 160)
+    }
+
+    private var headerGradientColors: [Color] {
+        if entry.isFree {
+            return [
+                Color(hue: 0.38, saturation: 0.6, brightness: 0.55),
+                Color(hue: 0.40, saturation: 0.5, brightness: 0.45),
+                Color(hue: 0.42, saturation: 0.7, brightness: 0.40),
+                Color(hue: 0.35, saturation: 0.5, brightness: 0.35),
+                Color(hue: 0.38, saturation: 0.6, brightness: 0.30),
+                Color(hue: 0.40, saturation: 0.5, brightness: 0.25),
+            ]
+        }
+        if entry.isReserved {
+            return [
+                Color(hue: 0.6,  saturation: 0.15, brightness: 0.5),
+                Color(hue: 0.62, saturation: 0.12, brightness: 0.42),
+                Color(hue: 0.60, saturation: 0.15, brightness: 0.38),
+                Color(hue: 0.58, saturation: 0.10, brightness: 0.30),
+                Color(hue: 0.60, saturation: 0.12, brightness: 0.25),
+                Color(hue: 0.62, saturation: 0.15, brightness: 0.20),
+            ]
+        }
+        switch rangeType {
+        case .dhcp:
+            return [
+                Color(hue: 0.08, saturation: 0.7, brightness: 0.65),
+                Color(hue: 0.06, saturation: 0.6, brightness: 0.55),
+                Color(hue: 0.10, saturation: 0.8, brightness: 0.50),
+                Color(hue: 0.07, saturation: 0.6, brightness: 0.40),
+                Color(hue: 0.08, saturation: 0.7, brightness: 0.32),
+                Color(hue: 0.10, saturation: 0.6, brightness: 0.25),
+            ]
+        case .fixed:
+            return [
+                Color(hue: 0.60, saturation: 0.65, brightness: 0.65),
+                Color(hue: 0.62, saturation: 0.55, brightness: 0.55),
+                Color(hue: 0.58, saturation: 0.70, brightness: 0.50),
+                Color(hue: 0.60, saturation: 0.55, brightness: 0.40),
+                Color(hue: 0.62, saturation: 0.65, brightness: 0.32),
+                Color(hue: 0.58, saturation: 0.55, brightness: 0.25),
+            ]
+        default:
+            return [
+                Color(hue: 0.53, saturation: 0.60, brightness: 0.60),
+                Color(hue: 0.55, saturation: 0.50, brightness: 0.50),
+                Color(hue: 0.51, saturation: 0.65, brightness: 0.45),
+                Color(hue: 0.53, saturation: 0.50, brightness: 0.35),
+                Color(hue: 0.55, saturation: 0.60, brightness: 0.28),
+                Color(hue: 0.51, saturation: 0.50, brightness: 0.22),
+            ]
+        }
     }
 
     private var iconName: String {
         if entry.isFree     { return "circle.dotted" }
         if entry.isReserved { return "lock.fill" }
-        return "server.rack"
+        switch rangeType {
+        case .dhcp:     return "wifi.router.fill"
+        case .fixed:    return "pin.fill"
+        case .staticIP: return "server.rack"
+        default:        return "server.rack"
+        }
     }
 
-    private var iconColor: Color {
-        if entry.isFree     { return .green }
-        if entry.isReserved { return Color(.systemGray3) }
-        return .teal
-    }
-
-    // MARK: - Info Grid
+    // MARK: - Info Grid (Glass Cards)
 
     private func infoGrid(_ e: IPEntry) -> some View {
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+        LazyVGrid(
+            columns: [GridItem(.flexible()), GridItem(.flexible())],
+            spacing: 12
+        ) {
             if let h = e.hostname, !h.isEmpty {
                 InfoCell(title: "Hostname", value: h, icon: "globe", monospaced: true)
             }
             if let loc = e.location, !loc.isEmpty {
-                InfoCell(title: "Location", value: loc, icon: "mappin.circle")
+                InfoCell(title: "Location", value: loc, icon: "mappin.circle.fill")
             }
             if let apps = e.apps, !apps.isEmpty {
-                InfoCell(title: "Service / Apps", value: apps, icon: "app.badge")
+                InfoCell(title: "Service / Apps", value: apps, icon: "app.badge.fill")
             }
             if let date = e.formattedDate {
-                InfoCell(title: "Last Modified", value: date, icon: "clock")
+                InfoCell(title: "Last Modified", value: date, icon: "clock.fill")
             }
         }
     }
 
-    // MARK: - Tags
+    // MARK: - Tags (Glass)
 
     private func tagsSection(_ tags: [String]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("Tags", systemImage: "tag")
+            Label("Tags", systemImage: "tag.fill")
                 .font(.subheadline).fontWeight(.semibold)
                 .foregroundStyle(.secondary)
+                .symbolRenderingMode(.hierarchical)
             FlowLayout(spacing: 8) {
                 ForEach(tags, id: \.self) { tag in
                     Button {
@@ -158,21 +234,18 @@ struct IPDetailView: View {
                             .font(.subheadline)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
-                            .background(vm.selectedTag == tag ? Color.purple : Color.purple.opacity(0.12))
-                            .foregroundStyle(vm.selectedTag == tag ? .white : Color.purple)
-                            .clipShape(Capsule())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.glass)
+                    .tint(vm.selectedTag == tag ? Color.purple : Color.clear)
                 }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .glassEffect(in: RoundedRectangle(cornerRadius: 14))
     }
 
-    // MARK: - Notes
+    // MARK: - Notes (Glass)
 
     private func notesSection(_ notes: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -181,47 +254,49 @@ struct IPDetailView: View {
                 .foregroundStyle(.secondary)
             Text(notes)
                 .font(.body)
+                .foregroundStyle(.primary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .glassEffect(in: RoundedRectangle(cornerRadius: 14))
     }
 
     // MARK: - Actions
 
     private var actionsSection: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 10) {
             if let e = live {
                 if e.isFree {
-                    Button { showEdit = true } label: {
+                    Button {
+                        showEdit = true
+                    } label: {
                         Label("Claim This IP", systemImage: "plus.circle.fill")
                             .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.green)
-                            .foregroundStyle(.white)
+                            .padding(.vertical, 4)
                             .fontWeight(.semibold)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.borderedProminent)
+                    .tint(.green)
+                    .controlSize(.large)
                 } else if e.isAssigned {
-                    Button(role: .destructive) { showReleaseConfirm = true } label: {
+                    Button(role: .destructive) {
+                        showReleaseConfirm = true
+                    } label: {
                         Label("Release IP", systemImage: "minus.circle")
                             .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.red.opacity(0.08))
-                            .foregroundStyle(.red)
+                            .padding(.vertical, 4)
                             .fontWeight(.medium)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.glass)
+                    .tint(.red)
+                    .controlSize(.large)
                 }
             }
         }
     }
 }
 
-// MARK: - Info Cell
+// MARK: - Info Cell (Glass)
 
 struct InfoCell: View {
     let title: String
@@ -230,29 +305,30 @@ struct InfoCell: View {
     var monospaced: Bool = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 6) {
             Label(title, systemImage: icon)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .symbolRenderingMode(.hierarchical)
             Text(value)
                 .font(monospaced ? .system(.callout, design: .monospaced) : .callout)
                 .fontWeight(.medium)
                 .lineLimit(2)
+                .foregroundStyle(.primary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .padding(14)
+        .glassEffect(in: RoundedRectangle(cornerRadius: 12))
     }
 }
 
-// MARK: - Flow Layout (wrapping tag chips)
+// MARK: - Flow Layout
 
 struct FlowLayout: Layout {
     var spacing: CGFloat = 8
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let rows = rows(proposal: proposal, subviews: subviews)
+        let rows = computeRows(proposal: proposal, subviews: subviews)
         let height = rows
             .map { $0.map { $0.sizeThatFits(.unspecified).height }.max() ?? 0 }
             .reduce(0, +) + spacing * CGFloat(max(rows.count - 1, 0))
@@ -261,7 +337,7 @@ struct FlowLayout: Layout {
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         var y = bounds.minY
-        for row in rows(proposal: proposal, subviews: subviews) {
+        for row in computeRows(proposal: proposal, subviews: subviews) {
             var x = bounds.minX
             let rowH = row.map { $0.sizeThatFits(.unspecified).height }.max() ?? 0
             for sub in row {
@@ -273,7 +349,7 @@ struct FlowLayout: Layout {
         }
     }
 
-    private func rows(proposal: ProposedViewSize, subviews: Subviews) -> [[LayoutSubview]] {
+    private func computeRows(proposal: ProposedViewSize, subviews: Subviews) -> [[LayoutSubview]] {
         var rows: [[LayoutSubview]] = [[]]
         var rowWidth: CGFloat = 0
         let maxWidth = proposal.width ?? .infinity
