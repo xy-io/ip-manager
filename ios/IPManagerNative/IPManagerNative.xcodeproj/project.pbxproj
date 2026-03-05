@@ -1,0 +1,418 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		88094D1C9C4E4795B390BF06 /* IPManagerNativeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9A8509C3E0E41B2A85F26B2 /* IPManagerNativeApp.swift */; };
+		A3793D4DAB5B43CC8767F377 /* IPEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32CDB79BF5D14942BBA60E6D /* IPEntry.swift */; };
+		968653D81F0C4580899A54BC /* NetworkConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4674B34820F24D33A9F226AB /* NetworkConfig.swift */; };
+		251E1A27A70F47CC9F50AD5C /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F55A177793C429C9ABC876B /* APIClient.swift */; };
+		475D47C59A9A4C328DED193F /* IPListViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DAD1D56D46045F188A396A2 /* IPListViewModel.swift */; };
+		74FA701113A14915BF7665C2 /* EditIPView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FC1E6C47061429B8787B72D /* EditIPView.swift */; };
+		D5DBD70513F343CF92CFE3D4 /* IPDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82FC4C424A1542CA89371386 /* IPDetailView.swift */; };
+		993D44A712DC4FFB99A5DA56 /* IPListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A671ABBD80B4672B6A0DFE7 /* IPListView.swift */; };
+		B78810EBF2884425B73B122D /* IPRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 360F7442830949BA87C9C60D /* IPRowView.swift */; };
+		ABE217B27D4E43FF91757922 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81D1511A7EBE448CBA4D3B39 /* RootView.swift */; };
+		D21946305D6B49AFBF91853F /* ServerSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0756E0C8A16C4E4FB988E309 /* ServerSettingsView.swift */; };
+		AFD743F04638447B9089E1B5 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9AF53157B60046CA92A5C256 /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		A9A8509C3E0E41B2A85F26B2 /* IPManagerNativeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IPManagerNativeApp.swift; sourceTree = "<group>"; };
+		32CDB79BF5D14942BBA60E6D /* IPEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IPEntry.swift; sourceTree = "<group>"; };
+		4674B34820F24D33A9F226AB /* NetworkConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkConfig.swift; sourceTree = "<group>"; };
+		9F55A177793C429C9ABC876B /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
+		1DAD1D56D46045F188A396A2 /* IPListViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IPListViewModel.swift; sourceTree = "<group>"; };
+		3FC1E6C47061429B8787B72D /* EditIPView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditIPView.swift; sourceTree = "<group>"; };
+		82FC4C424A1542CA89371386 /* IPDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IPDetailView.swift; sourceTree = "<group>"; };
+		3A671ABBD80B4672B6A0DFE7 /* IPListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IPListView.swift; sourceTree = "<group>"; };
+		360F7442830949BA87C9C60D /* IPRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IPRowView.swift; sourceTree = "<group>"; };
+		81D1511A7EBE448CBA4D3B39 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		0756E0C8A16C4E4FB988E309 /* ServerSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerSettingsView.swift; sourceTree = "<group>"; };
+		9AF53157B60046CA92A5C256 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		509C0913652542108694B5EE /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
+		BDD55C4CC9F34DCF93F67C01 /* IPManagerNative.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = IPManagerNative.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		5FF527E822A54E048D887BD6 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXResourcesBuildPhase section */
+		07569D33D9E443B1AF183AAC /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AFD743F04638447B9089E1B5 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		434121072D334609B0788EFF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				88094D1C9C4E4795B390BF06 /* IPManagerNativeApp.swift in Sources */,
+				A3793D4DAB5B43CC8767F377 /* IPEntry.swift in Sources */,
+				968653D81F0C4580899A54BC /* NetworkConfig.swift in Sources */,
+				251E1A27A70F47CC9F50AD5C /* APIClient.swift in Sources */,
+				475D47C59A9A4C328DED193F /* IPListViewModel.swift in Sources */,
+				74FA701113A14915BF7665C2 /* EditIPView.swift in Sources */,
+				D5DBD70513F343CF92CFE3D4 /* IPDetailView.swift in Sources */,
+				993D44A712DC4FFB99A5DA56 /* IPListView.swift in Sources */,
+				B78810EBF2884425B73B122D /* IPRowView.swift in Sources */,
+				ABE217B27D4E43FF91757922 /* RootView.swift in Sources */,
+				D21946305D6B49AFBF91853F /* ServerSettingsView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXGroup section */
+		71C50F69587A45C1B665249D = {
+			isa = PBXGroup;
+			children = (
+				E75B20C5D2344D88817091C6 /* App */,
+				C58A4CC04739486FA5D9ACF6 /* Models */,
+				54F3BE21E6A047E58EEEBAEB /* Networking */,
+				D1AEF55E5C09465F926943B2 /* ViewModels */,
+				3540DE2C5FA54E4C8A6D9C1B /* Views */,
+				9AF53157B60046CA92A5C256 /* Assets.xcassets */,
+				0AC1B77C7E544864A60933E4 /* Preview Content */,
+				36C265E9D9154B03ACEBB359 /* Products */,
+			);
+			path = IPManagerNative;
+			sourceTree = "<group>";
+		};
+		36C265E9D9154B03ACEBB359 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				BDD55C4CC9F34DCF93F67C01 /* IPManagerNative.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		E75B20C5D2344D88817091C6 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				A9A8509C3E0E41B2A85F26B2 /* IPManagerNativeApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		C58A4CC04739486FA5D9ACF6 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				32CDB79BF5D14942BBA60E6D /* IPEntry.swift */,
+				4674B34820F24D33A9F226AB /* NetworkConfig.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		54F3BE21E6A047E58EEEBAEB /* Networking */ = {
+			isa = PBXGroup;
+			children = (
+				9F55A177793C429C9ABC876B /* APIClient.swift */,
+			);
+			path = Networking;
+			sourceTree = "<group>";
+		};
+		D1AEF55E5C09465F926943B2 /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				1DAD1D56D46045F188A396A2 /* IPListViewModel.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		3540DE2C5FA54E4C8A6D9C1B /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				3FC1E6C47061429B8787B72D /* EditIPView.swift */,
+				82FC4C424A1542CA89371386 /* IPDetailView.swift */,
+				3A671ABBD80B4672B6A0DFE7 /* IPListView.swift */,
+				360F7442830949BA87C9C60D /* IPRowView.swift */,
+				81D1511A7EBE448CBA4D3B39 /* RootView.swift */,
+				0756E0C8A16C4E4FB988E309 /* ServerSettingsView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		0AC1B77C7E544864A60933E4 /* Preview Content */ = {
+			isa = PBXGroup;
+			children = (
+				509C0913652542108694B5EE /* Preview Assets.xcassets */,
+			);
+			path = "Preview Content";
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		62E07C8C79B14BBD85C51436 /* IPManagerNative */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1E2A75AAD04746199CB6BA96 /* Build configuration list for PBXNativeTarget "IPManagerNative" */;
+			buildPhases = (
+				434121072D334609B0788EFF /* Sources */,
+				5FF527E822A54E048D887BD6 /* Frameworks */,
+				07569D33D9E443B1AF183AAC /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = IPManagerNative;
+			packageProductDependencies = (
+			);
+			productName = IPManagerNative;
+			productReference = BDD55C4CC9F34DCF93F67C01 /* IPManagerNative.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		B4A8998C55D44365A818846D /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					62E07C8C79B14BBD85C51436 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+				};
+			};
+			buildConfigurationList = A157E06F50D24C749E2A8C6B /* Build configuration list for PBXProject "IPManagerNative" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 71C50F69587A45C1B665249D;
+			productRefGroup = 36C265E9D9154B03ACEBB359 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				62E07C8C79B14BBD85C51436 /* IPManagerNative */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin XCBuildConfiguration section */
+		0F4502C30B59465D9C8C62DE /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSET_CATALOG_COMPILER_OPTIMIZATION = space;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		A3468DACB86541E2930DC045 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSET_CATALOG_COMPILER_OPTIMIZATION = space;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		88AA0F71D4CE43CFBAC4A81D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSDIR = "$(PROJECT_DIR)/$(CONFIGURATION)";
+				ASSET_CATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSET_CATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "\"IPManagerNative/Preview Content\"";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = IPManagerNative/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UIRequiresFullScreen = NO;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LE_SWIFT_VERSION = 5.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jayallen.IPManagerNative;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		E7BE00AE2FDE4C8497A33F19 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSET_CATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSET_CATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "\"IPManagerNative/Preview Content\"";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = IPManagerNative/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UIRequiresFullScreen = NO;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LE_SWIFT_VERSION = 5.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jayallen.IPManagerNative;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A157E06F50D24C749E2A8C6B /* Build configuration list for PBXProject "IPManagerNative" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0F4502C30B59465D9C8C62DE /* Debug */,
+				A3468DACB86541E2930DC045 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		1E2A75AAD04746199CB6BA96 /* Build configuration list for PBXNativeTarget "IPManagerNative" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				88AA0F71D4CE43CFBAC4A81D /* Debug */,
+				E7BE00AE2FDE4C8497A33F19 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+	};
+	rootObject = B4A8998C55D44365A818846D /* Project object */;
+}

@@ -18,6 +18,8 @@ struct NetworkConfig: Codable {
         staticEnd: 254,
         fixedInDHCP: [6, 50]
     )
+
+    var dhcpPoolSize: Int { dhcpEnd - dhcpStart + 1 - fixedInDHCP.count }
 }
 
 struct NetworkConfigResponse: Codable {
