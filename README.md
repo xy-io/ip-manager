@@ -1,12 +1,12 @@
 # 🌐 IP Address Manager
 
-A clean, fast web app for managing your home network's static IP addresses — built to replace the Excel spreadsheet you've been using for years.
+A clean, fast web app for managing your home network's IP addresses — built to replace the Excel spreadsheet you've been using for years.
 
 ![React](https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react)
-![Vite](https://img.shields.io/badge/Vite-4-646CFF?style=flat-square&logo=vite)
+![Vite](https://img.shields.io/badge/Vite-5-646CFF?style=flat-square&logo=vite)
 ![Tailwind](https://img.shields.io/badge/Tailwind-3-38BDF8?style=flat-square&logo=tailwindcss)
 ![Nginx](https://img.shields.io/badge/Nginx-ready-009639?style=flat-square&logo=nginx)
-![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)
+![License](https://img.shields.io/badge/license-PolyForm_NC-blue?style=flat-square)
 
 ---
 
@@ -14,27 +14,29 @@ A clean, fast web app for managing your home network's static IP addresses — b
 
 Managing a home lab network across servers, VMs, containers, cameras, switches, and IoT devices gets complicated fast. This tool gives you a single place to:
 
-- **Look up any IP address** instantly by name, hostname, service, or location
+- **Look up any IP address** instantly by name, hostname, service, location, or tag
 - **See what's running** on each address — service, container type, host/hypervisor, physical location
 - **Track free IPs** in your static range with one-click claiming for new servers or containers
-- **Edit any entry** — change the asset name, hostname, type, location, or service via a clean modal form
+- **Edit any entry** — change the asset name, hostname, type, location, service, tags, and notes via a clean modal form
 - **Release IPs** back to the free pool when you decommission something
-- **Export to Excel** — downloads a fully formatted `.xlsx` with all your changes, preserving the original spreadsheet structure
-- **Switch views** between Cards (visual) and Table (dense) layouts
-- **Configure your network** — set your subnet, DHCP range, static range, and fixed reservations via the built-in Settings panel — no code editing required
+- **Import from CSV / Excel** — 3-step modal with column mapping, validation, and merge or replace modes
+- **Export to Excel** — downloads a fully formatted `.xlsx` preserving all your data
+- **Switch views** between Cards (visual) and Table (dense, sortable) layouts
+- **Keyboard shortcuts** — `/` to search, `Esc` to clear/close, `t`/`c` to switch views
+- **Configure your network** — subnet, DHCP range, static range, and DHCP reservations via the Settings panel — no code editing required
 
 ### Network-Aware
 
-The app understands your network layout and is fully configurable via the ⚙️ Settings panel:
+The app understands your network layout and is fully configurable via the ⚙️ Settings panel. Both **/24 and /16 networks** are supported:
 
 | Range | Type |
 |---|---|
-| `.1` – `.100` | DHCP pool (managed by your router / DHCP server) |
-| `.5`, `.10` | Fixed reservations within the DHCP range |
-| `.101` – `.254` | Static assignments |
+| DHCP start – DHCP end | DHCP pool (managed by your router / DHCP server) |
+| Entries in the Reservations list | Fixed DHCP reservations — can be anywhere on the network, inside or outside the DHCP pool |
+| Static start – Static end | Static assignments |
 | Green entries | Free — available to claim |
 
-All ranges are configurable — works with any subnet (192.168.x, 10.x.x, 172.16.x, etc.).
+You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
 ---
 
@@ -51,7 +53,7 @@ All ranges are configurable — works with any subnet (192.168.x, 10.x.x, 172.16
 | Layer | Technology |
 |---|---|
 | Frontend | React 18, Tailwind CSS 3, Lucide Icons |
-| Build tool | Vite 4 |
+| Build tool | Vite 5 |
 | API server | Node.js + Express |
 | Database | SQLite via `better-sqlite3` |
 | Excel export | SheetJS (xlsx) |
@@ -102,13 +104,13 @@ In the Proxmox web UI:
    - CPU: 1 core
    - RAM: 512 MB
    - Disk: 4 GB
-4. Give it a static IP in your static range (`.171`–`.254`)
+4. Give it a static IP in your static range
 5. Start the container
 
 #### Step 2 — SSH into the container
 
 ```bash
-ssh root@192.168.0.XXX
+ssh root@<container-ip>
 ```
 
 #### Step 3 — Run the install script
@@ -127,22 +129,7 @@ The script will:
 6. Configure Nginx to serve the app on **port 80**
 7. Create an `ip-manager-update` command for future updates
 
-When it finishes, you'll see:
-
-```
-============================================
-   Installation Complete!
-============================================
-
-  App URL:     http://192.168.0.XXX
-  App files:   /opt/ip-manager
-  Nginx log:   /var/log/nginx/ip-manager.access.log
-
-  To update the app later, run:
-    ip-manager-update
-```
-
-Open the URL in your browser and you're done.
+When it finishes, open the container's IP in your browser and you're done.
 
 ---
 
@@ -155,27 +142,25 @@ The app supports two persistence modes and switches between them automatically:
 | 🟢 **SQLite** | LXC/Nginx deployment | Data stored in `server/ip-manager.db` on the server — shared across all users and browsers |
 | ⚪ **Local** | Local dev (`npm run dev`) | Data stored in your browser's localStorage — private to that browser |
 
-On startup the app sends a quick health check to `/api/health`. If the API responds, it loads data from SQLite and shows the green **SQLite** badge in the header. If not (e.g. running locally without the server), it falls back to localStorage automatically and shows the **Local** badge.
+On startup the app sends a quick health check to `/api/health`. If the API responds, it loads data from SQLite and shows the green **SQLite** badge in the header. If not, it falls back to localStorage automatically.
 
-All saves happen automatically in both modes — there's nothing to click. The **Download Excel** button is still available any time you want a portable backup.
+All saves happen automatically in both modes. The **Export** button is available any time you want a portable backup.
 
-**Resetting data (Local mode only):** open DevTools (`F12`) → Application → Local Storage → delete `ip-manager-ip-data`.
+**Clearing all data:** open ⚙️ Settings → scroll to the **Danger Zone** section → Clear All Network Data. This wipes all IP entries and persists the change through the normal save path.
 
 ---
 
 ## Updating
 
-When new code changes are pushed to GitHub, here's how to get them — your stored IP data is untouched by code updates.
+When new code is pushed to GitHub, your stored IP data is untouched by updates.
 
 ### LXC / Nginx deployment
-
-SSH into the container and run:
 
 ```bash
 ip-manager-update
 ```
 
-This pulls the latest code, rebuilds the app, restarts the API service, and reloads Nginx — all in one command. Your SQLite database is untouched.
+This pulls the latest code, wipes and reinstalls `node_modules` for a clean platform-native build, rebuilds the app, restarts the API service, and reloads Nginx — all in one command.
 
 ### Local development
 
@@ -217,9 +202,8 @@ ip-manager/
 See [`IP_Manager_Roadmap.docx`](./IP_Manager_Roadmap.docx) for the full three-phase roadmap.
 
 **Phase 1 — near-term (Q1–Q2 2026):**
-- **Tag support** — custom tags per entry (e.g. `media`, `IoT`, `cameras`) with filter support
-- **Sort controls** — click column headers to sort in Table view
-- **Last modified date** — timestamp each entry to spot stale records
+- ✅ Tag support, sort controls, last modified date, keyboard shortcuts — all shipped
+- **PWA / Offline support** — install to home screen; works without network access
 
 **Phase 2 — mid-term (Q3–Q4 2026):**
 - **Multiple IPs per host** — support servers/VMs with more than one NIC or lease (prerequisite for VLAN support)
@@ -227,6 +211,7 @@ See [`IP_Manager_Roadmap.docx`](./IP_Manager_Roadmap.docx) for the full three-ph
 - **Ping / reachability** — live status indicators per IP
 - **Proxmox integration** — auto-discover VMs and LXCs
 - **Service health checks** — HTTP probes with UP/DOWN badges
+- **Change history / audit log** — full edit history per entry
 
 **Phase 3 — longer-term (2027+):**
 - Network topology map, uptime alerts, REST API, network scanner, multi-user auth
@@ -240,12 +225,12 @@ No code editing required. Click the **⚙️ Settings** icon in the app header t
 | Setting | Description |
 |---|---|
 | Network name | Display name shown in the header |
-| Subnet | Your network prefix (e.g. `192.168.1`, `10.0.0`) |
-| DHCP range | Start and end of the DHCP pool |
+| Subnet | Your network prefix — paste the full address (`192.168.0.0`) or just the prefix (`192.168.1` for /24, `192.168` for /16). Trailing zeros are stripped automatically. |
+| DHCP range | Start and end of the DHCP pool (single octets for /24, e.g. `1`/`170`; two octets for /16, e.g. `2.20`/`2.250`) |
+| DHCP Reservations | Host portions of IPs with DHCP reservations — can be anywhere on the network, not just within the DHCP pool |
 | Static range | Start and end of your static assignments |
-| Fixed in DHCP | Comma-separated last octets of fixed reservations |
 
-Settings are saved to localStorage and persist across sessions.
+Settings are saved automatically and persist across sessions.
 
 ---
 
@@ -254,13 +239,13 @@ Settings are saved to localStorage and persist across sessions.
 Click the **Import** button in the app header to load your own data from a `.csv`, `.xlsx`, or `.xls` file. The import flow is three steps:
 
 **Step 1 — Upload**
-Drag and drop a file onto the upload zone, or click to browse. A downloadable CSV template with the correct headers is available here if you're starting from scratch.
+Drag and drop a file onto the upload zone, or click to browse. A downloadable CSV template with the correct headers is available if you're starting from scratch.
 
 **Step 2 — Map Columns**
-The importer auto-detects common column name variations (e.g. `hostname`, `host name`, `fqdn` all map to Hostname automatically). If your headers aren't recognised, use the dropdowns to match each field manually. A preview of the first five rows is shown so you can verify the mapping looks right before continuing.
+The importer auto-detects common column name variations (e.g. `hostname`, `host name`, `fqdn` all map to Hostname automatically). If your headers aren't recognised, use the dropdowns to match each field manually.
 
 **Step 3 — Confirm & Import**
-A summary shows how many rows are ready to import and how many were skipped (with reasons — missing required fields, invalid IP format, etc.). Choose your import mode before confirming:
+A summary shows how many rows are ready to import and how many were skipped (with reasons). Choose your import mode:
 
 | Mode | Behaviour |
 |---|---|
@@ -271,13 +256,13 @@ A summary shows how many rows are ready to import and how many were skipped (wit
 
 | Column | Required | Notes |
 |---|---|---|
-| `ip` | ✅ | Full IPv4 (`192.168.0.10`) or last-octet shorthand (`10` → expanded to your subnet automatically) |
+| `ip` | ✅ | Full IPv4 (`192.168.0.10`). On /24 networks, last-octet shorthand (`10`) is expanded to your subnet automatically. |
 | `hostname` | ✅ | FQDN or short name |
 | `type` | ✅ | e.g. `LXC`, `VM`, `Physical`, `IoT` |
 | `service` | ✅ | App or service running on the host |
 | `name` | — | Display / asset name (falls back to hostname prefix if omitted) |
 | `location` | — | Physical location or rack |
-| `host` | — | Hypervisor or host machine (accepts `proxmox_host`, `hypervisor`, `vm host`, etc.) |
+| `host` | — | Hypervisor or host machine |
 | `notes` | — | Free-text notes |
 | `status` | — | `assigned` or `free` (defaults to `assigned`) |
 
