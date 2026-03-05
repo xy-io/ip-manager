@@ -46,24 +46,30 @@ function SettingsModal({ config, onSave, onClose, onClear }) {
     e.preventDefault();
     setError('');
 
-    const dhcpStart = parseInt(form.dhcpStart);
-    const dhcpEnd   = parseInt(form.dhcpEnd);
-    const staticStart = parseInt(form.staticStart);
-    const staticEnd   = parseInt(form.staticEnd);
+    const is16 = subnetOctetCount(form.subnet) === 2;
+    const rangePattern = is16 ? /^\d{1,3}\.\d{1,3}$/ : /^\d{1,3}$/;
+    const rangeHint    = is16 ? 'e.g. 0.1' : 'e.g. 1';
 
-    if ([dhcpStart, dhcpEnd, staticStart, staticEnd].some(isNaN))
-      return setError('All range values must be numbers.');
-    if (dhcpStart >= dhcpEnd)
+    if (!form.subnet.match(/^\d{1,3}\.\d{1,3}\.\d{1,3}$/) && !form.subnet.match(/^\d{1,3}\.\d{1,3}$/))
+      return setError('Subnet must be 2 octets (192.168) for /16 or 3 octets (192.168.0) for /24.');
+    if (!rangePattern.test(form.dhcpStart.trim()) || !rangePattern.test(form.dhcpEnd.trim()) ||
+        !rangePattern.test(form.staticStart.trim()) || !rangePattern.test(form.staticEnd.trim()))
+      return setError(`Range values must be in the format ${rangeHint} for a /${is16 ? '16' : '24'} network.`);
+
+    const dhcpStart   = form.dhcpStart.trim();
+    const dhcpEnd     = form.dhcpEnd.trim();
+    const staticStart = form.staticStart.trim();
+    const staticEnd   = form.staticEnd.trim();
+
+    if (rangeOrdinal(dhcpStart, form.subnet) >= rangeOrdinal(dhcpEnd, form.subnet))
       return setError('DHCP start must be less than DHCP end.');
-    if (staticStart >= staticEnd)
+    if (rangeOrdinal(staticStart, form.subnet) >= rangeOrdinal(staticEnd, form.subnet))
       return setError('Static start must be less than static end.');
-    if (!form.subnet.match(/^\d{1,3}\.\d{1,3}\.\d{1,3}$/))
-      return setError('Subnet must be in the format 192.168.0');
 
     const fixedInDHCP = form.fixedInDHCP
       .split(',')
-      .map(s => parseInt(s.trim()))
-      .filter(n => !isNaN(n));
+      .map(s => s.trim())
+      .filter(s => s && rangePattern.test(s));
 
     const newConfig = { networkName: form.networkName, subnet: form.subnet, dhcpStart, dhcpEnd, staticStart, staticEnd, fixedInDHCP };
     onSave(newConfig); // parent handles persistence (API or localStorage)
@@ -102,8 +108,8 @@ function SettingsModal({ config, onSave, onClose, onClear }) {
             </div>
             <div>
               <label className={labelCls}>Subnet Prefix</label>
-              <input type="text" className={inputCls} placeholder="e.g. 192.168.0" {...f('subnet')} />
-              <p className="text-xs text-slate-400 mt-1">The first three octets of your network — e.g. <span className="font-mono">192.168.1</span> for a 192.168.1.x network</p>
+              <input type="text" className={inputCls} placeholder="e.g. 192.168.0 or 192.168" {...f('subnet')} />
+              <p className="text-xs text-slate-400 mt-1">3 octets for /24 (e.g. <span className="font-mono">192.168.0</span>) or 2 octets for /16 (e.g. <span className="font-mono">192.168</span>)</p>
             </div>
           </div>
 
@@ -112,18 +118,18 @@ function SettingsModal({ config, onSave, onClose, onClear }) {
             <p className="text-xs font-semibold text-amber-700 uppercase tracking-wider">⚡ DHCP Pool</p>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className={labelCls}>Start (.x)</label>
-                <input type="number" min="1" max="254" className={inputCls} {...f('dhcpStart')} />
+                <label className={labelCls}>Start</label>
+                <input type="text" className={inputCls} placeholder={subnetOctetCount(form.subnet) === 2 ? "e.g. 0.1" : "e.g. 1"} {...f('dhcpStart')} />
               </div>
               <div>
-                <label className={labelCls}>End (.x)</label>
-                <input type="number" min="1" max="254" className={inputCls} {...f('dhcpEnd')} />
+                <label className={labelCls}>End</label>
+                <input type="text" className={inputCls} placeholder={subnetOctetCount(form.subnet) === 2 ? "e.g. 0.254" : "e.g. 170"} {...f('dhcpEnd')} />
               </div>
             </div>
             <div>
               <label className={labelCls}>Fixed reservations within DHCP range</label>
-              <input type="text" className={inputCls} placeholder="e.g. 6, 50" {...f('fixedInDHCP')} />
-              <p className="text-xs text-slate-400 mt-1">Comma-separated last octets of IPs that are fixed within the DHCP pool (e.g. devices with DHCP reservations)</p>
+              <input type="text" className={inputCls} placeholder={subnetOctetCount(form.subnet) === 2 ? "e.g. 0.6, 0.50" : "e.g. 6, 50"} {...f('fixedInDHCP')} />
+              <p className="text-xs text-slate-400 mt-1">Comma-separated host portions of IPs fixed within the DHCP pool (e.g. devices with DHCP reservations)</p>
             </div>
           </div>
 
@@ -132,12 +138,12 @@ function SettingsModal({ config, onSave, onClose, onClear }) {
             <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wider">🖥 Static Range</p>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className={labelCls}>Start (.x)</label>
-                <input type="number" min="1" max="254" className={inputCls} {...f('staticStart')} />
+                <label className={labelCls}>Start</label>
+                <input type="text" className={inputCls} placeholder={subnetOctetCount(form.subnet) === 2 ? "e.g. 1.1" : "e.g. 171"} {...f('staticStart')} />
               </div>
               <div>
-                <label className={labelCls}>End (.x)</label>
-                <input type="number" min="1" max="254" className={inputCls} {...f('staticEnd')} />
+                <label className={labelCls}>End</label>
+                <input type="text" className={inputCls} placeholder={subnetOctetCount(form.subnet) === 2 ? "e.g. 254.254" : "e.g. 254"} {...f('staticEnd')} />
               </div>
             </div>
           </div>
@@ -151,6 +157,7 @@ function SettingsModal({ config, onSave, onClose, onClear }) {
 
           {/* Preview */}
           <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs font-mono text-slate-500 space-y-1">
+            <p><span className="text-slate-400">Network:    </span>{subnetCIDR(form.subnet)}</p>
             <p><span className="text-slate-400">DHCP pool:  </span>{form.subnet}.{form.dhcpStart} – {form.subnet}.{form.dhcpEnd}</p>
             <p><span className="text-slate-400">Static range: </span>{form.subnet}.{form.staticStart} – {form.subnet}.{form.staticEnd}</p>
             {form.fixedInDHCP && <p><span className="text-slate-400">Fixed IPs:  </span>{form.fixedInDHCP.split(',').map(s => `${form.subnet}.${s.trim()}`).join(', ')}</p>}
@@ -317,34 +324,67 @@ const getLocationColor = (location) => {
   return colors[location] || 'bg-gray-100 text-gray-600';
 };
 
-const isInDHCPRange = (ip) => {
-  const lastOctet = parseInt(ip.split('.')[3]);
-  return lastOctet >= NETWORK_CONFIG.dhcpStart && lastOctet <= NETWORK_CONFIG.dhcpEnd;
+// ── Subnet utilities — support /24 (3-octet prefix) and /16 (2-octet prefix) ─
+
+// Number of octets in the prefix string ("192.168.0" → 3, "192.168" → 2)
+const subnetOctetCount = (subnet) => subnet.split('.').length;
+
+// Convert a full IP to a host-portion ordinal for numeric comparison/sorting
+const ipOrdinal = (ip, subnet) => {
+  const p = ip.split('.');
+  return subnetOctetCount(subnet) === 2
+    ? (parseInt(p[2]) || 0) * 256 + (parseInt(p[3]) || 0)
+    : parseInt(p[3]) || 0;
 };
 
-const isFixedInDHCP = (ip) => {
-  const lastOctet = parseInt(ip.split('.')[3]);
-  return NETWORK_CONFIG.fixedInDHCP.includes(lastOctet);
+// Convert a stored range value ("170" or "1.170") to a comparable ordinal
+const rangeOrdinal = (val, subnet) => {
+  const parts = String(val).split('.');
+  return subnetOctetCount(subnet) === 2 && parts.length === 2
+    ? (parseInt(parts[0]) || 0) * 256 + (parseInt(parts[1]) || 0)
+    : parseInt(parts[parts.length - 1]) || 0;
 };
 
-const groupIPsIntoRanges = (ips) => {
+// The host-portion suffix for display (".170" for /24, ".1.170" for /16)
+const ipSuffix = (ip, subnet) => ip.substring(subnet.length);
+
+// CIDR string for header display
+const subnetCIDR = (subnet) =>
+  subnetOctetCount(subnet) === 2 ? `${subnet}.0.0/16` : `${subnet}.0/24`;
+
+const isInDHCPRange = (ip, config = DEFAULT_NETWORK_CONFIG) => {
+  const ord = ipOrdinal(ip, config.subnet);
+  return ord >= rangeOrdinal(config.dhcpStart, config.subnet) &&
+         ord <= rangeOrdinal(config.dhcpEnd, config.subnet);
+};
+
+const isFixedInDHCP = (ip, config = DEFAULT_NETWORK_CONFIG) => {
+  const ord = ipOrdinal(ip, config.subnet);
+  return config.fixedInDHCP.some(f => rangeOrdinal(f, config.subnet) === ord);
+};
+
+// Returns array of { start, end } where start/end are actual IP strings
+const groupIPsIntoRanges = (ips, subnet = DEFAULT_NETWORK_CONFIG.subnet) => {
   if (ips.length === 0) return [];
-  const sorted = [...ips].sort((a, b) => parseInt(a.split('.')[3]) - parseInt(b.split('.')[3]));
+  const sorted = [...ips].sort((a, b) => ipOrdinal(a, subnet) - ipOrdinal(b, subnet));
   const ranges = [];
-  let rangeStart = parseInt(sorted[0].split('.')[3]);
-  let rangeEnd = rangeStart;
+  let rangeStartIp = sorted[0];
+  let rangeEndIp   = sorted[0];
+  let rangeEndOrd  = ipOrdinal(sorted[0], subnet);
 
   for (let i = 1; i < sorted.length; i++) {
-    const current = parseInt(sorted[i].split('.')[3]);
-    if (current === rangeEnd + 1) {
-      rangeEnd = current;
+    const currentOrd = ipOrdinal(sorted[i], subnet);
+    if (currentOrd === rangeEndOrd + 1) {
+      rangeEndIp  = sorted[i];
+      rangeEndOrd = currentOrd;
     } else {
-      ranges.push({ start: rangeStart, end: rangeEnd });
-      rangeStart = current;
-      rangeEnd = current;
+      ranges.push({ start: rangeStartIp, end: rangeEndIp });
+      rangeStartIp = sorted[i];
+      rangeEndIp   = sorted[i];
+      rangeEndOrd  = currentOrd;
     }
   }
-  ranges.push({ start: rangeStart, end: rangeEnd });
+  ranges.push({ start: rangeStartIp, end: rangeEndIp });
   return ranges;
 };
 
@@ -446,7 +486,9 @@ function ImportModal({ onClose, onImport, networkConfig }) {
       if (!ip) {
         errors.push('Missing IP address');
       } else {
-        if (/^\d{1,3}$/.test(ip)) ip = `${networkConfig.subnet}.${ip}`;
+        // Auto-expand bare last-octet (e.g. "170" → "192.168.0.170") only for /24 networks
+        if (/^\d{1,3}$/.test(ip) && subnetOctetCount(networkConfig.subnet) === 3)
+          ip = `${networkConfig.subnet}.${ip}`;
         if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(ip)) {
           errors.push(`Invalid IP format: ${g('ip')}`);
         } else if (seenIps.has(ip)) {
@@ -1054,10 +1096,10 @@ export default function IPAddressManager() {
     return ipData
       .filter(item => item.assetName === 'Free')
       .map(item => item.ip)
-      .sort((a, b) => parseInt(a.split('.')[3]) - parseInt(b.split('.')[3]));
-  }, [ipData]);
+      .sort((a, b) => ipOrdinal(a, networkConfig.subnet) - ipOrdinal(b, networkConfig.subnet));
+  }, [ipData, networkConfig.subnet]);
 
-  const freeIPRanges = useMemo(() => groupIPsIntoRanges(freeStaticIPs), [freeStaticIPs]);
+  const freeIPRanges = useMemo(() => groupIPsIntoRanges(freeStaticIPs, networkConfig.subnet), [freeStaticIPs, networkConfig.subnet]);
 
   const filteredData = useMemo(() => {
     return ipData.filter(item => {
@@ -1088,8 +1130,8 @@ export default function IPAddressManager() {
     return [...filteredData].sort((a, b) => {
       let av, bv;
       if (sortField === 'ip') {
-        av = parseInt(a.ip.split('.')[3]) || 0;
-        bv = parseInt(b.ip.split('.')[3]) || 0;
+        av = ipOrdinal(a.ip, networkConfig.subnet);
+        bv = ipOrdinal(b.ip, networkConfig.subnet);
         return sortDir === 'asc' ? av - bv : bv - av;
       }
       if (sortField === 'updatedAt') {
@@ -1108,10 +1150,14 @@ export default function IPAddressManager() {
   const stats = useMemo(() => {
     const active = ipData.filter(i => i.assetName !== 'Reserved' && i.assetName !== 'Free');
     const staticAssigned = ipData.filter(i => {
-      const lastOctet = parseInt(i.ip.split('.')[3]);
-      return lastOctet >= networkConfig.staticStart && lastOctet <= networkConfig.staticEnd &&
+      const ord = ipOrdinal(i.ip, networkConfig.subnet);
+      return ord >= rangeOrdinal(networkConfig.staticStart, networkConfig.subnet) &&
+             ord <= rangeOrdinal(networkConfig.staticEnd, networkConfig.subnet) &&
              i.assetName !== 'Reserved' && i.assetName !== 'Free';
     });
+    const dhcpSize = rangeOrdinal(networkConfig.dhcpEnd, networkConfig.subnet) -
+                     rangeOrdinal(networkConfig.dhcpStart, networkConfig.subnet) + 1 -
+                     networkConfig.fixedInDHCP.length;
     return {
       total: ipData.length,
       active: active.length,
@@ -1120,7 +1166,7 @@ export default function IPAddressManager() {
       reserved: ipData.filter(i => i.assetName === 'Reserved').length,
       freeStatic: freeStaticIPs.length,
       staticAssigned: staticAssigned.length,
-      dhcpPoolSize: networkConfig.dhcpEnd - networkConfig.dhcpStart + 1 - networkConfig.fixedInDHCP.length,
+      dhcpPoolSize: dhcpSize,
     };
   }, [ipData, freeStaticIPs, networkConfig]);
 
@@ -1224,7 +1270,7 @@ export default function IPAddressManager() {
           const map = new Map(prev.map(r => [r.ip, r]));
           rows.forEach(r => map.set(r.ip, r));
           return Array.from(map.values()).sort((a, b) =>
-            parseInt(a.ip.split('.')[3]) - parseInt(b.ip.split('.')[3])
+            ipOrdinal(a.ip, networkConfig.subnet) - ipOrdinal(b.ip, networkConfig.subnet)
           );
         });
       }
@@ -1235,8 +1281,15 @@ export default function IPAddressManager() {
   const hasActiveFilters = searchTerm || selectedType || selectedLocation || selectedTag;
 
   // Use networkConfig-aware versions of the helper functions
-  const isInDHCPRangeConfig  = (ip) => { const n = parseInt(ip.split('.')[3]); return n >= networkConfig.dhcpStart && n <= networkConfig.dhcpEnd; };
-  const isFixedInDHCPConfig  = (ip) => { const n = parseInt(ip.split('.')[3]); return networkConfig.fixedInDHCP.includes(n); };
+  const isInDHCPRangeConfig = (ip) => {
+    const ord = ipOrdinal(ip, networkConfig.subnet);
+    return ord >= rangeOrdinal(networkConfig.dhcpStart, networkConfig.subnet) &&
+           ord <= rangeOrdinal(networkConfig.dhcpEnd, networkConfig.subnet);
+  };
+  const isFixedInDHCPConfig = (ip) => {
+    const ord = ipOrdinal(ip, networkConfig.subnet);
+    return networkConfig.fixedInDHCP.some(f => rangeOrdinal(f, networkConfig.subnet) === ord);
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
@@ -1277,7 +1330,7 @@ export default function IPAddressManager() {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h1 className="text-2xl font-bold text-slate-800">IP Address Manager</h1>
-              <p className="text-sm text-slate-500">{networkConfig.networkName} · {networkConfig.subnet}.0/24</p>
+              <p className="text-sm text-slate-500">{networkConfig.networkName} · {subnetCIDR(networkConfig.subnet)}</p>
             </div>
             <div className="flex gap-2 items-center">
               {/* Persistence mode badge */}
@@ -1349,14 +1402,14 @@ export default function IPAddressManager() {
               <div className="flex items-center gap-2">
                 <Zap className="w-4 h-4 text-amber-500" />
                 <span className="text-slate-600">
-                  <span className="font-medium">DHCP Pool:</span> .{networkConfig.dhcpStart}–.{networkConfig.dhcpEnd}
+                  <span className="font-medium">DHCP Pool:</span> .{networkConfig.dhcpStart} – .{networkConfig.dhcpEnd}
                   <span className="text-slate-400 ml-1">({stats.dhcpPoolSize} dynamic)</span>
                 </span>
               </div>
               <div className="flex items-center gap-2">
                 <Server className="w-4 h-4 text-emerald-500" />
                 <span className="text-slate-600">
-                  <span className="font-medium">Static Range:</span> .{networkConfig.staticStart}–.{networkConfig.staticEnd}
+                  <span className="font-medium">Static Range:</span> .{networkConfig.staticStart} – .{networkConfig.staticEnd}
                   <span className="text-slate-400 ml-1">({stats.staticAssigned} assigned, {stats.freeStatic} free)</span>
                 </span>
               </div>
@@ -1365,6 +1418,7 @@ export default function IPAddressManager() {
                   <Shield className="w-4 h-4 text-blue-500" />
                   <span className="text-slate-600">
                     <span className="font-medium">Fixed in DHCP:</span> {networkConfig.fixedInDHCP.map(n => `.${n}`).join(', ')}
+
                   </span>
                 </div>
               )}
@@ -1422,8 +1476,8 @@ export default function IPAddressManager() {
                     {freeIPRanges.map((range, idx) => (
                       <span key={idx}>
                         {range.start === range.end
-                          ? `.${range.start}`
-                          : `.${range.start}–.${range.end}`}
+                          ? ipSuffix(range.start, networkConfig.subnet)
+                          : `${ipSuffix(range.start, networkConfig.subnet)}–${ipSuffix(range.end, networkConfig.subnet)}`}
                         {idx < freeIPRanges.length - 1 ? ', ' : ''}
                       </span>
                     ))}
@@ -1438,7 +1492,7 @@ export default function IPAddressManager() {
                           onClick={() => setEditingItem(item)}
                           className="group px-3 py-1.5 font-mono text-xs rounded-lg transition-all bg-white text-emerald-700 hover:bg-emerald-500 hover:text-white border border-emerald-200 hover:border-emerald-500 flex items-center gap-2"
                         >
-                          {ip.replace('192.168.0.', '.')}
+                          {ipSuffix(ip, networkConfig.subnet)}
                           <Plus className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                         </button>
                       );
@@ -1670,7 +1724,7 @@ export default function IPAddressManager() {
                           <div>
                             <div className="text-slate-400 text-xs uppercase tracking-wide">IP Range</div>
                             <div className="text-slate-700">
-                              {isDHCP ? (isFixed ? `Fixed (DHCP .${networkConfig.dhcpStart}–.${networkConfig.dhcpEnd})` : `DHCP Pool (.${networkConfig.dhcpStart}–.${networkConfig.dhcpEnd})`) : `Static (.${networkConfig.staticStart}–.${networkConfig.staticEnd})`}
+                              {isDHCP ? (isFixed ? `Fixed (DHCP .${networkConfig.dhcpStart} – .${networkConfig.dhcpEnd})` : `DHCP Pool (.${networkConfig.dhcpStart} – .${networkConfig.dhcpEnd})`) : `Static (.${networkConfig.staticStart} – .${networkConfig.staticEnd})`}
                             </div>
                           </div>
                           <div>
