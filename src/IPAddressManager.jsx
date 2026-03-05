@@ -58,7 +58,7 @@ function SettingsModal({ config, onSave, onClose, onClear }) {
     const rangeHint    = is16 ? 'e.g. 2.20' : 'e.g. 1';
 
     if (!subnet.match(/^\d{1,3}\.\d{1,3}\.\d{1,3}$/) && !subnet.match(/^\d{1,3}\.\d{1,3}$/))
-      return setError('Subnet must be 2 octets (172.16) for /16 or 3 octets (172.16.2) for /24. You can also paste the full network address (e.g. 172.16.0.0) and it will be trimmed automatically.');
+      return setError('Enter a 2-octet prefix for /16 (e.g. 192.168) or 3-octet prefix for /24 (e.g. 192.168.1). You can also paste the full network address (e.g. 192.168.0.0) and trailing zeros will be stripped automatically.');
     if (!rangePattern.test(form.dhcpStart.trim()) || !rangePattern.test(form.dhcpEnd.trim()) ||
         !rangePattern.test(form.staticStart.trim()) || !rangePattern.test(form.staticEnd.trim()))
       return setError(`Range values must be in the format ${rangeHint} for a /${is16 ? '16' : '24'} network.`);
@@ -115,8 +115,8 @@ function SettingsModal({ config, onSave, onClose, onClear }) {
             </div>
             <div>
               <label className={labelCls}>Subnet Prefix</label>
-              <input type="text" className={inputCls} placeholder="e.g. 172.16.0.0 or 172.16.2.0 or 172.16" {...f('subnet')} />
-              <p className="text-xs text-slate-400 mt-1">Enter the network address (e.g. <span className="font-mono">172.16.0.0</span>) or just the prefix (<span className="font-mono">172.16</span> for /16, <span className="font-mono">172.16.2</span> for /24). Trailing zeros are stripped automatically.</p>
+              <input type="text" className={inputCls} placeholder="e.g. 192.168.0.0 or 192.168.1 or 192.168" {...f('subnet')} />
+              <p className="text-xs text-slate-400 mt-1">Paste your network address (e.g. <span className="font-mono">192.168.0.0</span>) or just the prefix — <span className="font-mono">192.168.1</span> for /24, <span className="font-mono">192.168</span> for /16. Trailing zeros are stripped automatically.</p>
             </div>
           </div>
 
