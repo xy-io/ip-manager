@@ -29,7 +29,7 @@ function formatDate(iso) {
 }
 
 // Settings Modal Component
-function SettingsModal({ config, onSave, onClose }) {
+function SettingsModal({ config, onSave, onClose, onClear }) {
   const [form, setForm] = useState({
     networkName: config.networkName,
     subnet: config.subnet,
@@ -40,6 +40,7 @@ function SettingsModal({ config, onSave, onClose }) {
     fixedInDHCP: config.fixedInDHCP.join(', '),
   });
   const [error, setError] = useState('');
+  const [confirmClear, setConfirmClear] = useState(false);
 
   const handleSave = (e) => {
     e.preventDefault();
@@ -162,6 +163,44 @@ function SettingsModal({ config, onSave, onClose }) {
             <Save className="w-4 h-4" />
             Save Settings
           </button>
+
+          {/* Danger Zone */}
+          <div className="pt-2 border-t border-slate-200">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Danger Zone</p>
+            {!confirmClear ? (
+              <button
+                type="button"
+                onClick={() => setConfirmClear(true)}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-red-300 text-red-600 hover:bg-red-50 font-medium rounded-lg transition-colors text-sm"
+              >
+                <Trash2 className="w-4 h-4" />
+                Clear All Network Data
+              </button>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                  <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  <span>This will permanently delete all IP entries. This cannot be undone.</span>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmClear(false)}
+                    className="flex-1 px-4 py-2 border border-slate-300 text-slate-600 hover:bg-slate-50 rounded-lg transition-colors text-sm font-medium"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onClear}
+                    className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors text-sm font-medium"
+                  >
+                    Yes, Clear Everything
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </form>
       </div>
     </div>
@@ -1207,6 +1246,7 @@ export default function IPAddressManager() {
           config={networkConfig}
           onSave={(cfg) => { setNetworkConfig(cfg); setShowSettings(false); }}
           onClose={() => setShowSettings(false)}
+          onClear={() => { setIpData([]); setHasChanges(true); setShowSettings(false); }}
         />
       )}
 
