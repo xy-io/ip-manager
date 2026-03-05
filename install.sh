@@ -88,6 +88,11 @@ cd "$APP_DIR/server"
 npm install --silent
 ok "API server packages installed"
 
+# ── 6a. Set permissions so www-data can create the SQLite database ───
+log "Setting permissions on server directory..."
+chown -R www-data:www-data "$APP_DIR/server"
+ok "Permissions set for www-data on server directory"
+
 # ── 7. Create systemd service for the API ────────────────────
 log "Creating systemd service for the API server..."
 
@@ -115,7 +120,14 @@ EOF
 systemctl daemon-reload
 systemctl enable ${SERVICE_NAME} --quiet
 systemctl restart ${SERVICE_NAME}
-ok "API service created and started (${SERVICE_NAME})"
+
+# ── Verify API started successfully ──────────────────────────
+sleep 2
+if systemctl is-active --quiet ${SERVICE_NAME}; then
+  ok "API service created and started (${SERVICE_NAME})"
+else
+  err "API service failed to start — run: journalctl -u ${SERVICE_NAME} -n 30 --no-pager"
+fi
 
 # ── 8. Configure Nginx ───────────────────────────────────────
 log "Configuring Nginx..."
@@ -183,6 +195,9 @@ npm run build --silent
 
 echo "Installing API server packages..."
 cd /opt/ip-manager/server && npm install --silent
+
+echo "Setting permissions..."
+chown -R www-data:www-data /opt/ip-manager/server
 
 echo "Restarting API server..."
 systemctl restart ip-manager-api
