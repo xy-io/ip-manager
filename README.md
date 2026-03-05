@@ -285,4 +285,4 @@ A summary shows how many rows are ready to import and how many were skipped (wit
 
 ## License
 
-MIT © 2026 Jay Allen — see [LICENSE](./LICENSE) for full terms.
+© 2026 Jay Allen — free for personal and non-commercial use under the [PolyForm Noncommercial License 1.0.0](./LICENSE). Commercial use is not permitted without explicit permission.
