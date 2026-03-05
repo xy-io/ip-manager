@@ -75,17 +75,21 @@ fi
 # ── 5. Install frontend npm packages & build ─────────────────
 log "Installing frontend npm packages..."
 cd "$APP_DIR"
-npm install --silent
+npm install 2>&1 | grep -E "error|warn|ERR" || true
 ok "Frontend packages installed"
 
 log "Building React app (this may take a moment)..."
-npm run build --silent
+npm run build 2>&1 || err "React build failed — check output above"
+
+# Verify the build actually produced output
+[ -f "$APP_DIR/dist/index.html" ] || err "Build appeared to succeed but dist/index.html is missing"
+[ -d "$APP_DIR/dist/assets" ]     || err "Build appeared to succeed but dist/assets/ is missing"
 ok "App built — output in $APP_DIR/dist"
 
 # ── 6. Install API server packages ───────────────────────────
 log "Installing API server packages (Express + better-sqlite3)..."
 cd "$APP_DIR/server"
-npm install --silent
+npm install 2>&1 | grep -E "error|warn|ERR" || true
 ok "API server packages installed"
 
 # ── 6a. Set permissions so www-data can create the SQLite database ───
@@ -188,13 +192,14 @@ echo "Pulling latest changes from GitHub..."
 git -C /opt/ip-manager pull
 
 echo "Installing frontend packages..."
-cd /opt/ip-manager && npm install --silent
+cd /opt/ip-manager && npm install 2>&1 | grep -E "error|warn|ERR" || true
 
 echo "Rebuilding React app..."
-npm run build --silent
+npm run build 2>&1 || { echo "[ERROR] React build failed"; exit 1; }
+[ -f /opt/ip-manager/dist/index.html ] || { echo "[ERROR] dist/index.html missing after build"; exit 1; }
 
 echo "Installing API server packages..."
-cd /opt/ip-manager/server && npm install --silent
+cd /opt/ip-manager/server && npm install 2>&1 | grep -E "error|warn|ERR" || true
 
 echo "Setting permissions..."
 chown -R www-data:www-data /opt/ip-manager/server
