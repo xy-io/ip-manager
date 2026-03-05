@@ -46,12 +46,19 @@ function SettingsModal({ config, onSave, onClose, onClear }) {
     e.preventDefault();
     setError('');
 
-    const is16 = subnetOctetCount(form.subnet) === 2;
-    const rangePattern = is16 ? /^\d{1,3}\.\d{1,3}$/ : /^\d{1,3}$/;
-    const rangeHint    = is16 ? 'e.g. 0.1' : 'e.g. 1';
+    // Normalise subnet: strip CIDR suffix and trailing .0 octets so users can
+    // paste full network addresses — "172.16.0.0/16" → "172.16"
+    const subnet = normaliseSubnet(form.subnet);
 
-    if (!form.subnet.match(/^\d{1,3}\.\d{1,3}\.\d{1,3}$/) && !form.subnet.match(/^\d{1,3}\.\d{1,3}$/))
-      return setError('Subnet must be 2 octets (192.168) for /16 or 3 octets (192.168.0) for /24.');
+    // Update the form field to show the normalised value
+    if (subnet !== form.subnet) setForm(f => ({ ...f, subnet }));
+
+    const is16 = subnetOctetCount(subnet) === 2;
+    const rangePattern = is16 ? /^\d{1,3}\.\d{1,3}$/ : /^\d{1,3}$/;
+    const rangeHint    = is16 ? 'e.g. 2.20' : 'e.g. 1';
+
+    if (!subnet.match(/^\d{1,3}\.\d{1,3}\.\d{1,3}$/) && !subnet.match(/^\d{1,3}\.\d{1,3}$/))
+      return setError('Subnet must be 2 octets (172.16) for /16 or 3 octets (172.16.2) for /24. You can also paste the full network address (e.g. 172.16.0.0) and it will be trimmed automatically.');
     if (!rangePattern.test(form.dhcpStart.trim()) || !rangePattern.test(form.dhcpEnd.trim()) ||
         !rangePattern.test(form.staticStart.trim()) || !rangePattern.test(form.staticEnd.trim()))
       return setError(`Range values must be in the format ${rangeHint} for a /${is16 ? '16' : '24'} network.`);
@@ -61,9 +68,9 @@ function SettingsModal({ config, onSave, onClose, onClear }) {
     const staticStart = form.staticStart.trim();
     const staticEnd   = form.staticEnd.trim();
 
-    if (rangeOrdinal(dhcpStart, form.subnet) >= rangeOrdinal(dhcpEnd, form.subnet))
+    if (rangeOrdinal(dhcpStart, subnet) >= rangeOrdinal(dhcpEnd, subnet))
       return setError('DHCP start must be less than DHCP end.');
-    if (rangeOrdinal(staticStart, form.subnet) >= rangeOrdinal(staticEnd, form.subnet))
+    if (rangeOrdinal(staticStart, subnet) >= rangeOrdinal(staticEnd, subnet))
       return setError('Static start must be less than static end.');
 
     const fixedInDHCP = form.fixedInDHCP
@@ -71,7 +78,7 @@ function SettingsModal({ config, onSave, onClose, onClear }) {
       .map(s => s.trim())
       .filter(s => s && rangePattern.test(s));
 
-    const newConfig = { networkName: form.networkName, subnet: form.subnet, dhcpStart, dhcpEnd, staticStart, staticEnd, fixedInDHCP };
+    const newConfig = { networkName: form.networkName, subnet, dhcpStart, dhcpEnd, staticStart, staticEnd, fixedInDHCP };
     onSave(newConfig); // parent handles persistence (API or localStorage)
   };
 
@@ -108,8 +115,8 @@ function SettingsModal({ config, onSave, onClose, onClear }) {
             </div>
             <div>
               <label className={labelCls}>Subnet Prefix</label>
-              <input type="text" className={inputCls} placeholder="e.g. 192.168.0 or 192.168" {...f('subnet')} />
-              <p className="text-xs text-slate-400 mt-1">3 octets for /24 (e.g. <span className="font-mono">192.168.0</span>) or 2 octets for /16 (e.g. <span className="font-mono">192.168</span>)</p>
+              <input type="text" className={inputCls} placeholder="e.g. 172.16.0.0 or 172.16.2.0 or 172.16" {...f('subnet')} />
+              <p className="text-xs text-slate-400 mt-1">Enter the network address (e.g. <span className="font-mono">172.16.0.0</span>) or just the prefix (<span className="font-mono">172.16</span> for /16, <span className="font-mono">172.16.2</span> for /24). Trailing zeros are stripped automatically.</p>
             </div>
           </div>
 
@@ -160,13 +167,15 @@ function SettingsModal({ config, onSave, onClose, onClear }) {
             </div>
           )}
 
-          {/* Preview */}
+          {/* Preview — shows normalised subnet so user sees what will be saved */}
+          {(() => { const ps = normaliseSubnet(form.subnet); return (
           <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs font-mono text-slate-500 space-y-1">
-            <p><span className="text-slate-400">Network:    </span>{subnetCIDR(form.subnet)}</p>
-            <p><span className="text-slate-400">DHCP pool:  </span>{form.subnet}.{form.dhcpStart} – {form.subnet}.{form.dhcpEnd}</p>
-            <p><span className="text-slate-400">Static range: </span>{form.subnet}.{form.staticStart} – {form.subnet}.{form.staticEnd}</p>
-            {form.fixedInDHCP && <p><span className="text-slate-400">Fixed IPs:  </span>{form.fixedInDHCP.split(',').map(s => `${form.subnet}.${s.trim()}`).join(', ')}</p>}
+            <p><span className="text-slate-400">Network:    </span>{subnetCIDR(ps)}</p>
+            <p><span className="text-slate-400">DHCP pool:  </span>{ps}.{form.dhcpStart} – {ps}.{form.dhcpEnd}</p>
+            <p><span className="text-slate-400">Static range: </span>{ps}.{form.staticStart} – {ps}.{form.staticEnd}</p>
+            {form.fixedInDHCP && <p><span className="text-slate-400">Fixed IPs:  </span>{form.fixedInDHCP.split(',').map(s => `${ps}.${s.trim()}`).join(', ')}</p>}
           </div>
+          ); })()}
 
           <button
             type="submit"
@@ -356,6 +365,14 @@ const ipSuffix = (ip, subnet) => ip.substring(subnet.length);
 // CIDR string for header display
 const subnetCIDR = (subnet) =>
   subnetOctetCount(subnet) === 2 ? `${subnet}.0.0/16` : `${subnet}.0/24`;
+
+// Normalise a subnet input: strip CIDR suffix, strip trailing .0 octets
+// "172.16.0.0/16" → "172.16",  "172.16.2.0" → "172.16.2",  "172.16" → "172.16"
+const normaliseSubnet = (raw) => {
+  const parts = raw.trim().replace(/\/\d+$/, '').split('.');
+  while (parts.length > 2 && parts[parts.length - 1] === '0') parts.pop();
+  return parts.join('.');
+};
 
 const isInDHCPRange = (ip, config = DEFAULT_NETWORK_CONFIG) => {
   const ord = ipOrdinal(ip, config.subnet);
