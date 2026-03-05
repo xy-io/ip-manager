@@ -1061,7 +1061,7 @@ export default function IPAddressManager() {
     else { setSortField(field); setSortDir('asc'); }
   };
 
-  const SortIcon = ({ field }) => {
+  const sortIcon = (field) => {
     if (sortField !== field) return <ArrowUpDown className="w-3 h-3 opacity-40" />;
     return sortDir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />;
   };
@@ -1696,7 +1696,7 @@ export default function IPAddressManager() {
                       <th key={label} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
                         {field ? (
                           <button onClick={() => handleSort(field)} className="flex items-center gap-1 hover:text-slate-800 transition-colors">
-                            {label}<SortIcon field={field} />
+                            {label}{sortIcon(field)}
                           </button>
                         ) : label}
                       </th>
@@ -1707,8 +1707,8 @@ export default function IPAddressManager() {
                   {sortedData.map((item) => {
                     const isReserved = item.assetName === 'Reserved';
                     const isFree = item.assetName === 'Free';
-                    const isDHCP = isInDHCPRange(item.ip);
-                    const isFixed = isFixedInDHCP(item.ip);
+                    const isDHCP = isInDHCPRangeConfig(item.ip);
+                    const isFixed = isFixedInDHCPConfig(item.ip);
                     return (
                       <tr
                         key={item.ip}
