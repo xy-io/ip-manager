@@ -285,4 +285,4 @@ A summary shows how many rows are ready to import and how many were skipped (wit
 
 ## License
 
-MIT — do whatever you like with it.
+MIT © 2026 Jay Allen — see [LICENSE](./LICENSE) for full terms.
