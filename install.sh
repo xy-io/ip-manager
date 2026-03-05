@@ -155,12 +155,19 @@ server {
         proxy_read_timeout 30s;
     }
 
+    # index.html — never cache so browsers always get the latest entry point
+    location = /index.html {
+        try_files \$uri =404;
+        add_header Cache-Control "no-store, no-cache, must-revalidate";
+        add_header Pragma "no-cache";
+    }
+
     # Serve the React SPA — all other routes fall back to index.html
     location / {
         try_files \$uri \$uri/ /index.html;
     }
 
-    # Cache static assets
+    # Hashed static assets (JS/CSS) — safe to cache forever
     location ~* \.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2)$ {
         expires 1y;
         add_header Cache-Control "public, immutable";
@@ -206,6 +213,11 @@ chown -R www-data:www-data /opt/ip-manager/server
 
 echo "Restarting API server..."
 systemctl restart ip-manager-api
+
+echo "Patching Nginx config (index.html no-cache)..."
+if ! grep -q "no-store" /etc/nginx/sites-available/ip-manager 2>/dev/null; then
+  sed -i 's|location / {|location = /index.html {\n        try_files $uri =404;\n        add_header Cache-Control "no-store, no-cache, must-revalidate";\n        add_header Pragma "no-cache";\n    }\n\n    location / {|' /etc/nginx/sites-available/ip-manager
+fi
 
 echo "Reloading Nginx..."
 systemctl reload nginx
