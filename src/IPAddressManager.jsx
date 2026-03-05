@@ -953,6 +953,35 @@ export default function IPAddressManager() {
     }
   }, [networkConfig, persistMode]);
 
+  // ── Keyboard shortcuts ──────────────────────────────────────────────────────
+  useEffect(() => {
+    const handler = (e) => {
+      // Ignore if typing in an input/textarea/select
+      const tag = e.target.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+      // / — focus search
+      if (e.key === '/') {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+      // Esc — clear search, close modals, collapse expanded card
+      if (e.key === 'Escape') {
+        if (editingItem) { setEditingItem(null); return; }
+        if (showSettings) { setShowSettings(false); return; }
+        if (showImport)   { setShowImport(false);   return; }
+        if (expandedCard !== null) { setExpandedCard(null); return; }
+        if (searchTerm)   { setSearchTerm('');       return; }
+      }
+      // t — switch to Table view
+      if (e.key === 't' || e.key === 'T') setViewMode('table');
+      // c — switch to Cards view
+      if (e.key === 'c' || e.key === 'C') setViewMode('cards');
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [editingItem, showSettings, showImport, expandedCard, searchTerm]);
+
   // UI state
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedType, setSelectedType] = useState('');
@@ -966,6 +995,7 @@ export default function IPAddressManager() {
   const [editingItem, setEditingItem] = useState(null);
   const [sortField, setSortField] = useState('ip');
   const [sortDir, setSortDir] = useState('asc');
+  const searchRef = useRef(null);
 
   // Derived data
   const locations = useMemo(() => {
@@ -1397,6 +1427,7 @@ export default function IPAddressManager() {
             <div className="relative flex-1 min-w-64">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
+                ref={searchRef}
                 type="text"
                 placeholder="Search IP, hostname, service, location, or tag..."
                 value={searchTerm}
