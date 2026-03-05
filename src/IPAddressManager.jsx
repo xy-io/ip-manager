@@ -126,10 +126,15 @@ function SettingsModal({ config, onSave, onClose, onClear }) {
                 <input type="text" className={inputCls} placeholder={subnetOctetCount(form.subnet) === 2 ? "e.g. 0.254" : "e.g. 170"} {...f('dhcpEnd')} />
               </div>
             </div>
+          </div>
+
+          {/* DHCP Reservations */}
+          <div className="p-4 bg-blue-50 rounded-xl border border-blue-200 space-y-4">
+            <p className="text-xs font-semibold text-blue-700 uppercase tracking-wider">🔒 DHCP Reservations</p>
             <div>
-              <label className={labelCls}>Fixed reservations within DHCP range</label>
+              <label className={labelCls}>Reserved IPs (host portions)</label>
               <input type="text" className={inputCls} placeholder={subnetOctetCount(form.subnet) === 2 ? "e.g. 0.6, 0.50" : "e.g. 6, 50"} {...f('fixedInDHCP')} />
-              <p className="text-xs text-slate-400 mt-1">Comma-separated host portions of IPs fixed within the DHCP pool (e.g. devices with DHCP reservations)</p>
+              <p className="text-xs text-slate-400 mt-1">Comma-separated host portions of IPs that have DHCP reservations. These can be anywhere on the network — inside or outside the DHCP pool.</p>
             </div>
           </div>
 
@@ -1417,7 +1422,7 @@ export default function IPAddressManager() {
                 <div className="flex items-center gap-2">
                   <Shield className="w-4 h-4 text-blue-500" />
                   <span className="text-slate-600">
-                    <span className="font-medium">Fixed in DHCP:</span> {networkConfig.fixedInDHCP.map(n => `.${n}`).join(', ')}
+                    <span className="font-medium">DHCP Reservations:</span> {networkConfig.fixedInDHCP.map(n => `.${n}`).join(', ')}
 
                   </span>
                 </div>
@@ -1652,7 +1657,7 @@ export default function IPAddressManager() {
                             Fixed
                           </span>
                         )}
-                        {!isFree && !isDHCP && item.type && (
+                        {!isFree && !isDHCP && !isFixed && item.type && (
                           <span className={`px-2 py-0.5 text-xs font-medium rounded-full border ${getTypeColor(item.type)}`}>
                             {item.type}
                           </span>
@@ -1724,7 +1729,13 @@ export default function IPAddressManager() {
                           <div>
                             <div className="text-slate-400 text-xs uppercase tracking-wide">IP Range</div>
                             <div className="text-slate-700">
-                              {isDHCP ? (isFixed ? `Fixed (DHCP .${networkConfig.dhcpStart} – .${networkConfig.dhcpEnd})` : `DHCP Pool (.${networkConfig.dhcpStart} – .${networkConfig.dhcpEnd})`) : `Static (.${networkConfig.staticStart} – .${networkConfig.staticEnd})`}
+                              {isFixed
+                                ? isDHCP
+                                  ? `Fixed in DHCP Pool (.${networkConfig.dhcpStart} – .${networkConfig.dhcpEnd})`
+                                  : 'DHCP Reservation (outside pool)'
+                                : isDHCP
+                                  ? `DHCP Pool (.${networkConfig.dhcpStart} – .${networkConfig.dhcpEnd})`
+                                  : `Static (.${networkConfig.staticStart} – .${networkConfig.staticEnd})`}
                             </div>
                           </div>
                           <div>
@@ -1869,16 +1880,14 @@ export default function IPAddressManager() {
                             <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-500 text-white">
                               FREE
                             </span>
+                          ) : isFixed ? (
+                            <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-blue-100 text-blue-700">
+                              Fixed
+                            </span>
                           ) : isDHCP ? (
-                            isFixed ? (
-                              <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-blue-100 text-blue-700">
-                                Fixed
-                              </span>
-                            ) : (
-                              <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-amber-100 text-amber-700">
-                                DHCP
-                              </span>
-                            )
+                            <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-amber-100 text-amber-700">
+                              DHCP
+                            </span>
                           ) : (
                             <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-emerald-100 text-emerald-700">
                               Static
