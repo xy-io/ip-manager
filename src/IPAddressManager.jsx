@@ -899,6 +899,21 @@ export default function IPAddressManager() {
   const [hasChanges, setHasChanges] = useState(false);
   const [showImport, setShowImport] = useState(false);
 
+  // UI state (declared here so all useEffect hooks below can safely reference them)
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedType, setSelectedType] = useState('');
+  const [selectedLocation, setSelectedLocation] = useState('');
+  const [selectedTag, setSelectedTag] = useState('');
+  const [showReserved, setShowReserved] = useState(false);
+  const [expandedCard, setExpandedCard] = useState(null);
+  const [viewMode, setViewMode] = useState('cards');
+  const [showFreeIPs, setShowFreeIPs] = useState(false);
+  const [copiedIP, setCopiedIP] = useState(null);
+  const [editingItem, setEditingItem] = useState(null);
+  const [sortField, setSortField] = useState('ip');
+  const [sortDir, setSortDir] = useState('asc');
+  const searchRef = useRef(null);
+
   // ── On mount: detect API and load server data if available ─────────────────
   useEffect(() => {
     (async () => {
@@ -981,21 +996,6 @@ export default function IPAddressManager() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [editingItem, showSettings, showImport, expandedCard, searchTerm]);
-
-  // UI state
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedType, setSelectedType] = useState('');
-  const [selectedLocation, setSelectedLocation] = useState('');
-  const [selectedTag, setSelectedTag] = useState('');
-  const [showReserved, setShowReserved] = useState(false);
-  const [expandedCard, setExpandedCard] = useState(null);
-  const [viewMode, setViewMode] = useState('cards');
-  const [showFreeIPs, setShowFreeIPs] = useState(false);
-  const [copiedIP, setCopiedIP] = useState(null);
-  const [editingItem, setEditingItem] = useState(null);
-  const [sortField, setSortField] = useState('ip');
-  const [sortDir, setSortDir] = useState('asc');
-  const searchRef = useRef(null);
 
   // Derived data
   const locations = useMemo(() => {
