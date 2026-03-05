@@ -247,7 +247,39 @@ No code editing required. Click the **⚙️ Settings** icon in the app header t
 
 Settings are saved to localStorage and persist across sessions.
 
-To load your own IP data, use the **Import** button in the app header — it accepts `.csv`, `.xlsx`, or `.xls` files, includes a column mapping step, and supports both Merge and Replace modes. A blank template with the correct headers can be downloaded directly from the import modal.
+---
+
+## Importing Your IP Data
+
+Click the **Import** button in the app header to load your own data from a `.csv`, `.xlsx`, or `.xls` file. The import flow is three steps:
+
+**Step 1 — Upload**
+Drag and drop a file onto the upload zone, or click to browse. A downloadable CSV template with the correct headers is available here if you're starting from scratch.
+
+**Step 2 — Map Columns**
+The importer auto-detects common column name variations (e.g. `hostname`, `host name`, `fqdn` all map to Hostname automatically). If your headers aren't recognised, use the dropdowns to match each field manually. A preview of the first five rows is shown so you can verify the mapping looks right before continuing.
+
+**Step 3 — Confirm & Import**
+A summary shows how many rows are ready to import and how many were skipped (with reasons — missing required fields, invalid IP format, etc.). Choose your import mode before confirming:
+
+| Mode | Behaviour |
+|---|---|
+| **Merge** | Adds new entries; updates existing ones matched by IP address. Existing entries not in the file are left untouched. |
+| **Replace** | Replaces all current data with the imported rows. Use with caution. |
+
+**Supported columns**
+
+| Column | Required | Notes |
+|---|---|---|
+| `ip` | ✅ | Full IPv4 (`192.168.0.10`) or last-octet shorthand (`10` → expanded to your subnet automatically) |
+| `hostname` | ✅ | FQDN or short name |
+| `type` | ✅ | e.g. `LXC`, `VM`, `Physical`, `IoT` |
+| `service` | ✅ | App or service running on the host |
+| `name` | — | Display / asset name (falls back to hostname prefix if omitted) |
+| `location` | — | Physical location or rack |
+| `host` | — | Hypervisor or host machine (accepts `proxmox_host`, `hypervisor`, `vm host`, etc.) |
+| `notes` | — | Free-text notes |
+| `status` | — | `assigned` or `free` (defaults to `assigned`) |
 
 ---
 
