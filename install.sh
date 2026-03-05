@@ -75,6 +75,7 @@ fi
 # ── 5. Install frontend npm packages & build ─────────────────
 log "Installing frontend npm packages..."
 cd "$APP_DIR"
+rm -rf node_modules package-lock.json
 npm install 2>&1 | grep -E "error|warn|ERR" || true
 ok "Frontend packages installed"
 
@@ -199,7 +200,7 @@ echo "Pulling latest changes from GitHub..."
 git -C /opt/ip-manager pull
 
 echo "Installing frontend packages..."
-cd /opt/ip-manager && npm install 2>&1 | grep -E "error|warn|ERR" || true
+cd /opt/ip-manager && rm -rf node_modules package-lock.json && npm install 2>&1 | grep -E "error|warn|ERR" || true
 
 echo "Rebuilding React app..."
 npm run build 2>&1 || { echo "[ERROR] React build failed"; exit 1; }

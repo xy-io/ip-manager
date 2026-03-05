@@ -21,3 +21,4 @@ outputs/
 *.xcuserstate
 xcuserdata/
 xcschememanagement.plist
+package-lock.json
