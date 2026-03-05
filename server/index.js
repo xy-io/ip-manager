@@ -67,6 +67,34 @@ app.put('/api/config', (req, res) => {
   res.json({ ok: true });
 });
 
+// Import — merge or replace IP data
+app.post('/api/import', (req, res) => {
+  const { rows, mode } = req.body;
+  if (!Array.isArray(rows)) {
+    return res.status(400).json({ error: 'Expected rows array' });
+  }
+
+  const sortByIp = (arr) =>
+    arr.sort((a, b) => {
+      const aO = parseInt((a.ip || '').split('.')[3] || 0);
+      const bO = parseInt((b.ip || '').split('.')[3] || 0);
+      return aO - bO;
+    });
+
+  if (mode === 'replace') {
+    dbSet('ip_data', sortByIp(rows));
+    return res.json({ imported: rows.length, skipped: 0, errors: [] });
+  }
+
+  // Merge: add new rows, update existing ones matched by IP
+  const current = dbGet('ip_data') || [];
+  const ipMap = new Map(current.map(r => [r.ip, r]));
+  rows.forEach(r => ipMap.set(r.ip, r));
+  const merged = sortByIp(Array.from(ipMap.values()));
+  dbSet('ip_data', merged);
+  res.json({ imported: rows.length, skipped: 0, errors: [] });
+});
+
 // ── Start ─────────────────────────────────────────────────────────────────────
 
 const PORT = 3001;
