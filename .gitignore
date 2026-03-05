@@ -1,5 +1,23 @@
+# Dependencies
 node_modules/
+
+# Build output
 dist/
-.DS_Store
+
+# Vite cache files
+vite.config.js.timestamp-*.mjs
 *.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Personal / session data
+audit.jsonl
+uploads/
+outputs/
+
+# Xcode user data
 *.xcuserstate
+xcuserdata/
+xcschememanagement.plist
