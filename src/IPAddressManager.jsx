@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Search, Server, Monitor, Wifi, HardDrive, Camera, Shield, Globe, Filter, X, MapPin, Cpu, Box, CircleDot, ChevronDown, ChevronUp, Copy, Check, Zap, Download, Edit3, Plus, Trash2, Save, AlertCircle, Settings, Upload, FileText, AlertTriangle, CheckCircle, ChevronRight } from 'lucide-react';
+import { Search, Server, Monitor, Wifi, HardDrive, Camera, Shield, Globe, Filter, X, MapPin, Cpu, Box, CircleDot, ChevronDown, ChevronUp, Copy, Check, Zap, Download, Edit3, Plus, Trash2, Save, AlertCircle, Settings, Upload, FileText, AlertTriangle, CheckCircle, ChevronRight, Tag, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 // Default network configuration (overridden by Settings modal / localStorage)
@@ -20,6 +20,12 @@ function loadNetworkConfig() {
     if (saved) return { ...DEFAULT_NETWORK_CONFIG, ...JSON.parse(saved) };
   } catch {}
   return { ...DEFAULT_NETWORK_CONFIG };
+}
+
+// Format an ISO date string into a short readable date (e.g. "5 Mar 2026")
+function formatDate(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 // Settings Modal Component
@@ -313,6 +319,7 @@ function ImportModal({ onClose, onImport, networkConfig }) {
     { key: 'service',      label: 'Service / Apps',    required: true  },
     { key: 'location',     label: 'Location',          required: false },
     { key: 'host',         label: 'Host / Hypervisor', required: false },
+    { key: 'tags',         label: 'Tags',              required: false },
     { key: 'notes',        label: 'Notes',             required: false },
     { key: 'status',       label: 'Status',            required: false },
   ];
@@ -324,6 +331,7 @@ function ImportModal({ onClose, onImport, networkConfig }) {
     service:      ['service','services','apps','application','applications','app'],
     location:     ['location','loc','place','room'],
     host:         ['host','host / hypervisor','hypervisor','proxmox_host','proxmox','proxmox host','host machine','vm host'],
+    tags:         ['tags','tag','labels','label','categories','category'],
     notes:        ['notes','note','comment','comments','description','info'],
     status:       ['status','state','assignment'],
   };
@@ -423,6 +431,8 @@ function ImportModal({ onClose, onImport, networkConfig }) {
         hostname, ip: ip || g('ip'), type,
         location: g('location') || g('host'),
         apps: service, notes: g('notes'),
+        tags: g('tags') ? g('tags').split(',').map(t => t.trim()).filter(Boolean) : [],
+        updatedAt: new Date().toISOString(),
       };
     });
   };
@@ -700,7 +710,17 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types }) {
     location: item.location,
     apps: item.apps,
     notes: item.notes || '',
+    tags: item.tags || [],
   });
+  const [tagInput, setTagInput] = useState('');
+
+  const addTag = (raw) => {
+    const newTags = raw.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
+    setFormData(prev => ({ ...prev, tags: [...new Set([...prev.tags, ...newTags])] }));
+    setTagInput('');
+  };
+
+  const removeTag = (tag) => setFormData(prev => ({ ...prev, tags: prev.tags.filter(t => t !== tag) }));
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -801,6 +821,29 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types }) {
               onChange={(e) => setFormData({ ...formData, apps: e.target.value })}
               placeholder="e.g., Docker, Plex, Home Assistant"
               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Tags</label>
+            {formData.tags.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {formData.tags.map(tag => (
+                  <span key={tag} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-violet-100 text-violet-700 border border-violet-200">
+                    <Tag className="w-2.5 h-2.5" />{tag}
+                    <button type="button" onClick={() => removeTag(tag)} className="hover:text-violet-900 ml-0.5">×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <input
+              type="text"
+              value={tagInput}
+              onChange={e => setTagInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); if (tagInput.trim()) addTag(tagInput); } }}
+              onBlur={() => { if (tagInput.trim()) addTag(tagInput); }}
+              placeholder="Type a tag and press Enter (e.g. media, iot, monitoring)"
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
             />
           </div>
 
@@ -913,12 +956,15 @@ export default function IPAddressManager() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedType, setSelectedType] = useState('');
   const [selectedLocation, setSelectedLocation] = useState('');
+  const [selectedTag, setSelectedTag] = useState('');
   const [showReserved, setShowReserved] = useState(false);
   const [expandedCard, setExpandedCard] = useState(null);
   const [viewMode, setViewMode] = useState('cards');
   const [showFreeIPs, setShowFreeIPs] = useState(false);
   const [copiedIP, setCopiedIP] = useState(null);
   const [editingItem, setEditingItem] = useState(null);
+  const [sortField, setSortField] = useState('ip');
+  const [sortDir, setSortDir] = useState('asc');
 
   // Derived data
   const locations = useMemo(() => {
@@ -927,6 +973,12 @@ export default function IPAddressManager() {
   }, [ipData]);
 
   const types = useMemo(() => getUniqueValues(ipData, 'type'), [ipData]);
+
+  const allTags = useMemo(() => {
+    const set = new Set();
+    ipData.forEach(item => (item.tags || []).forEach(t => t && set.add(t)));
+    return Array.from(set).sort();
+  }, [ipData]);
 
   const freeStaticIPs = useMemo(() => {
     return ipData
@@ -942,21 +994,46 @@ export default function IPAddressManager() {
       if (!showReserved && item.assetName === 'Reserved') return false;
 
       const searchLower = searchTerm.toLowerCase();
+      const itemTags = item.tags || [];
       const matchesSearch = !searchTerm ||
         item.assetName.toLowerCase().includes(searchLower) ||
         item.hostname.toLowerCase().includes(searchLower) ||
         item.ip.toLowerCase().includes(searchLower) ||
         item.apps.toLowerCase().includes(searchLower) ||
         item.location.toLowerCase().includes(searchLower) ||
+        itemTags.some(t => t.toLowerCase().includes(searchLower)) ||
         (item.assetName === 'Free' && 'free'.includes(searchLower)) ||
         (item.assetName === 'Free' && 'available'.includes(searchLower));
 
       const matchesType = !selectedType || item.type === selectedType;
       const matchesLocation = !selectedLocation || item.location === selectedLocation;
+      const matchesTag = !selectedTag || itemTags.includes(selectedTag);
 
-      return matchesSearch && matchesType && matchesLocation;
+      return matchesSearch && matchesType && matchesLocation && matchesTag;
     });
-  }, [ipData, searchTerm, selectedType, selectedLocation, showReserved]);
+  }, [ipData, searchTerm, selectedType, selectedLocation, selectedTag, showReserved]);
+
+  const sortedData = useMemo(() => {
+    if (!sortField) return filteredData;
+    return [...filteredData].sort((a, b) => {
+      let av, bv;
+      if (sortField === 'ip') {
+        av = parseInt(a.ip.split('.')[3]) || 0;
+        bv = parseInt(b.ip.split('.')[3]) || 0;
+        return sortDir === 'asc' ? av - bv : bv - av;
+      }
+      if (sortField === 'updatedAt') {
+        av = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+        bv = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+      } else {
+        av = (a[sortField] || '').toLowerCase();
+        bv = (b[sortField] || '').toLowerCase();
+      }
+      if (av < bv) return sortDir === 'asc' ? -1 : 1;
+      if (av > bv) return sortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [filteredData, sortField, sortDir]);
 
   const stats = useMemo(() => {
     const active = ipData.filter(i => i.assetName !== 'Reserved' && i.assetName !== 'Free');
@@ -978,10 +1055,21 @@ export default function IPAddressManager() {
   }, [ipData, freeStaticIPs, networkConfig]);
 
   // Actions
+  const handleSort = (field) => {
+    if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortField(field); setSortDir('asc'); }
+  };
+
+  const SortIcon = ({ field }) => {
+    if (sortField !== field) return <ArrowUpDown className="w-3 h-3 opacity-40" />;
+    return sortDir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />;
+  };
+
   const clearFilters = () => {
     setSearchTerm('');
     setSelectedType('');
     setSelectedLocation('');
+    setSelectedTag('');
   };
 
   const copyToClipboard = (ip) => {
@@ -992,7 +1080,7 @@ export default function IPAddressManager() {
 
   const handleSaveItem = (updatedItem) => {
     setIpData(prev => prev.map(item =>
-      item.ip === updatedItem.ip ? updatedItem : item
+      item.ip === updatedItem.ip ? { ...updatedItem, updatedAt: new Date().toISOString() } : item
     ));
     setHasChanges(true);
     setEditingItem(null);
@@ -1002,7 +1090,7 @@ export default function IPAddressManager() {
   const handleMarkFree = (ip) => {
     setIpData(prev => prev.map(item =>
       item.ip === ip
-        ? { ...item, assetName: 'Free', hostname: '', type: '', location: '', apps: '' }
+        ? { ...item, assetName: 'Free', hostname: '', type: '', location: '', apps: '', tags: [], updatedAt: new Date().toISOString() }
         : item
     ));
     setHasChanges(true);
@@ -1074,7 +1162,7 @@ export default function IPAddressManager() {
     }
   };
 
-  const hasActiveFilters = searchTerm || selectedType || selectedLocation;
+  const hasActiveFilters = searchTerm || selectedType || selectedLocation || selectedTag;
 
   // Use networkConfig-aware versions of the helper functions
   const isInDHCPRangeConfig  = (ip) => { const n = parseInt(ip.split('.')[3]); return n >= networkConfig.dhcpStart && n <= networkConfig.dhcpEnd; };
@@ -1309,7 +1397,7 @@ export default function IPAddressManager() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search IP, hostname, service, or location..."
+                placeholder="Search IP, hostname, service, location, or tag..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-transparent text-sm"
@@ -1358,6 +1446,25 @@ export default function IPAddressManager() {
               </button>
             )}
           </div>
+
+          {/* Tag filter chips */}
+          {allTags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {allTags.map(tag => (
+                <button
+                  key={tag}
+                  onClick={() => setSelectedTag(selectedTag === tag ? '' : tag)}
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-full border transition-colors ${
+                    selectedTag === tag
+                      ? 'bg-violet-600 text-white border-violet-600'
+                      : 'bg-violet-50 text-violet-700 border-violet-200 hover:bg-violet-100'
+                  }`}
+                >
+                  <Tag className="w-3 h-3" />{tag}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -1467,6 +1574,12 @@ export default function IPAddressManager() {
                               {item.apps}
                             </span>
                           )}
+                          {(item.tags || []).map(tag => (
+                            <span key={tag} onClick={(e) => { e.stopPropagation(); setSelectedTag(selectedTag === tag ? '' : tag); }}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-violet-100 text-violet-700 border border-violet-200 cursor-pointer hover:bg-violet-200 transition-colors">
+                              <Tag className="w-2.5 h-2.5" />{tag}
+                            </span>
+                          ))}
                         </div>
                       </>
                     )}
@@ -1496,10 +1609,28 @@ export default function IPAddressManager() {
                             <div className="text-slate-400 text-xs uppercase tracking-wide">Hostname</div>
                             <div className="text-slate-700 font-mono text-xs break-all">{item.hostname || '—'}</div>
                           </div>
+                          {(item.tags || []).length > 0 && (
+                            <div className="col-span-2">
+                              <div className="text-slate-400 text-xs uppercase tracking-wide mb-1">Tags</div>
+                              <div className="flex flex-wrap gap-1">
+                                {(item.tags || []).map(tag => (
+                                  <span key={tag} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-violet-100 text-violet-700 border border-violet-200">
+                                    <Tag className="w-2.5 h-2.5" />{tag}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                           {item.notes && (
                             <div className="col-span-2">
                               <div className="text-slate-400 text-xs uppercase tracking-wide">Notes</div>
                               <div className="text-slate-600 text-sm mt-0.5">{item.notes}</div>
+                            </div>
+                          )}
+                          {item.updatedAt && (
+                            <div className="col-span-2">
+                              <div className="text-slate-400 text-xs uppercase tracking-wide">Last Modified</div>
+                              <div className="text-slate-500 text-xs mt-0.5">{formatDate(item.updatedAt)}</div>
                             </div>
                           )}
                         </div>
@@ -1549,18 +1680,30 @@ export default function IPAddressManager() {
               <table className="w-full">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">IP Address</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Asset Name</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Hostname</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Range</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Type</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Location</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Service</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
+                    {[
+                      { label: 'IP Address', field: 'ip' },
+                      { label: 'Asset Name', field: 'assetName' },
+                      { label: 'Hostname',   field: 'hostname' },
+                      { label: 'Range',      field: null },
+                      { label: 'Type',       field: 'type' },
+                      { label: 'Location',   field: 'location' },
+                      { label: 'Service',    field: 'apps' },
+                      { label: 'Tags',       field: null },
+                      { label: 'Modified',   field: 'updatedAt' },
+                      { label: 'Actions',    field: null },
+                    ].map(({ label, field }) => (
+                      <th key={label} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                        {field ? (
+                          <button onClick={() => handleSort(field)} className="flex items-center gap-1 hover:text-slate-800 transition-colors">
+                            {label}<SortIcon field={field} />
+                          </button>
+                        ) : label}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredData.map((item) => {
+                  {sortedData.map((item) => {
                     const isReserved = item.assetName === 'Reserved';
                     const isFree = item.assetName === 'Free';
                     const isDHCP = isInDHCPRange(item.ip);
@@ -1631,6 +1774,19 @@ export default function IPAddressManager() {
                           )}
                         </td>
                         <td className="px-4 py-3 text-sm text-slate-600">{item.apps || '—'}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-wrap gap-1">
+                            {(item.tags || []).map(tag => (
+                              <button key={tag} onClick={() => setSelectedTag(selectedTag === tag ? '' : tag)}
+                                className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full border transition-colors ${
+                                  selectedTag === tag ? 'bg-violet-600 text-white border-violet-600' : 'bg-violet-50 text-violet-700 border-violet-200 hover:bg-violet-100'
+                                }`}>
+                                <Tag className="w-2.5 h-2.5" />{tag}
+                              </button>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">{formatDate(item.updatedAt)}</td>
                         <td className="px-4 py-3">
                           <button
                             onClick={() => setEditingItem(item)}
