@@ -13,11 +13,20 @@ struct RootView: View {
             if let entry = selectedEntry {
                 IPDetailView(entry: entry, selectedEntry: $selectedEntry)
             } else {
-                ContentUnavailableView(
-                    "Select an entry",
-                    systemImage: "network",
-                    description: Text("Choose an IP address from the list on the left")
-                )
+                VStack(spacing: 16) {
+                    Image(systemName: "network")
+                        .font(.system(size: 56))
+                        .foregroundStyle(.tertiary)
+                    Text("Select an entry")
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                    Text("Choose an IP address from the list on the left")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(.systemGroupedBackground))
             }
         }
         .searchable(text: $vm.searchText, placement: .toolbar, prompt: "Search IP, hostname, tag…")
