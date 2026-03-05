@@ -314,9 +314,9 @@ function ImportModal({ onClose, onImport, networkConfig }) {
   const EXPECTED_FIELDS = [
     { key: 'ip',           label: 'IP Address',        required: true  },
     { key: 'name',         label: 'Name / Asset Name', required: false },
-    { key: 'hostname',     label: 'Hostname',          required: true  },
-    { key: 'type',         label: 'Type',              required: true  },
-    { key: 'service',      label: 'Service / Apps',    required: true  },
+    { key: 'hostname',     label: 'Hostname',          required: false },
+    { key: 'type',         label: 'Type',              required: false },
+    { key: 'service',      label: 'Service / Apps',    required: false },
     { key: 'location',     label: 'Location',          required: false },
     { key: 'host',         label: 'Host / Hypervisor', required: false },
     { key: 'tags',         label: 'Tags',              required: false },
@@ -419,15 +419,16 @@ function ImportModal({ onClose, onImport, networkConfig }) {
         }
       }
       const hostname = g('hostname'), type = g('type'), service = g('service');
-      if (!hostname) errors.push('Missing hostname');
-      if (!type)     errors.push('Missing type');
-      if (!service)  errors.push('Missing service');
       const status = g('status').toLowerCase() || 'assigned';
       const isFree = status === 'free';
-      const name   = g('name') || (hostname ? hostname.split('.')[0] : '') || service || 'Imported';
+      // Rows with only an IP and no other details are treated as Free (available to claim)
+      const isSparse = !hostname && !type && !service && !g('name');
+      if (isSparse) warnings.push('No details — imported as Free (available to claim)');
+      const effectiveFree = isFree || isSparse;
+      const name = effectiveFree ? 'Free' : (g('name') || (hostname ? hostname.split('.')[0] : '') || service || 'Imported');
       return {
         _row: i + 2, _errors: errors, _warnings: warnings, _valid: errors.length === 0,
-        assetName: isFree ? 'Free' : name,
+        assetName: effectiveFree ? 'Free' : name,
         hostname, ip: ip || g('ip'), type,
         location: g('location') || g('host'),
         apps: service, notes: g('notes'),
