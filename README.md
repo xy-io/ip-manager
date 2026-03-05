@@ -217,9 +217,9 @@ ip-manager/
 See [`IP_Manager_Roadmap.docx`](./IP_Manager_Roadmap.docx) for the full three-phase roadmap.
 
 **Phase 1 — near-term (Q1–Q2 2026):**
-- **Notes / comments** — freetext notes per IP entry, visible on expanded cards
 - **Tag support** — custom tags per entry (e.g. `media`, `IoT`, `cameras`) with filter support
-- **Import from Excel** — drag-and-drop to reload the data set
+- **Sort controls** — click column headers to sort in Table view
+- **Last modified date** — timestamp each entry to spot stale records
 
 **Phase 2 — mid-term (Q3–Q4 2026):**
 - **Multiple IPs per host** — support servers/VMs with more than one NIC or lease (prerequisite for VLAN support)
@@ -245,7 +245,9 @@ No code editing required. Click the **⚙️ Settings** icon in the app header t
 | Static range | Start and end of your static assignments |
 | Fixed in DHCP | Comma-separated last octets of fixed reservations |
 
-Settings are saved to localStorage and persist across sessions. To pre-populate the IP list for your own network, update the `initialIpData` array in `src/IPAddressManager.jsx` — this is the baseline that loads when no saved data is found in the browser.
+Settings are saved to localStorage and persist across sessions.
+
+To load your own IP data, use the **Import** button in the app header — it accepts `.csv`, `.xlsx`, or `.xls` files, includes a column mapping step, and supports both Merge and Replace modes. A blank template with the correct headers can be downloaded directly from the import modal.
 
 ---
 

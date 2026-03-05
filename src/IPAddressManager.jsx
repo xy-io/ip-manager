@@ -163,95 +163,35 @@ function SettingsModal({ config, onSave, onClose }) {
 }
 
 // Initial IP address data from the Excel spreadsheet
+// ── Example data — replace with your own via Import or by editing entries in the app ──
 const initialIpData = [
-  { assetName: "Home Assistant", hostname: "homeassistant.the-allens.uk", ip: "192.168.0.6", type: "Virtual", location: "Proxmox1", apps: "Home Assistant" },
-  { assetName: "Synology", hostname: "nas.the-allens.uk", ip: "192.168.0.50", type: "Physical", location: "Office", apps: "Synology NAS" },
-  { assetName: "Tapo C210 Office camera", hostname: "C210_A186FB.the-allens.uk", ip: "192.168.0.143", type: "Physical", location: "Office", apps: "Camera" },
-  { assetName: "Linkwarden", hostname: "linkwarden.the-allens.uk", ip: "192.168.0.170", type: "Virtual", location: "Proxmox2", apps: "Linkwarden" },
-  { assetName: "Free", hostname: "", ip: "192.168.0.171", type: "", location: "", apps: "" },
-  { assetName: "Free", hostname: "", ip: "192.168.0.172", type: "", location: "", apps: "" },
-  { assetName: "Free", hostname: "", ip: "192.168.0.173", type: "", location: "", apps: "" },
-  { assetName: "Free", hostname: "", ip: "192.168.0.174", type: "", location: "", apps: "" },
-  { assetName: "Free", hostname: "", ip: "192.168.0.175", type: "", location: "", apps: "" },
-  { assetName: "Free", hostname: "", ip: "192.168.0.176", type: "", location: "", apps: "" },
-  { assetName: "Free", hostname: "", ip: "192.168.0.177", type: "", location: "", apps: "" },
-  { assetName: "Free", hostname: "", ip: "192.168.0.178", type: "", location: "", apps: "" },
-  { assetName: "Free", hostname: "", ip: "192.168.0.179", type: "", location: "", apps: "" },
-  { assetName: "Free", hostname: "", ip: "192.168.0.180", type: "", location: "", apps: "" },
-  { assetName: "Free", hostname: "", ip: "192.168.0.181", type: "", location: "", apps: "" },
-  { assetName: "Free", hostname: "", ip: "192.168.0.182", type: "", location: "", apps: "" },
-  { assetName: "Free", hostname: "", ip: "192.168.0.183", type: "", location: "", apps: "" },
-  { assetName: "Free", hostname: "", ip: "192.168.0.184", type: "", location: "", apps: "" },
-  { assetName: "Free", hostname: "", ip: "192.168.0.185", type: "", location: "", apps: "" },
-  { assetName: "Free", hostname: "", ip: "192.168.0.186", type: "", location: "", apps: "" },
-  { assetName: "Free", hostname: "", ip: "192.168.0.187", type: "", location: "", apps: "" },
-  { assetName: "Homebridge", hostname: "homebridge.the-allens.uk", ip: "192.168.0.188", type: "Virtual", location: "Proxmox1", apps: "HomeBridge" },
-  { assetName: "BRW105BAD1DCB9A", hostname: "", ip: "192.168.0.189", type: "Physical", location: "Office", apps: "Printer DHCP Reservation" },
-  { assetName: "Reolink 520 Garden Camera", hostname: "520-garden.the-allens.uk", ip: "192.168.0.190", type: "Physical", location: "Garage", apps: "Camera" },
-  { assetName: "Reolink 520 Drive Camera", hostname: "520-drive.the-allens.uk", ip: "192.168.0.191", type: "Physical", location: "Garage", apps: "Camera" },
-  { assetName: "Reolink 1212A Side Gate Camera", hostname: "1212-gate.the-allen.uk", ip: "192.168.0.192", type: "Physical", location: "House", apps: "Camera" },
-  { assetName: "SLZB-06", hostname: "SLZB-06.the-allens.uk", ip: "192.168.0.193", type: "Physical", location: "Garage", apps: "Zigbee LAN Adaptor" },
-  { assetName: "Free", hostname: "", ip: "192.168.0.194", type: "", location: "", apps: "" },
-  { assetName: "Free", hostname: "", ip: "192.168.0.195", type: "", location: "", apps: "" },
-  { assetName: "maycocklettings-Ghost CLI", hostname: "maycock.the-allens.uk", ip: "192.168.0.196", type: "Virtual", location: "Proxmox2", apps: "Ghost Blog" },
-  { assetName: "Ghost[techrant.online]-Docker", hostname: "techrant.online", ip: "192.168.0.197", type: "Virtual", location: "Proxmox3", apps: "Ghost Blog" },
-  { assetName: "Pihole 3 DNS (backup)", hostname: "pihole3.the-allens.uk", ip: "192.168.0.198", type: "Virtual", location: "Proxmox6", apps: "Pihole3" },
-  { assetName: "Docker2", hostname: "docker2.the-allens.uk", ip: "192.168.0.199", type: "Virtual", location: "Proxmox5", apps: "Docker" },
-  { assetName: "DCS", hostname: "dcs.the-allens.uk", ip: "192.168.0.200", type: "Virtual", location: "Proxmox2", apps: "DCS" },
-  { assetName: "Uptime Monitor", hostname: "uptime.the-allens.uk", ip: "192.168.0.201", type: "Virtual", location: "Proxmox1", apps: "Uptime" },
-  { assetName: "Linux App Server", hostname: "linuxapp.the-allens.uk", ip: "192.168.0.202", type: "Virtual", location: "Proxmox2", apps: "" },
-  { assetName: "Tailscale VPN Gateway", hostname: "tailscale.the-allens.uk", ip: "192.168.0.203", type: "Virtual", location: "Proxmox2", apps: "" },
-  { assetName: "TruNAS-2", hostname: "truenas-2.the-allens.uk", ip: "192.168.0.204", type: "Virtual", location: "Proxmox5", apps: "TrueNAS" },
-  { assetName: "TrueNAS", hostname: "truenas.the-allens.uk", ip: "192.168.0.205", type: "Virtual", location: "Proxmox3", apps: "TrueNAS" },
-  { assetName: "Free", hostname: "", ip: "192.168.0.206", type: "", location: "", apps: "" },
-  { assetName: "NUT (Rpi)", hostname: "nut.the-allens.uk", ip: "192.168.0.207", type: "Physical", location: "Garage", apps: "NUT" },
-  { assetName: "Win-VDI (Windows Production client)", hostname: "https://192.168.0.228:8006/", ip: "192.168.0.208", type: "Virtual", location: "Proxmox2", apps: "" },
-  { assetName: "Unifi AC-Lite Access Point", hostname: "", ip: "192.168.0.209", type: "Physical", location: "Garage", apps: "" },
-  { assetName: "Unifi FlexHD Access Point", hostname: "", ip: "192.168.0.210", type: "Physical", location: "House", apps: "" },
-  { assetName: "Unifi FlexHD Access Point", hostname: "", ip: "192.168.0.211", type: "Physical", location: "Office", apps: "" },
-  { assetName: "Unifi Controller", hostname: "unificontroller.the-allens.uk", ip: "192.168.0.212", type: "Virtual", location: "Proxmox1", apps: "" },
-  { assetName: "Unifi Flex 2.5G 8-port", hostname: "", ip: "192.168.0.213", type: "Physical", location: "Office", apps: "" },
-  { assetName: "Unifi AC-Lite Access Point", hostname: "", ip: "192.168.0.214", type: "Physical", location: "Loft", apps: "" },
-  { assetName: "NTFY Notification Service", hostname: "ntfy.the-allens.uk", ip: "192.168.0.215", type: "Virtual", location: "Proxmox3", apps: "NTFY" },
-  { assetName: "Tautulli", hostname: "tautulli.the-allens.uk", ip: "192.168.0.216", type: "Virtual", location: "Proxmox2", apps: "Tautulli" },
-  { assetName: "Tailscale VPN Exit Node", hostname: "tailscale-exitnode.the-allens.uk", ip: "192.168.0.217", type: "Virtual", location: "Proxmox2", apps: "Tailscale" },
-  { assetName: "Zigbee2MQTT", hostname: "zigbee.the-allens.uk", ip: "192.168.0.218", type: "Virtual", location: "Proxmox2", apps: "Zigbee2MQTT" },
-  { assetName: "Dupliciti Backup", hostname: "backup.the-allens.uk", ip: "192.168.0.219", type: "Virtual", location: "Proxmox1", apps: "Dupliciti" },
-  { assetName: "Radarr", hostname: "radarr.the-allens.uk", ip: "192.168.0.220", type: "Virtual", location: "Proxmox2", apps: "Radarr" },
-  { assetName: "Sonarr", hostname: "sonarr.the-allens.uk", ip: "192.168.0.221", type: "Virtual", location: "Proxmox2", apps: "Sonarr" },
-  { assetName: "Nzbget", hostname: "nzbget.the-allens.uk", ip: "192.168.0.222", type: "Virtual", location: "Proxmox2", apps: "Nzbget" },
-  { assetName: "Bazarr", hostname: "bazarr.the-allens.uk", ip: "192.168.0.223", type: "Virtual", location: "Proxmox2", apps: "Bazarr" },
-  { assetName: "Ghost(jayallen.pro)-DOCKER", hostname: "blog.the-allens.uk", ip: "192.168.0.224", type: "Virtual", location: "Proxmox3", apps: "Ghost Blog" },
-  { assetName: "Ghost(jayallen.pro)", hostname: "jayallen.pro", ip: "192.168.0.225", type: "Virtual", location: "Proxmox2", apps: "Ghost Blog" },
-  { assetName: "readarr", hostname: "readarr.the-allens.uk", ip: "192.168.0.226", type: "Virtual", location: "Proxmox3", apps: "Readarr" },
-  { assetName: "Proxmox1 Quanta Host", hostname: "proxmox1.the-allens.uk", ip: "192.168.0.227", type: "Physical", location: "Garage", apps: "Proxmox" },
-  { assetName: "Proxmox Beelink Standalone Host", hostname: "proxmox6.the-allens.uk", ip: "192.168.0.228", type: "Physical", location: "Garage", apps: "Proxmox" },
-  { assetName: "Proxmox2 Quanta Host", hostname: "proxmox2.the-allens.uk", ip: "192.168.0.229", type: "Physical", location: "Office", apps: "Proxmox" },
-  { assetName: "Proxmox5 HP Z440 Server", hostname: "proxmox5.the-allens.uk", ip: "192.168.0.230", type: "Physical", location: "Garage", apps: "Proxmox" },
-  { assetName: "Plex", hostname: "plex.the-allens.uk", ip: "192.168.0.231", type: "Virtual", location: "Proxmox1", apps: "Plex" },
-  { assetName: "Proxmox Backup Server", hostname: "proxmoxbackup.the-allens.uk", ip: "192.168.0.232", type: "Physical", location: "Office", apps: "Proxmox Backup" },
-  { assetName: "Proxmox3 Dell Host", hostname: "proxmox3.the-allens.uk", ip: "192.168.0.233", type: "Physical", location: "Garage", apps: "Proxmox" },
-  { assetName: "Dell iDRAC", hostname: "", ip: "192.168.0.234", type: "Physical", location: "Garage", apps: "Dell iDrac" },
-  { assetName: "Proxmox4 Whitebox Host", hostname: "proxmox4.the-allens.uk", ip: "192.168.0.235", type: "Physical", location: "Proxmox4", apps: "Proxmox" },
-  { assetName: "Docker", hostname: "docker.the-allens.uk", ip: "192.168.0.236", type: "Virtual", location: "Proxmox5", apps: "Docker" },
-  { assetName: "NETGEAR ProSAFE Plus Switch 16port", hostname: "", ip: "192.168.0.237", type: "Physical", location: "Office", apps: "" },
-  { assetName: "Unifi USW Ultra 60w 8-port", hostname: "", ip: "192.168.0.238", type: "Physical", location: "House", apps: "" },
-  { assetName: "Unifi Flex Mini 2.5g 5-port", hostname: "", ip: "192.168.0.239", type: "Physical", location: "Garage", apps: "" },
-  { assetName: "D-Link 24port Managed Switch", hostname: "", ip: "192.168.0.240", type: "Physical", location: "Garage", apps: "" },
-  { assetName: "Mikrotik 4port 10GBe SFP+ Switch - Garage", hostname: "", ip: "192.168.0.241", type: "Physical", location: "Garage", apps: "" },
-  { assetName: "Mikrotik 4port 10GBe SFP+ Switch - Office", hostname: "", ip: "192.168.0.242", type: "Physical", location: "Office", apps: "" },
-  { assetName: "nginx", hostname: "nginx.the-allens.uk", ip: "192.168.0.243", type: "Virtual", location: "Proxmox3", apps: "nginx" },
-  { assetName: "PiAlert", hostname: "pialert.the-allens.uk", ip: "192.168.0.244", type: "Virtual", location: "Proxmox2", apps: "Pi Alert Scanning" },
-  { assetName: "myspeed", hostname: "myspeed.the-allens.uk", ip: "192.168.0.245", type: "Virtual", location: "Proxmox2", apps: "Speedtest" },
-  { assetName: "Beszel", hostname: "monitor.the-allens.uk", ip: "192.168.0.246", type: "Virtual", location: "Proxmox3", apps: "Beszel server monitoring" },
-  { assetName: "Domain Monitor", hostname: "domainmonitor.the-allens.uk", ip: "192.168.0.247", type: "Virtual", location: "Proxmox3", apps: "Domain Monitoring" },
-  { assetName: "Reserved", hostname: "", ip: "192.168.0.248", type: "", location: "", apps: "" },
-  { assetName: "Pihole 2 DNS (secondary)", hostname: "pihole2.the-allens.uk", ip: "192.168.0.249", type: "Virtual", location: "Proxmox2", apps: "Pihole2" },
-  { assetName: "PiHole DNS", hostname: "pihole.the-allens.uk", ip: "192.168.0.250", type: "Virtual", location: "Proxmox1", apps: "PiHole" },
-  { assetName: "Reserved", hostname: "", ip: "192.168.0.251", type: "", location: "", apps: "" },
-  { assetName: "Reserved", hostname: "", ip: "192.168.0.252", type: "", location: "", apps: "" },
-  { assetName: "Reserved", hostname: "", ip: "192.168.0.253", type: "", location: "", apps: "" },
-  { assetName: "OPNsense/Unifi Gateway Max", hostname: "opnsense.the-allens.uk", ip: "192.168.0.254", type: "Virtual", location: "Proxmox", apps: "Firewall" },
+  // DHCP fixed reservations (.6 and .50 are fixed in DHCP by default)
+  { assetName: "DNS Server",        hostname: "dns.home.lab",        ip: "192.168.0.6",   type: "Virtual",   location: "Server Room", apps: "PiHole",      notes: "Primary DNS — fixed DHCP reservation" },
+  { assetName: "NAS",               hostname: "nas.home.lab",        ip: "192.168.0.50",  type: "Physical",  location: "Server Room", apps: "Synology",    notes: "Fixed DHCP reservation" },
+
+  // Static assignments (.171–.254)
+  { assetName: "Home Server",       hostname: "server.home.lab",     ip: "192.168.0.171", type: "Physical",  location: "Server Room", apps: "Proxmox",     notes: "" },
+  { assetName: "Media Server",      hostname: "media.home.lab",      ip: "192.168.0.172", type: "Virtual",   location: "Server Room", apps: "Plex",        notes: "" },
+  { assetName: "Home Automation",   hostname: "ha.home.lab",         ip: "192.168.0.173", type: "LXC",       location: "Server Room", apps: "Home Assistant", notes: "" },
+  { assetName: "Uptime Monitor",    hostname: "uptime.home.lab",     ip: "192.168.0.174", type: "LXC",       location: "Server Room", apps: "Uptime Kuma", notes: "" },
+  { assetName: "VPN Gateway",       hostname: "vpn.home.lab",        ip: "192.168.0.175", type: "LXC",       location: "Server Room", apps: "Tailscale",   notes: "" },
+
+  // Free (available to claim)
+  { assetName: "Free", hostname: "", ip: "192.168.0.176", type: "", location: "", apps: "", notes: "" },
+  { assetName: "Free", hostname: "", ip: "192.168.0.177", type: "", location: "", apps: "", notes: "" },
+  { assetName: "Free", hostname: "", ip: "192.168.0.178", type: "", location: "", apps: "", notes: "" },
+  { assetName: "Free", hostname: "", ip: "192.168.0.179", type: "", location: "", apps: "", notes: "" },
+  { assetName: "Free", hostname: "", ip: "192.168.0.180", type: "", location: "", apps: "", notes: "" },
+
+  // Networking gear
+  { assetName: "Core Switch",       hostname: "switch.home.lab",     ip: "192.168.0.240", type: "Physical",  location: "Server Room", apps: "",            notes: "" },
+  { assetName: "Access Point",      hostname: "ap-lounge.home.lab",  ip: "192.168.0.241", type: "Physical",  location: "Lounge",      apps: "",            notes: "" },
+  { assetName: "Access Point",      hostname: "ap-office.home.lab",  ip: "192.168.0.242", type: "Physical",  location: "Office",      apps: "",            notes: "" },
+
+  // Reserved / gateway
+  { assetName: "Reserved", hostname: "", ip: "192.168.0.251", type: "", location: "", apps: "", notes: "" },
+  { assetName: "Reserved", hostname: "", ip: "192.168.0.253", type: "", location: "", apps: "", notes: "" },
+  { assetName: "Router / Firewall", hostname: "router.home.lab",     ip: "192.168.0.254", type: "Physical",  location: "Server Room", apps: "OPNsense",    notes: "Default gateway" },
 ];
 
 // Load saved IP data from localStorage, falling back to the hardcoded defaults
@@ -372,7 +312,7 @@ function ImportModal({ onClose, onImport, networkConfig }) {
     { key: 'type',         label: 'Type',              required: true  },
     { key: 'service',      label: 'Service / Apps',    required: true  },
     { key: 'location',     label: 'Location',          required: false },
-    { key: 'proxmox_host', label: 'Proxmox Host',      required: false },
+    { key: 'host',         label: 'Host / Hypervisor', required: false },
     { key: 'notes',        label: 'Notes',             required: false },
     { key: 'status',       label: 'Status',            required: false },
   ];
@@ -383,7 +323,7 @@ function ImportModal({ onClose, onImport, networkConfig }) {
     type:         ['type','virtual/physical','vm type','device type','asset type'],
     service:      ['service','services','apps','application','applications','app'],
     location:     ['location','loc','place','room'],
-    proxmox_host: ['proxmox_host','proxmox','proxmox host','host machine'],
+    host:         ['host','host / hypervisor','hypervisor','proxmox_host','proxmox','proxmox host','host machine','vm host'],
     notes:        ['notes','note','comment','comments','description','info'],
     status:       ['status','state','assignment'],
   };
@@ -442,7 +382,7 @@ function ImportModal({ onClose, onImport, networkConfig }) {
 
   const downloadTemplate = () => {
     const hdrs = EXPECTED_FIELDS.map(f => f.key).join(',');
-    const ex   = '192.168.0.200,My New Server,server.example.com,LXC,Docker,Garage,Proxmox1,Management container,assigned';
+    const ex   = '192.168.0.200,My New Server,server.example.com,LXC,Docker,Garage,node01,Management container,assigned';
     const blob = new Blob([`${hdrs}\n${ex}\n`], { type: 'text/csv' });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
@@ -481,7 +421,7 @@ function ImportModal({ onClose, onImport, networkConfig }) {
         _row: i + 2, _errors: errors, _warnings: warnings, _valid: errors.length === 0,
         assetName: isFree ? 'Free' : name,
         hostname, ip: ip || g('ip'), type,
-        location: g('location') || g('proxmox_host'),
+        location: g('location') || g('host'),
         apps: service, notes: g('notes'),
       };
     });
