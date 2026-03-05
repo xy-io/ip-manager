@@ -12,10 +12,10 @@ A clean, fast web app for managing your home network's static IP addresses — b
 
 ## What It Does
 
-Managing a home lab network across Proxmox hosts, LXC containers, VMs, cameras, switches, and IoT devices gets complicated fast. This tool gives you a single place to:
+Managing a home lab network across servers, VMs, containers, cameras, switches, and IoT devices gets complicated fast. This tool gives you a single place to:
 
 - **Look up any IP address** instantly by name, hostname, service, or location
-- **See what's running** on each address — service, container type, Proxmox host, physical location
+- **See what's running** on each address — service, container type, host/hypervisor, physical location
 - **Track free IPs** in your static range with one-click claiming for new servers or containers
 - **Edit any entry** — change the asset name, hostname, type, location, or service via a clean modal form
 - **Release IPs** back to the free pool when you decommission something
@@ -29,9 +29,9 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 | Range | Type |
 |---|---|
-| `.1` – `.170` | DHCP pool (managed by PiHole) |
-| `.6`, `.50` | Fixed reservations within the DHCP range |
-| `.171` – `.254` | Static assignments |
+| `.1` – `.100` | DHCP pool (managed by your router / DHCP server) |
+| `.5`, `.10` | Fixed reservations within the DHCP range |
+| `.101` – `.254` | Static assignments |
 | Green entries | Free — available to claim |
 
 All ranges are configurable — works with any subnet (192.168.x, 10.x.x, 172.16.x, etc.).
