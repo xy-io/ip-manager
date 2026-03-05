@@ -1486,7 +1486,7 @@ export default function IPAddressManager() {
                 <h3 className="font-semibold text-emerald-800 flex items-center gap-2">
                   <CircleDot className="w-4 h-4" />
                   {freeStaticIPs.length} Free Static IP Addresses
-                  <span className="text-xs font-normal text-emerald-600">(.171–.254 range)</span>
+                  <span className="text-xs font-normal text-emerald-600">(.{networkConfig.staticStart}–.{networkConfig.staticEnd} range)</span>
                 </h3>
                 <span className="text-xs text-emerald-600">Click to claim or copy</span>
               </div>
