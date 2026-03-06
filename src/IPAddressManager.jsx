@@ -866,6 +866,107 @@ function ImportModal({ onClose, onImport, networkConfig }) {
   );
 }
 
+// Bulk Edit Modal
+function BulkEditModal({ count, onApply, onClose, types, locations, allTags }) {
+  const [tagInput, setTagInput] = useState('');
+  const [pendingTags, setPendingTags] = useState([]);
+  const [setType, setSetType] = useState('');
+  const [setLocation, setSetLocation] = useState('');
+
+  const addTag = (tag) => {
+    const t = tag.trim();
+    if (t && !pendingTags.includes(t)) setPendingTags(prev => [...prev, t]);
+    setTagInput('');
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-6 border-b border-slate-100">
+          <div>
+            <h2 className="text-lg font-bold text-slate-800">Bulk Edit</h2>
+            <p className="text-sm text-slate-500 mt-0.5">{count} {count === 1 ? 'entry' : 'entries'} selected</p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
+            <X className="w-5 h-5 text-slate-500" />
+          </button>
+        </div>
+        <div className="p-6 space-y-5">
+          {/* Add Tags */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Add Tags <span className="text-slate-400 font-normal">(appended to existing tags)</span></label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400"
+                placeholder="e.g. switch, core, uplink…"
+                value={tagInput}
+                onChange={e => setTagInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addTag(tagInput); }}}
+              />
+              <button type="button" onClick={() => addTag(tagInput)} disabled={!tagInput.trim()}
+                className="px-3 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-40 text-white rounded-lg text-sm font-medium transition-colors">
+                Add
+              </button>
+            </div>
+            {allTags.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {allTags.filter(t => !pendingTags.includes(t)).map(t => (
+                  <button key={t} type="button" onClick={() => addTag(t)}
+                    className="px-2 py-0.5 text-xs bg-violet-50 text-violet-700 border border-violet-200 rounded-full hover:bg-violet-100 transition-colors">
+                    + {t}
+                  </button>
+                ))}
+              </div>
+            )}
+            {pendingTags.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {pendingTags.map(t => (
+                  <span key={t} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-violet-600 text-white rounded-full">
+                    {t}
+                    <button type="button" onClick={() => setPendingTags(prev => prev.filter(x => x !== t))} className="hover:opacity-75">×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+          {/* Set Type */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Set Type <span className="text-slate-400 font-normal">(overwrites, leave blank to keep existing)</span></label>
+            <select className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400 bg-white"
+              value={setType} onChange={e => setSetType(e.target.value)}>
+              <option value="">— keep existing —</option>
+              {['Physical', 'Virtual', 'LXC', 'Network', 'IoT', 'Camera', 'Other', ...types.filter(t => !['Physical','Virtual','LXC','Network','IoT','Camera','Other'].includes(t))].map(t => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+          </div>
+          {/* Set Location */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Set Location <span className="text-slate-400 font-normal">(overwrites, leave blank to keep existing)</span></label>
+            <select className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-teal-400 bg-white"
+              value={setLocation} onChange={e => setSetLocation(e.target.value)}>
+              <option value="">— keep existing —</option>
+              {locations.map(l => <option key={l} value={l}>{l}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="flex gap-3 px-6 pb-6">
+          <button onClick={onClose} className="flex-1 px-4 py-2.5 border border-slate-300 text-slate-600 hover:bg-slate-50 rounded-xl font-medium text-sm transition-colors">
+            Cancel
+          </button>
+          <button
+            onClick={() => onApply({ addTags: pendingTags, setType: setType || null, setLocation: setLocation || null })}
+            disabled={!pendingTags.length && !setType && !setLocation}
+            className="flex-1 px-4 py-2.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-40 text-white rounded-xl font-medium text-sm transition-colors">
+            Apply to {count} {count === 1 ? 'entry' : 'entries'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Edit Modal Component
 function EditModal({ item, onSave, onClose, onMarkFree, locations, types }) {
   const [formData, setFormData] = useState({
@@ -1339,6 +1440,42 @@ export default function IPAddressManager() {
     setTimeout(() => setCopiedIP(null), 2000);
   };
 
+  // ── Bulk selection ──────────────────────────────────────────────────────────
+  const [selectedIPs, setSelectedIPs] = useState(new Set());
+  const [showBulkEdit, setShowBulkEdit] = useState(false);
+
+  const toggleSelect = (ip, e) => {
+    e.stopPropagation();
+    setSelectedIPs(prev => {
+      const next = new Set(prev);
+      next.has(ip) ? next.delete(ip) : next.add(ip);
+      return next;
+    });
+  };
+
+  const selectAll = () => setSelectedIPs(new Set(sortedData.map(i => i.ip)));
+  const clearSelection = () => setSelectedIPs(new Set());
+
+  const handleBulkEdit = ({ addTags, setType, setLocation }) => {
+    setIpData(prev => prev.map(item => {
+      if (!selectedIPs.has(item.ip)) return item;
+      const updated = { ...item, updatedAt: new Date().toISOString() };
+      if (addTags?.length) updated.tags = [...new Set([...(item.tags || []), ...addTags])];
+      if (setType)     updated.type     = setType;
+      if (setLocation) updated.location = setLocation;
+      return updated;
+    }));
+    setHasChanges(true);
+    clearSelection();
+    setShowBulkEdit(false);
+  };
+
+  const handleBulkRelease = () => {
+    setIpData(prev => prev.filter(item => !selectedIPs.has(item.ip)));
+    setHasChanges(true);
+    clearSelection();
+  };
+
   const handleSaveItem = (updatedItem) => {
     const stamped = { ...updatedItem, updatedAt: new Date().toISOString() };
     setIpData(prev => {
@@ -1442,6 +1579,17 @@ export default function IPAddressManager() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       {/* Settings Modal */}
+      {showBulkEdit && (
+        <BulkEditModal
+          count={selectedIPs.size}
+          onApply={handleBulkEdit}
+          onClose={() => setShowBulkEdit(false)}
+          types={types}
+          locations={locations}
+          allTags={allTags}
+        />
+      )}
+
       {showSettings && (
         <SettingsModal
           config={networkConfig}
@@ -1667,6 +1815,37 @@ export default function IPAddressManager() {
             </div>
           )}
 
+          {/* Bulk Selection Bar */}
+          {selectedIPs.size > 0 && (
+            <div className="flex items-center gap-3 px-4 py-3 bg-violet-50 border border-violet-200 rounded-xl">
+              <span className="text-sm font-semibold text-violet-800">
+                {selectedIPs.size} selected
+              </span>
+              <div className="flex items-center gap-2 ml-auto">
+                <button onClick={selectAll} className="text-xs text-violet-600 hover:text-violet-800 underline underline-offset-2">
+                  Select all ({sortedData.length})
+                </button>
+                <button onClick={clearSelection} className="text-xs text-slate-500 hover:text-slate-700 underline underline-offset-2">
+                  Clear
+                </button>
+                <button
+                  onClick={() => setShowBulkEdit(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium rounded-lg transition-colors"
+                >
+                  <Tag className="w-3.5 h-3.5" />
+                  Bulk Edit
+                </button>
+                <button
+                  onClick={handleBulkRelease}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 text-sm font-medium rounded-lg transition-colors"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Release
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Search and Filters */}
           <div className="flex flex-wrap gap-3 items-center">
             <div className="relative flex-1 min-w-64">
@@ -1766,26 +1945,43 @@ export default function IPAddressManager() {
               const isDHCP = isInDHCPRangeConfig(item.ip);
               const isFixed = isFixedInDHCPConfig(item.ip);
 
+              const isSelected = selectedIPs.has(item.ip);
               return (
                 <div
                   key={item.ip}
-                  onClick={() => setExpandedCard(isExpanded ? null : index)}
+                  onClick={() => selectedIPs.size > 0 ? toggleSelect(item.ip, { stopPropagation: () => {} }) : setExpandedCard(isExpanded ? null : index)}
                   className={`rounded-xl border transition-all ${
-                    isFree
-                      ? 'bg-emerald-50 border-emerald-300 border-2 cursor-pointer hover:bg-emerald-100'
-                      : isReserved
-                        ? 'bg-white border-dashed border-slate-200 opacity-60 cursor-pointer'
-                        : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-md cursor-pointer'
-                  } ${isExpanded ? 'ring-2 ring-slate-400' : ''}`}
+                    isSelected
+                      ? 'bg-violet-50 border-violet-400 border-2 ring-2 ring-violet-300 cursor-pointer'
+                      : isFree
+                        ? 'bg-emerald-50 border-emerald-300 border-2 cursor-pointer hover:bg-emerald-100'
+                        : isReserved
+                          ? 'bg-white border-dashed border-slate-200 opacity-60 cursor-pointer'
+                          : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-md cursor-pointer'
+                  } ${isExpanded && !selectedIPs.size ? 'ring-2 ring-slate-400' : ''}`}
                 >
                   <div className="p-4">
                     <div className="flex items-start justify-between mb-3">
-                      <div className={`p-2 rounded-lg ${isFree ? 'bg-emerald-200' : isReserved ? 'bg-slate-50' : 'bg-slate-100'}`}>
-                        {isFree ? (
-                          <CircleDot className="w-5 h-5 text-emerald-600" />
-                        ) : (
-                          <Icon className={`w-5 h-5 ${isReserved ? 'text-slate-300' : 'text-slate-600'}`} />
-                        )}
+                      <div className="flex items-start gap-2">
+                        {/* Selection checkbox — always visible on hover, solid when selected */}
+                        <div
+                          onClick={e => toggleSelect(item.ip, e)}
+                          className={`mt-0.5 w-4 h-4 rounded border-2 flex-shrink-0 cursor-pointer flex items-center justify-center transition-all
+                            ${isSelected
+                              ? 'bg-violet-600 border-violet-600'
+                              : 'border-slate-300 hover:border-violet-400 bg-white opacity-0 group-hover:opacity-100'
+                            }`}
+                          style={{ opacity: isSelected ? 1 : undefined }}
+                        >
+                          {isSelected && <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />}
+                        </div>
+                        <div className={`p-2 rounded-lg ${isFree ? 'bg-emerald-200' : isReserved ? 'bg-slate-50' : 'bg-slate-100'}`}>
+                          {isFree ? (
+                            <CircleDot className="w-5 h-5 text-emerald-600" />
+                          ) : (
+                            <Icon className={`w-5 h-5 ${isReserved ? 'text-slate-300' : 'text-slate-600'}`} />
+                          )}
+                        </div>
                       </div>
                       <div className="flex gap-1.5">
                         {isFree && (
@@ -1963,6 +2159,13 @@ export default function IPAddressManager() {
               <table className="w-full">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
+                    <th className="px-4 py-3 w-10">
+                      <input type="checkbox"
+                        className="w-4 h-4 rounded border-slate-300 accent-violet-600 cursor-pointer"
+                        checked={sortedData.length > 0 && sortedData.every(i => selectedIPs.has(i.ip))}
+                        onChange={e => e.target.checked ? selectAll() : clearSelection()}
+                      />
+                    </th>
                     {[
                       { label: 'IP Address', field: 'ip' },
                       { label: 'Asset Name', field: 'assetName' },
@@ -1995,13 +2198,23 @@ export default function IPAddressManager() {
                       <tr
                         key={item.ip}
                         className={`transition-colors ${
-                          isFree
-                            ? 'bg-emerald-50 hover:bg-emerald-100'
-                            : isReserved
-                              ? 'opacity-50 hover:bg-slate-50'
-                              : 'hover:bg-slate-50'
+                          selectedIPs.has(item.ip)
+                            ? 'bg-violet-50'
+                            : isFree
+                              ? 'bg-emerald-50 hover:bg-emerald-100'
+                              : isReserved
+                                ? 'opacity-50 hover:bg-slate-50'
+                                : 'hover:bg-slate-50'
                         }`}
                       >
+                        <td className="px-4 py-3 w-10">
+                          <input type="checkbox"
+                            className="w-4 h-4 rounded border-slate-300 accent-violet-600 cursor-pointer"
+                            checked={selectedIPs.has(item.ip)}
+                            onChange={e => toggleSelect(item.ip, e)}
+                            onClick={e => e.stopPropagation()}
+                          />
+                        </td>
                         <td className="px-4 py-3">
                           <button
                             onClick={() => copyToClipboard(item.ip)}
