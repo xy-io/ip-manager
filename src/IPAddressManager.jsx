@@ -377,6 +377,24 @@ const getTypeColor = (type) => {
   return 'bg-gray-100 text-gray-500 border-gray-200';
 };
 
+const TRACKED_FIELDS = [
+  { key: 'assetName', label: 'Name' },
+  { key: 'hostname',  label: 'Hostname' },
+  { key: 'type',      label: 'Type' },
+  { key: 'location',  label: 'Location' },
+  { key: 'apps',      label: 'Service' },
+  { key: 'notes',     label: 'Notes' },
+  { key: 'tags',      label: 'Tags' },
+];
+
+const computeDiff = (oldItem, newItem) =>
+  TRACKED_FIELDS.reduce((acc, { key, label }) => {
+    const oldVal = key === 'tags' ? (oldItem[key] || []).join(', ') : (oldItem[key] || '');
+    const newVal = key === 'tags' ? (newItem[key] || []).join(', ') : (newItem[key] || '');
+    if (oldVal !== newVal) acc.push({ label, old: oldVal, new: newVal });
+    return acc;
+  }, []);
+
 const getLocationColor = (location) => {
   const colors = {
     'Garage': 'bg-amber-100 text-amber-800',
@@ -1457,13 +1475,17 @@ export default function IPAddressManager() {
   const clearSelection = () => setSelectedIPs(new Set());
 
   const handleBulkEdit = ({ addTags, setType, setLocation }) => {
+    const now = new Date().toISOString();
     setIpData(prev => prev.map(item => {
       if (!selectedIPs.has(item.ip)) return item;
-      const updated = { ...item, updatedAt: new Date().toISOString() };
+      const updated = { ...item, updatedAt: now };
       if (addTags?.length) updated.tags = [...new Set([...(item.tags || []), ...addTags])];
       if (setType)     updated.type     = setType;
       if (setLocation) updated.location = setLocation;
-      return updated;
+      const changes = computeDiff(item, updated);
+      const entry = { ts: now, changes, bulk: true };
+      const history = [...(item.history || []), entry].slice(-20);
+      return { ...updated, history };
     }));
     setHasChanges(true);
     clearSelection();
@@ -1477,12 +1499,21 @@ export default function IPAddressManager() {
   };
 
   const handleSaveItem = (updatedItem) => {
-    const stamped = { ...updatedItem, updatedAt: new Date().toISOString() };
+    const now = new Date().toISOString();
+    const stamped = { ...updatedItem, updatedAt: now };
     setIpData(prev => {
-      const exists = prev.some(item => item.ip === stamped.ip);
-      return exists
-        ? prev.map(item => item.ip === stamped.ip ? stamped : item)
-        : [...prev, stamped];
+      const existing = prev.find(item => item.ip === stamped.ip);
+      if (existing) {
+        const changes = computeDiff(existing, stamped);
+        const entry = changes.length
+          ? { ts: now, changes }
+          : { ts: now, changes: [{ label: 'Saved', old: '', new: '(no changes)' }] };
+        const history = [...(existing.history || []), entry].slice(-20);
+        return prev.map(item => item.ip === stamped.ip ? { ...stamped, history } : item);
+      }
+      // New entry — record creation
+      const history = [{ ts: now, changes: [{ label: 'Created', old: '', new: stamped.ip }] }];
+      return [...prev, { ...stamped, history }];
     });
     setHasChanges(true);
     setEditingItem(null);
@@ -2113,6 +2144,31 @@ export default function IPAddressManager() {
                             </div>
                           )}
                         </div>
+                        {(item.history || []).length > 0 && (
+                          <div className="col-span-2 mt-1">
+                            <div className="text-slate-400 text-xs uppercase tracking-wide mb-2">Change History</div>
+                            <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                              {[...(item.history || [])].reverse().map((entry, i) => (
+                                <div key={i} className="text-xs">
+                                  <span className="text-slate-400">{new Date(entry.ts).toLocaleString()}</span>
+                                  {entry.bulk && <span className="ml-1 px-1 py-0.5 bg-violet-100 text-violet-600 rounded text-[10px] font-medium">bulk</span>}
+                                  <div className="mt-0.5 space-y-0.5">
+                                    {entry.changes.map((c, j) => (
+                                      <div key={j} className="flex items-start gap-1 text-slate-600">
+                                        <span className="font-medium text-slate-500 min-w-[52px]">{c.label}:</span>
+                                        {c.old
+                                          ? <><span className="line-through text-slate-400 truncate max-w-[100px]">{c.old}</span><span className="text-slate-400 mx-0.5">→</span><span className="text-slate-700 truncate max-w-[100px]">{c.new}</span></>
+                                          : <span className="text-slate-700">{c.new}</span>
+                                        }
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
                         <div className="flex gap-2 mt-3">
                           <button
                             onClick={(e) => {
