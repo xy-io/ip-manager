@@ -370,7 +370,12 @@ const subnetCIDR = (subnet) =>
 // "172.16.0.0/16" → "172.16",  "172.16.2.0" → "172.16.2",  "172.16" → "172.16"
 const normaliseSubnet = (raw) => {
   const parts = raw.trim().replace(/\/\d+$/, '').split('.');
-  while (parts.length > 2 && parts[parts.length - 1] === '0') parts.pop();
+  // Only strip trailing zero octets when the user typed a full 4-octet address
+  // (e.g. 192.168.1.0 → 192.168.1, 172.16.0.0 → 172.16).
+  // A valid 3-octet /24 prefix such as 192.168.0 must NOT be altered.
+  if (parts.length === 4) {
+    while (parts.length > 2 && parts[parts.length - 1] === '0') parts.pop();
+  }
   return parts.join('.');
 };
 
@@ -993,12 +998,13 @@ export default function IPAddressManager() {
   // Persistence mode — 'loading' until API check completes, then 'api' or 'local'
   const [persistMode, setPersistMode] = useState('loading');
 
-  // Network config state — seeded from localStorage for instant render, overridden by API if available
-  const [networkConfig, setNetworkConfig] = useState(loadNetworkConfig);
+  // Network config and IP data — start empty to avoid a flash of stale/default
+  // data before the API check completes.  The useEffect below populates both
+  // from the API (SQLite) on first render, or falls back to localStorage.
+  const [networkConfig, setNetworkConfig] = useState(DEFAULT_NETWORK_CONFIG);
   const [showSettings, setShowSettings] = useState(false);
 
-  // IP data — seeded from localStorage for instant render, overridden by API if available
-  const [ipData, setIpData] = useState(loadIpData);
+  const [ipData, setIpData] = useState([]);
   const [hasChanges, setHasChanges] = useState(false);
   const [showImport, setShowImport] = useState(false);
 
@@ -1046,6 +1052,9 @@ export default function IPAddressManager() {
           setPersistMode('local');
         }
       } else {
+        // No API — load from localStorage (or default dataset) now
+        setIpData(loadIpData());
+        setNetworkConfig({ ...DEFAULT_NETWORK_CONFIG, ...loadNetworkConfig() });
         setPersistMode('local');
       }
     })();
@@ -1115,11 +1124,20 @@ export default function IPAddressManager() {
   }, [ipData]);
 
   const freeStaticIPs = useMemo(() => {
-    return ipData
-      .filter(item => item.assetName === 'Free')
-      .map(item => item.ip)
-      .sort((a, b) => ipOrdinal(a, networkConfig.subnet) - ipOrdinal(b, networkConfig.subnet));
-  }, [ipData, networkConfig.subnet]);
+    const subnet = networkConfig.subnet;
+    const is16   = subnetOctetCount(subnet) === 2;
+    const startOrd = rangeOrdinal(networkConfig.staticStart, subnet);
+    const endOrd   = rangeOrdinal(networkConfig.staticEnd,   subnet);
+    const assignedIPs = new Set(ipData.map(item => item.ip));
+    const free = [];
+    for (let ord = startOrd; ord <= endOrd; ord++) {
+      const ip = is16
+        ? `${subnet}.${Math.floor(ord / 256)}.${ord % 256}`
+        : `${subnet}.${ord}`;
+      if (!assignedIPs.has(ip)) free.push(ip);
+    }
+    return free;
+  }, [ipData, networkConfig]);
 
   const freeIPRanges = useMemo(() => groupIPsIntoRanges(freeStaticIPs, networkConfig.subnet), [freeStaticIPs, networkConfig.subnet]);
 
@@ -1524,7 +1542,7 @@ export default function IPAddressManager() {
                   <div className="mt-3 pt-3 border-t border-emerald-200 flex items-center gap-4">
                     <span className="text-sm text-emerald-700">Quick claim: </span>
                     <button
-                      onClick={() => setEditingItem(ipData.find(i => i.ip === freeStaticIPs[0]))}
+                      onClick={() => setEditingItem({ ip: freeStaticIPs[0], assetName: '', hostname: '', type: 'Physical', location: '', apps: '', notes: '', tags: [] })}
                       className="flex items-center gap-1 font-mono text-sm font-semibold text-emerald-800 hover:text-emerald-600"
                     >
                       <Plus className="w-4 h-4" />
@@ -1533,7 +1551,7 @@ export default function IPAddressManager() {
                   </div>
                 </>
               ) : (
-                <p className="text-emerald-700 text-sm">No free static IPs available. Release an IP to make it available.</p>
+                <p className="text-emerald-700 text-sm">No free static IPs available. All IPs in the static range are assigned.</p>
               )}
             </div>
           )}
