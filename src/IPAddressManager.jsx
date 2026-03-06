@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx';
 
 // Default network configuration (overridden by Settings modal / localStorage)
 const DEFAULT_NETWORK_CONFIG = {
+  id: 'net-1',
   networkName: "Home Network",
   subnet: "192.168.0",
   dhcpStart: 1,
@@ -13,13 +14,28 @@ const DEFAULT_NETWORK_CONFIG = {
   fixedInDHCP: [6, 50],
 };
 
-// Load saved config from localStorage, falling back to defaults
+// Load saved config from localStorage, falling back to defaults (kept for migration)
 function loadNetworkConfig() {
   try {
     const saved = localStorage.getItem('ip-manager-network-config');
     if (saved) return { ...DEFAULT_NETWORK_CONFIG, ...JSON.parse(saved) };
   } catch {}
   return { ...DEFAULT_NETWORK_CONFIG };
+}
+
+// Load networks array from localStorage; migrates old single-config format automatically
+function loadNetworks() {
+  try {
+    const saved = localStorage.getItem('ip-manager-networks');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+    // Migrate: wrap old single network config in an array
+    const old = loadNetworkConfig();
+    return [{ ...DEFAULT_NETWORK_CONFIG, ...old, id: old.id || 'net-1' }];
+  } catch {}
+  return [{ ...DEFAULT_NETWORK_CONFIG }];
 }
 
 // Format an ISO date string into a short readable date (e.g. "5 Mar 2026")
@@ -29,7 +45,7 @@ function formatDate(iso) {
 }
 
 // Settings Modal Component
-function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLocation, onDeleteLocation }) {
+function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLocation, onDeleteLocation, canDeleteNetwork, onDeleteNetwork }) {
   const [form, setForm] = useState({
     networkName: config.networkName,
     subnet: config.subnet,
@@ -41,6 +57,7 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
   });
   const [error, setError] = useState('');
   const [confirmClear, setConfirmClear] = useState(false);
+  const [confirmDeleteNetwork, setConfirmDeleteNetwork] = useState(false);
   const [editingLoc, setEditingLoc] = useState(null); // { old, draft }
   const [newLocation, setNewLocation] = useState('');
 
@@ -244,6 +261,40 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
           {/* Danger Zone */}
           <div className="pt-2 border-t border-slate-200">
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Danger Zone</p>
+
+            {/* Delete Network (only shown when >1 network exists) */}
+            {canDeleteNetwork && (
+              <div className="mb-3">
+                {!confirmDeleteNetwork ? (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDeleteNetwork(true)}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-orange-300 text-orange-600 hover:bg-orange-50 font-medium rounded-lg transition-colors text-sm"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Delete This Network
+                  </button>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="flex items-start gap-2 p-3 bg-orange-50 border border-orange-200 rounded-lg text-sm text-orange-700">
+                      <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                      <span>This will delete this network and all its IP entries. This cannot be undone.</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => setConfirmDeleteNetwork(false)}
+                        className="flex-1 px-4 py-2 border border-slate-300 text-slate-600 hover:bg-slate-50 rounded-lg transition-colors text-sm font-medium">
+                        Cancel
+                      </button>
+                      <button type="button" onClick={onDeleteNetwork}
+                        className="flex-1 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors text-sm font-medium">
+                        Yes, Delete Network
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {!confirmClear ? (
               <button
                 type="button"
@@ -1173,10 +1224,11 @@ export default function IPAddressManager() {
   // Persistence mode — 'loading' until API check completes, then 'api' or 'local'
   const [persistMode, setPersistMode] = useState('loading');
 
-  // Network config and IP data — start empty to avoid a flash of stale/default
-  // data before the API check completes.  The useEffect below populates both
-  // from the API (SQLite) on first render, or falls back to localStorage.
-  const [networkConfig, setNetworkConfig] = useState(DEFAULT_NETWORK_CONFIG);
+  // Multi-network state.  `networks` is an array of network configs; the active
+  // one is derived in a memo below.  Both start with safe defaults and are
+  // populated by the mount effect once the API check resolves.
+  const [networks, setNetworks] = useState([{ ...DEFAULT_NETWORK_CONFIG }]);
+  const [activeNetworkId, setActiveNetworkId] = useState('net-1');
   const [showSettings, setShowSettings] = useState(false);
 
   const [ipData, setIpData] = useState([]);
@@ -1204,32 +1256,49 @@ export default function IPAddressManager() {
       const hasApi = await detectApi();
       if (hasApi) {
         try {
-          const [ipsJson, configJson] = await Promise.all([
+          const [ipsJson, networksJson] = await Promise.all([
             apiGet('/api/ips'),
-            apiGet('/api/config'),
+            apiGet('/api/networks').catch(() => ({ data: null })),
           ]);
-          // Seed DB with localStorage data if the server has nothing yet
+
+          // ── IP data ──────────────────────────────────────────────────────
           if (ipsJson.data) {
-            setIpData(ipsJson.data);
+            // Migrate legacy entries that have no networkId → assign to net-1
+            const migrated = ipsJson.data.map(item =>
+              item.networkId ? item : { ...item, networkId: 'net-1' }
+            );
+            setIpData(migrated);
           } else {
-            // First run on this server — push local data up
-            const local = loadIpData();
+            // First run on this server — push local data up (tagged to net-1)
+            const local = loadIpData().map(item => ({ ...item, networkId: 'net-1' }));
             await apiPut('/api/ips', local);
           }
-          if (configJson.data) {
-            setNetworkConfig({ ...DEFAULT_NETWORK_CONFIG, ...configJson.data });
+
+          // ── Networks config ──────────────────────────────────────────────
+          if (networksJson.data && Array.isArray(networksJson.data) && networksJson.data.length > 0) {
+            setNetworks(networksJson.data);
+            setActiveNetworkId(networksJson.data[0].id);
           } else {
-            const local = loadNetworkConfig();
-            await apiPut('/api/config', local);
+            // Try migrating old single-config endpoint
+            const configJson = await apiGet('/api/config').catch(() => ({ data: null }));
+            const migrated = configJson?.data
+              ? [{ ...DEFAULT_NETWORK_CONFIG, ...configJson.data, id: 'net-1' }]
+              : [{ ...DEFAULT_NETWORK_CONFIG }];
+            setNetworks(migrated);
+            await apiPut('/api/networks', migrated);
           }
+
           setPersistMode('api');
         } catch {
           setPersistMode('local');
         }
       } else {
-        // No API — load from localStorage (or default dataset) now
-        setIpData(loadIpData());
-        setNetworkConfig({ ...DEFAULT_NETWORK_CONFIG, ...loadNetworkConfig() });
+        // No API — load from localStorage with migration
+        const savedNetworks = loadNetworks();
+        const savedIps = loadIpData().map(item => ({ ...item, networkId: item.networkId || 'net-1' }));
+        setIpData(savedIps);
+        setNetworks(savedNetworks);
+        setActiveNetworkId(savedNetworks[0]?.id || 'net-1');
         setPersistMode('local');
       }
     })();
@@ -1245,15 +1314,15 @@ export default function IPAddressManager() {
     }
   }, [ipData, persistMode]);
 
-  // ── Auto-save network config ────────────────────────────────────────────────
+  // ── Auto-save networks array ────────────────────────────────────────────────
   useEffect(() => {
     if (persistMode === 'loading') return;
     if (persistMode === 'api') {
-      apiPut('/api/config', networkConfig).catch(() => {});
+      apiPut('/api/networks', networks).catch(() => {});
     } else {
-      try { localStorage.setItem('ip-manager-network-config', JSON.stringify(networkConfig)); } catch {}
+      try { localStorage.setItem('ip-manager-networks', JSON.stringify(networks)); } catch {}
     }
-  }, [networkConfig, persistMode]);
+  }, [networks, persistMode]);
 
   // ── Keyboard shortcuts ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -1284,20 +1353,35 @@ export default function IPAddressManager() {
     return () => window.removeEventListener('keydown', handler);
   }, [editingItem, showSettings, showImport, expandedCard, searchTerm]);
 
-  // Derived data
+  // ── Derived network state ────────────────────────────────────────────────────
+
+  // Active network config — derived from networks array for backward compat
+  const networkConfig = useMemo(
+    () => networks.find(n => n.id === activeNetworkId) || networks[0] || DEFAULT_NETWORK_CONFIG,
+    [networks, activeNetworkId]
+  );
+
+  // IP data scoped to the active network.
+  // Backward compat: entries without a networkId are treated as belonging to net-1.
+  const networkIpData = useMemo(
+    () => ipData.filter(item => !item.networkId || item.networkId === activeNetworkId),
+    [ipData, activeNetworkId]
+  );
+
+  // Derived data (all scoped to the active network via networkIpData)
   const locations = useMemo(() => {
-    const fromData = getUniqueValues(ipData, 'location');
+    const fromData = getUniqueValues(networkIpData, 'location');
     const extra = networkConfig.extraLocations || [];
     return [...new Set([...fromData, ...extra])].filter(Boolean).sort();
-  }, [ipData, networkConfig.extraLocations]);
+  }, [networkIpData, networkConfig.extraLocations]);
 
-  const types = useMemo(() => getUniqueValues(ipData, 'type'), [ipData]);
+  const types = useMemo(() => getUniqueValues(networkIpData, 'type'), [networkIpData]);
 
   const allTags = useMemo(() => {
     const set = new Set();
-    ipData.forEach(item => (item.tags || []).forEach(t => t && set.add(t)));
+    networkIpData.forEach(item => (item.tags || []).forEach(t => t && set.add(t)));
     return Array.from(set).sort();
-  }, [ipData]);
+  }, [networkIpData]);
 
   const freeStaticIPs = useMemo(() => {
     const subnet = networkConfig.subnet;
@@ -1306,9 +1390,9 @@ export default function IPAddressManager() {
     const endOrd   = rangeOrdinal(networkConfig.staticEnd,   subnet);
     // Exclude legacy 'Free' entries — older databases stored released IPs
     // as assetName==='Free' rows; with the new range-based model they are
-    // simply absent from ipData.  Treat them as unassigned for compatibility.
+    // simply absent from networkIpData.  Treat them as unassigned for compatibility.
     const assignedIPs = new Set(
-      ipData.filter(item => item.assetName !== 'Free').map(item => item.ip)
+      networkIpData.filter(item => item.assetName !== 'Free').map(item => item.ip)
     );
     const free = [];
     for (let ord = startOrd; ord <= endOrd; ord++) {
@@ -1318,21 +1402,21 @@ export default function IPAddressManager() {
       if (!assignedIPs.has(ip)) free.push(ip);
     }
     return free;
-  }, [ipData, networkConfig]);
+  }, [networkIpData, networkConfig]);
 
   const freeIPRanges = useMemo(() => groupIPsIntoRanges(freeStaticIPs, networkConfig.subnet), [freeStaticIPs, networkConfig.subnet]);
 
   // Merge assigned entries with synthetic Free entries so free IPs appear in
-  // search, cards, and table views. Legacy assetName==='Free' rows in ipData
+  // search, cards, and table views. Legacy assetName==='Free' rows in networkIpData
   // are dropped to avoid duplicates (freeStaticIPs already covers them).
   const allDisplayData = useMemo(() => {
-    const assigned = ipData.filter(item => item.assetName !== 'Free');
+    const assigned = networkIpData.filter(item => item.assetName !== 'Free');
     const freeEntries = freeStaticIPs.map(ip => ({
       ip, assetName: 'Free', hostname: '', type: '', location: '',
       apps: '', notes: '', tags: [], updatedAt: null,
     }));
     return [...assigned, ...freeEntries];
-  }, [ipData, freeStaticIPs]);
+  }, [networkIpData, freeStaticIPs]);
 
   const filteredData = useMemo(() => {
     return allDisplayData.filter(item => {
@@ -1381,8 +1465,8 @@ export default function IPAddressManager() {
   }, [filteredData, sortField, sortDir]);
 
   const stats = useMemo(() => {
-    const active = ipData.filter(i => i.assetName !== 'Reserved' && i.assetName !== 'Free');
-    const staticAssigned = ipData.filter(i => {
+    const active = networkIpData.filter(i => i.assetName !== 'Reserved' && i.assetName !== 'Free');
+    const staticAssigned = networkIpData.filter(i => {
       const ord = ipOrdinal(i.ip, networkConfig.subnet);
       return ord >= rangeOrdinal(networkConfig.staticStart, networkConfig.subnet) &&
              ord <= rangeOrdinal(networkConfig.staticEnd, networkConfig.subnet) &&
@@ -1392,16 +1476,16 @@ export default function IPAddressManager() {
                      rangeOrdinal(networkConfig.dhcpStart, networkConfig.subnet) + 1 -
                      networkConfig.fixedInDHCP.length;
     return {
-      total: ipData.length,
+      total: networkIpData.length,
       active: active.length,
       virtual: active.filter(i => i.type === 'Virtual').length,
       physical: active.filter(i => i.type === 'Physical').length,
-      reserved: ipData.filter(i => i.assetName === 'Reserved').length,
+      reserved: networkIpData.filter(i => i.assetName === 'Reserved').length,
       freeStatic: freeStaticIPs.length,
       staticAssigned: staticAssigned.length,
       dhcpPoolSize: dhcpSize,
     };
-  }, [ipData, freeStaticIPs, networkConfig]);
+  }, [networkIpData, freeStaticIPs, networkConfig]);
 
   // Actions
   const handleSort = (field) => {
@@ -1428,11 +1512,12 @@ export default function IPAddressManager() {
   const handleRenameLocation = (oldName, newName) => {
     if (!newName || newName === oldName) return;
     if (oldName === null) {
-      // Add to the managed extra-locations list stored in networkConfig
-      setNetworkConfig(prev => ({
-        ...prev,
-        extraLocations: [...new Set([...(prev.extraLocations || []), newName])],
-      }));
+      // Add to the managed extra-locations list stored in the active network config
+      setNetworks(prev => prev.map(n =>
+        n.id === activeNetworkId
+          ? { ...n, extraLocations: [...new Set([...(n.extraLocations || []), newName])] }
+          : n
+      ));
       return;
     }
     setIpData(prev =>
@@ -1511,9 +1596,9 @@ export default function IPAddressManager() {
         const history = [...(existing.history || []), entry].slice(-20);
         return prev.map(item => item.ip === stamped.ip ? { ...stamped, history } : item);
       }
-      // New entry — record creation
+      // New entry — record creation and stamp with active network
       const history = [{ ts: now, changes: [{ label: 'Created', old: '', new: stamped.ip }] }];
-      return [...prev, { ...stamped, history }];
+      return [...prev, { ...stamped, history, networkId: activeNetworkId }];
     });
     setHasChanges(true);
     setEditingItem(null);
@@ -1567,12 +1652,15 @@ export default function IPAddressManager() {
   };
 
   const handleImport = async (rows, mode) => {
+    // Tag all incoming rows with the active network
+    const taggedRows = rows.map(r => ({ ...r, networkId: activeNetworkId }));
+
     if (persistMode === 'api') {
       try {
         await fetch('/api/import', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ rows, mode }),
+          body: JSON.stringify({ rows: taggedRows, mode, networkId: activeNetworkId }),
         });
         // Refresh from server so UI is in sync
         const fresh = await apiGet('/api/ips');
@@ -1580,11 +1668,15 @@ export default function IPAddressManager() {
       } catch {}
     } else {
       if (mode === 'replace') {
-        setIpData(rows);
+        // Replace only entries belonging to the active network; keep other networks intact
+        setIpData(prev => [
+          ...prev.filter(item => item.networkId !== activeNetworkId),
+          ...taggedRows,
+        ]);
       } else {
         setIpData(prev => {
           const map = new Map(prev.map(r => [r.ip, r]));
-          rows.forEach(r => map.set(r.ip, r));
+          taggedRows.forEach(r => map.set(r.ip, r));
           return Array.from(map.values()).sort((a, b) =>
             ipOrdinal(a.ip, networkConfig.subnet) - ipOrdinal(b.ip, networkConfig.subnet)
           );
@@ -1592,6 +1684,36 @@ export default function IPAddressManager() {
       }
       setHasChanges(true);
     }
+  };
+
+  // ── Multi-network management ────────────────────────────────────────────────
+  const handleAddNetwork = () => {
+    const newId = `net-${Date.now()}`;
+    const newNet = {
+      ...DEFAULT_NETWORK_CONFIG,
+      id: newId,
+      networkName: `Network ${networks.length + 1}`,
+      subnet: '10.0.0',
+      dhcpStart: 1,
+      dhcpEnd: 100,
+      staticStart: 101,
+      staticEnd: 254,
+      fixedInDHCP: [],
+    };
+    setNetworks(prev => [...prev, newNet]);
+    setActiveNetworkId(newId);
+    // Clear filters so the new (empty) network view is clean
+    clearFilters();
+    setShowSettings(true); // Let user configure the new network immediately
+  };
+
+  const handleDeleteNetwork = () => {
+    if (networks.length <= 1) return;
+    const remaining = networks.filter(n => n.id !== activeNetworkId);
+    setNetworks(remaining);
+    setIpData(prev => prev.filter(item => item.networkId !== activeNetworkId));
+    setActiveNetworkId(remaining[0]?.id || 'net-1');
+    setShowSettings(false);
   };
 
   const hasActiveFilters = searchTerm || selectedType || selectedLocation || selectedTag;
@@ -1624,12 +1746,24 @@ export default function IPAddressManager() {
       {showSettings && (
         <SettingsModal
           config={networkConfig}
-          onSave={(cfg) => { setNetworkConfig(cfg); setShowSettings(false); }}
+          onSave={(cfg) => {
+            setNetworks(prev => prev.map(n =>
+              n.id === activeNetworkId ? { ...n, ...cfg, id: activeNetworkId } : n
+            ));
+            setShowSettings(false);
+          }}
           onClose={() => setShowSettings(false)}
-          onClear={() => { setIpData([]); setHasChanges(true); setShowSettings(false); }}
+          onClear={() => {
+            // Only clear IP entries that belong to the active network
+            setIpData(prev => prev.filter(item => item.networkId !== activeNetworkId));
+            setHasChanges(true);
+            setShowSettings(false);
+          }}
           locations={locations}
           onRenameLocation={handleRenameLocation}
           onDeleteLocation={handleDeleteLocation}
+          canDeleteNetwork={networks.length > 1}
+          onDeleteNetwork={handleDeleteNetwork}
         />
       )}
 
@@ -1657,6 +1791,36 @@ export default function IPAddressManager() {
       {/* Header */}
       <div className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-4">
+
+          {/* Network Tabs — shown whenever there are multiple networks */}
+          {networks.length > 1 && (
+            <div className="flex items-center gap-1 mb-3 flex-wrap">
+              {networks.map(net => (
+                <button
+                  key={net.id}
+                  onClick={() => { setActiveNetworkId(net.id); clearFilters(); }}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+                    net.id === activeNetworkId
+                      ? 'bg-slate-800 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {net.networkName}
+                  <span className={`ml-1.5 text-xs font-mono ${net.id === activeNetworkId ? 'text-slate-300' : 'text-slate-400'}`}>
+                    {subnetCIDR(net.subnet)}
+                  </span>
+                </button>
+              ))}
+              <button
+                onClick={handleAddNetwork}
+                title="Add another network"
+                className="px-3 py-1.5 text-sm font-medium rounded-lg bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-600 border border-dashed border-slate-300 transition-colors"
+              >
+                + Add Network
+              </button>
+            </div>
+          )}
+
           <div className="flex items-center justify-between mb-4">
             <div>
               <h1 className="text-2xl font-bold text-slate-800">IP Address Manager</h1>
@@ -1696,6 +1860,16 @@ export default function IPAddressManager() {
                 <Download className="w-4 h-4" />
                 Export
               </button>
+              {networks.length === 1 && (
+                <button
+                  onClick={handleAddNetwork}
+                  className="flex items-center gap-2 px-3 py-2 bg-slate-50 hover:bg-slate-100 text-slate-500 font-medium rounded-lg border border-dashed border-slate-300 transition-colors text-sm"
+                  title="Add another network (e.g. a VLAN or IoT segment)"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add Network
+                </button>
+              )}
               <button
                 onClick={() => setShowSettings(true)}
                 className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium rounded-lg transition-colors"
