@@ -53,7 +53,7 @@ app.put('/api/ips', (req, res) => {
   res.json({ ok: true });
 });
 
-// Network config
+// Network config (legacy single-config endpoint — kept for migration)
 app.get('/api/config', (req, res) => {
   const data = dbGet('network_config');
   res.json({ data }); // null if not yet saved — client falls back to defaults
@@ -67,9 +67,23 @@ app.put('/api/config', (req, res) => {
   res.json({ ok: true });
 });
 
-// Import — merge or replace IP data
+// Networks array (multi-network support — supersedes /api/config)
+app.get('/api/networks', (req, res) => {
+  const data = dbGet('networks');
+  res.json({ data }); // null until first save — client migrates from /api/config
+});
+
+app.put('/api/networks', (req, res) => {
+  if (!Array.isArray(req.body)) {
+    return res.status(400).json({ error: 'Expected an array of network configs' });
+  }
+  dbSet('networks', req.body);
+  res.json({ ok: true });
+});
+
+// Import — merge or replace IP data (network-aware)
 app.post('/api/import', (req, res) => {
-  const { rows, mode } = req.body;
+  const { rows, mode, networkId } = req.body;
   if (!Array.isArray(rows)) {
     return res.status(400).json({ error: 'Expected rows array' });
   }
@@ -82,7 +96,14 @@ app.post('/api/import', (req, res) => {
     });
 
   if (mode === 'replace') {
-    dbSet('ip_data', sortByIp(rows));
+    if (networkId) {
+      // Replace only entries belonging to this network; leave other networks intact
+      const current = dbGet('ip_data') || [];
+      const others = current.filter(r => r.networkId !== networkId);
+      dbSet('ip_data', sortByIp([...others, ...rows]));
+    } else {
+      dbSet('ip_data', sortByIp(rows));
+    }
     return res.json({ imported: rows.length, skipped: 0, errors: [] });
   }
 
