@@ -1203,8 +1203,20 @@ export default function IPAddressManager() {
 
   const freeIPRanges = useMemo(() => groupIPsIntoRanges(freeStaticIPs, networkConfig.subnet), [freeStaticIPs, networkConfig.subnet]);
 
+  // Merge assigned entries with synthetic Free entries so free IPs appear in
+  // search, cards, and table views. Legacy assetName==='Free' rows in ipData
+  // are dropped to avoid duplicates (freeStaticIPs already covers them).
+  const allDisplayData = useMemo(() => {
+    const assigned = ipData.filter(item => item.assetName !== 'Free');
+    const freeEntries = freeStaticIPs.map(ip => ({
+      ip, assetName: 'Free', hostname: '', type: '', location: '',
+      apps: '', notes: '', tags: [], updatedAt: null,
+    }));
+    return [...assigned, ...freeEntries];
+  }, [ipData, freeStaticIPs]);
+
   const filteredData = useMemo(() => {
-    return ipData.filter(item => {
+    return allDisplayData.filter(item => {
       if (!showReserved && item.assetName === 'Reserved') return false;
 
       const searchLower = searchTerm.toLowerCase();
@@ -1213,8 +1225,8 @@ export default function IPAddressManager() {
         item.assetName.toLowerCase().includes(searchLower) ||
         item.hostname.toLowerCase().includes(searchLower) ||
         item.ip.toLowerCase().includes(searchLower) ||
-        item.apps.toLowerCase().includes(searchLower) ||
-        item.location.toLowerCase().includes(searchLower) ||
+        (item.apps || '').toLowerCase().includes(searchLower) ||
+        (item.location || '').toLowerCase().includes(searchLower) ||
         itemTags.some(t => t.toLowerCase().includes(searchLower)) ||
         (item.assetName === 'Free' && 'free'.includes(searchLower)) ||
         (item.assetName === 'Free' && 'available'.includes(searchLower));
@@ -1225,7 +1237,7 @@ export default function IPAddressManager() {
 
       return matchesSearch && matchesType && matchesLocation && matchesTag;
     });
-  }, [ipData, searchTerm, selectedType, selectedLocation, selectedTag, showReserved]);
+  }, [allDisplayData, searchTerm, selectedType, selectedLocation, selectedTag, showReserved]);
 
   const sortedData = useMemo(() => {
     if (!sortField) return filteredData;
@@ -1736,7 +1748,7 @@ export default function IPAddressManager() {
       {/* Results Count */}
       <div className="max-w-7xl mx-auto px-4 py-3">
         <p className="text-sm text-slate-500">
-          Showing {filteredData.length} of {showReserved ? ipData.length : stats.active + stats.freeStatic} addresses
+          Showing {filteredData.length} of {showReserved ? allDisplayData.length : stats.active + stats.freeStatic} addresses
           {hasChanges && persistMode !== 'api' && <span className="ml-2 text-amber-600">• Changes pending export</span>}
           {persistMode === 'api' && <span className="ml-2 text-emerald-600">• Auto-saved to SQLite</span>}
         </p>
