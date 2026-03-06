@@ -1950,7 +1950,7 @@ export default function IPAddressManager() {
                 <div
                   key={item.ip}
                   onClick={() => selectedIPs.size > 0 ? toggleSelect(item.ip, { stopPropagation: () => {} }) : setExpandedCard(isExpanded ? null : index)}
-                  className={`rounded-xl border transition-all ${
+                  className={`group rounded-xl border transition-all ${
                     isSelected
                       ? 'bg-violet-50 border-violet-400 border-2 ring-2 ring-violet-300 cursor-pointer'
                       : isFree
