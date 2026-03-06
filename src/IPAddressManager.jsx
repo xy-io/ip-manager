@@ -38,6 +38,16 @@ function loadNetworks() {
   return [{ ...DEFAULT_NETWORK_CONFIG }];
 }
 
+// Load / save UI display preferences (browser-local, not synced to API)
+const DEFAULT_UI_PREFS = { showFreeInList: true };
+function loadUiPrefs() {
+  try {
+    const saved = localStorage.getItem('ip-manager-ui-prefs');
+    if (saved) return { ...DEFAULT_UI_PREFS, ...JSON.parse(saved) };
+  } catch {}
+  return { ...DEFAULT_UI_PREFS };
+}
+
 // Format an ISO date string into a short readable date (e.g. "5 Mar 2026")
 function formatDate(iso) {
   if (!iso) return '—';
@@ -45,7 +55,7 @@ function formatDate(iso) {
 }
 
 // Settings Modal Component
-function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLocation, onDeleteLocation, canDeleteNetwork, onDeleteNetwork }) {
+function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLocation, onDeleteLocation, canDeleteNetwork, onDeleteNetwork, showFreeInList, onToggleShowFreeInList, ipData, networks, onRestore }) {
   const [form, setForm] = useState({
     networkName: config.networkName,
     subnet: config.subnet,
@@ -60,6 +70,60 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
   const [confirmDeleteNetwork, setConfirmDeleteNetwork] = useState(false);
   const [editingLoc, setEditingLoc] = useState(null); // { old, draft }
   const [newLocation, setNewLocation] = useState('');
+  const [restoreError, setRestoreError] = useState('');
+  const [restorePreview, setRestorePreview] = useState(null); // { networks, ipData, exportedAt }
+  const [confirmRestore, setConfirmRestore] = useState(false);
+  const restoreFileRef = useRef(null);
+
+  // ── Backup download ──────────────────────────────────────────────────────────
+  const handleDownloadBackup = () => {
+    const backup = {
+      version: '1.8',
+      exportedAt: new Date().toISOString(),
+      networks: networks || [],
+      ipData: ipData || [],
+    };
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ip-manager-backup-${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // ── Restore from file ────────────────────────────────────────────────────────
+  const handleRestoreFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setRestoreError('');
+    setRestorePreview(null);
+    setConfirmRestore(false);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target.result);
+        if (!Array.isArray(parsed.networks) || !Array.isArray(parsed.ipData)) {
+          setRestoreError('Invalid backup file — missing networks or ipData arrays.');
+          return;
+        }
+        setRestorePreview(parsed);
+        setConfirmRestore(true);
+      } catch {
+        setRestoreError('Could not read backup file. Make sure it is a valid .json backup.');
+      }
+    };
+    reader.readAsText(file);
+    // Reset file input so the same file can be re-selected
+    e.target.value = '';
+  };
+
+  const handleConfirmRestore = () => {
+    if (!restorePreview) return;
+    onRestore(restorePreview.networks, restorePreview.ipData);
+    setConfirmRestore(false);
+    setRestorePreview(null);
+  };
 
   const handleSave = (e) => {
     e.preventDefault();
@@ -203,6 +267,92 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
             <Save className="w-4 h-4" />
             Save Settings
           </button>
+
+          {/* Display Preferences */}
+          <div className="pt-2 border-t border-slate-200">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Display</p>
+            <label className="flex items-center justify-between gap-3 cursor-pointer select-none group">
+              <div>
+                <p className="text-sm font-medium text-slate-700">Show free IP cards in main list</p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Turn off if you have a large subnet (/16) — hiding free cards prevents thousands of entries from slowing down the page.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onToggleShowFreeInList}
+                className={`relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${showFreeInList ? 'bg-emerald-500' : 'bg-slate-300'}`}
+              >
+                <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ${showFreeInList ? 'translate-x-5' : 'translate-x-0'}`} />
+              </button>
+            </label>
+          </div>
+
+          {/* Backup & Restore */}
+          <div className="pt-2 border-t border-slate-200">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Backup & Restore</p>
+            <p className="text-xs text-slate-500 mb-3">
+              A full backup includes all IP entries, all network configs, tags, notes, and change history — everything needed to fully restore the app on a new machine.
+            </p>
+
+            {/* Download backup */}
+            <button
+              type="button"
+              onClick={handleDownloadBackup}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-700 hover:bg-slate-800 text-white font-medium rounded-lg transition-colors text-sm mb-2"
+            >
+              <Download className="w-4 h-4" />
+              Download Full Backup (.json)
+            </button>
+
+            {/* Restore from backup */}
+            <input
+              type="file"
+              accept=".json"
+              ref={restoreFileRef}
+              onChange={handleRestoreFileChange}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => { setRestoreError(''); setConfirmRestore(false); restoreFileRef.current?.click(); }}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-slate-300 text-slate-600 hover:bg-slate-50 font-medium rounded-lg transition-colors text-sm"
+            >
+              <Upload className="w-4 h-4" />
+              Restore from Backup…
+            </button>
+
+            {restoreError && (
+              <div className="mt-2 flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                {restoreError}
+              </div>
+            )}
+
+            {confirmRestore && restorePreview && (
+              <div className="mt-3 space-y-2">
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+                  <p className="font-semibold mb-1">Ready to restore backup</p>
+                  <p className="text-xs text-amber-700">
+                    {restorePreview.exportedAt ? `Exported: ${new Date(restorePreview.exportedAt).toLocaleString()}` : ''}
+                    {' · '}{restorePreview.networks?.length || 0} network{restorePreview.networks?.length !== 1 ? 's' : ''}
+                    {' · '}{restorePreview.ipData?.length || 0} IP entries
+                  </p>
+                  <p className="text-xs text-amber-600 mt-1">This will replace ALL current data. This cannot be undone.</p>
+                </div>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => { setConfirmRestore(false); setRestorePreview(null); }}
+                    className="flex-1 px-4 py-2 border border-slate-300 text-slate-600 hover:bg-slate-50 rounded-lg transition-colors text-sm font-medium">
+                    Cancel
+                  </button>
+                  <button type="button" onClick={handleConfirmRestore}
+                    className="flex-1 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors text-sm font-medium">
+                    Yes, Restore Now
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Manage Locations */}
           <div className="pt-2 border-t border-slate-200">
@@ -1235,6 +1385,9 @@ export default function IPAddressManager() {
   const [hasChanges, setHasChanges] = useState(false);
   const [showImport, setShowImport] = useState(false);
 
+  // UI display preferences (browser-local; not synced to server)
+  const [uiPrefs, setUiPrefs] = useState(loadUiPrefs);
+
   // UI state (declared here so all useEffect hooks below can safely reference them)
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedType, setSelectedType] = useState('');
@@ -1353,6 +1506,11 @@ export default function IPAddressManager() {
     return () => window.removeEventListener('keydown', handler);
   }, [editingItem, showSettings, showImport, expandedCard, searchTerm]);
 
+  // ── Persist UI prefs (browser-local, runs whenever uiPrefs changes) ─────────
+  useEffect(() => {
+    try { localStorage.setItem('ip-manager-ui-prefs', JSON.stringify(uiPrefs)); } catch {}
+  }, [uiPrefs]);
+
   // ── Derived network state ────────────────────────────────────────────────────
 
   // Active network config — derived from networks array for backward compat
@@ -1409,14 +1567,18 @@ export default function IPAddressManager() {
   // Merge assigned entries with synthetic Free entries so free IPs appear in
   // search, cards, and table views. Legacy assetName==='Free' rows in networkIpData
   // are dropped to avoid duplicates (freeStaticIPs already covers them).
+  // When showFreeInList is off, free entries are excluded entirely — this is
+  // critical for /16 networks that could have tens of thousands of free IPs.
+  const showFreeInList = uiPrefs.showFreeInList !== false;
   const allDisplayData = useMemo(() => {
     const assigned = networkIpData.filter(item => item.assetName !== 'Free');
+    if (!showFreeInList) return assigned;
     const freeEntries = freeStaticIPs.map(ip => ({
       ip, assetName: 'Free', hostname: '', type: '', location: '',
       apps: '', notes: '', tags: [], updatedAt: null,
     }));
     return [...assigned, ...freeEntries];
-  }, [networkIpData, freeStaticIPs]);
+  }, [networkIpData, freeStaticIPs, showFreeInList]);
 
   const filteredData = useMemo(() => {
     return allDisplayData.filter(item => {
@@ -1764,6 +1926,16 @@ export default function IPAddressManager() {
           onDeleteLocation={handleDeleteLocation}
           canDeleteNetwork={networks.length > 1}
           onDeleteNetwork={handleDeleteNetwork}
+          showFreeInList={showFreeInList}
+          onToggleShowFreeInList={() => setUiPrefs(p => ({ ...p, showFreeInList: p.showFreeInList === false }))}
+          ipData={ipData}
+          networks={networks}
+          onRestore={(restoredNetworks, restoredIpData) => {
+            setNetworks(restoredNetworks);
+            setIpData(restoredIpData);
+            setActiveNetworkId(restoredNetworks[0]?.id || 'net-1');
+            setShowSettings(false);
+          }}
         />
       )}
 
