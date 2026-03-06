@@ -19,6 +19,8 @@ Managing a home lab network across servers, VMs, containers, cameras, switches, 
 - **Track free IPs** in your static range with one-click claiming for new servers or containers
 - **Edit any entry** — change the asset name, hostname, type, location, service, tags, and notes via a clean modal form
 - **Release IPs** back to the free pool when you decommission something
+- **Manage multiple networks / VLANs** — add a second (or third) subnet and switch between them with tabs; each network is fully isolated
+- **Full backup & restore** — download a single JSON file containing all networks, all IP entries, tags, notes, and change history; restore it on any machine in one click
 - **Import from CSV / Excel** — 3-step modal with column mapping, validation, and merge or replace modes
 - **Export to Excel** — downloads a fully formatted `.xlsx` preserving all your data
 - **Switch views** between Cards (visual) and Table (dense, sortable) layouts
@@ -38,9 +40,19 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
+### v1.8 Features
+
+**Multi-network / VLAN support** — Click **Add Network** (next to the ⚙️ Settings button) to add a second subnet — e.g. a dedicated IoT VLAN or a separate 172.16.x.x management segment. Network tabs appear at the top of the page; switching tabs instantly scopes all views, stats, free IPs, and search to that network. Each network has its own independent config. Delete a network (and all its entries) from Settings → Danger Zone when no longer needed.
+
+**Full backup & restore** — Settings → Backup & Restore → **Download Full Backup** exports a single `.json` file containing every network config, every IP entry across all networks, all tags, notes, and full change history. **Restore from Backup** reads that file, shows you a preview (export date, network count, entry count), and requires explicit confirmation before replacing anything. Use it to migrate to a new server or as a safety snapshot before a major change.
+
+**Hide free IP cards** — Settings → Display → toggle **Show free IP cards in main list**. Leave it on for normal use; turn it off if you manage a `/16` network where tens of thousands of green "Free" cards would slow the browser. The Free Static IPs panel in the header still works either way — only the per-card rendering in the main list is suppressed. Preference is stored per browser.
+
 ### v1.7 Features
 
 **Bulk selection & bulk edit** — Checkboxes on every card and table row let you select multiple IPs at once. Selecting items reveals a bulk action bar. The Bulk Edit modal lets you add tags (appended to existing), set type, or set location across all selected entries at once. A Release button returns selected IPs to the free pool.
+
+**Change history / audit log** — Every save records a timestamped diff of what changed (field by field, old value → new value). Bulk edits are flagged with a "bulk" badge. History is visible in the expanded card view, newest first, capped at 20 entries per IP.
 
 **Location management** — New Locations section in Settings lets you manage physical locations: rename a location across all entries, delete a location, or add new locations before any entry uses them.
 
@@ -152,7 +164,7 @@ The app supports two persistence modes and switches between them automatically:
 
 On startup the app sends a quick health check to `/api/health`. If the API responds, it loads data from SQLite and shows the green **SQLite** badge in the header. If not, it falls back to localStorage automatically.
 
-All saves happen automatically in both modes. The **Export** button is available any time you want a portable backup.
+All saves happen automatically in both modes. The **Export** button downloads a formatted `.xlsx` of the current network. For a complete backup of all networks and all data, use **Settings → Backup & Restore → Download Full Backup** — this produces a `.json` file that can be fully restored later.
 
 **Clearing all data:** open ⚙️ Settings → scroll to the **Danger Zone** section → Clear All Network Data. This wipes all IP entries and persists the change through the normal save path.
 
@@ -210,17 +222,17 @@ ip-manager/
 See [`IP_Manager_Roadmap.docx`](./IP_Manager_Roadmap.docx) for the full three-phase roadmap.
 
 **Phase 1 — near-term (Q1–Q2 2026):**
-- ✅ Tag support, sort controls, last modified date, keyboard shortcuts — all shipped
+- ✅ Tag support, sort controls, last modified date, keyboard shortcuts — shipped
 - ✅ Bulk selection & bulk edit, Location management, Free IPs in main list — shipped in v1.7
+- ✅ Change history / audit log — shipped in v1.7
+- ✅ Multi-network / VLAN support, Full backup & restore, Hide free IP cards toggle — shipped in v1.8
 - **PWA / Offline support** — install to home screen; works without network access
 
 **Phase 2 — mid-term (Q3–Q4 2026):**
-- **Multiple IPs per host** — support servers/VMs with more than one NIC or lease (prerequisite for VLAN support)
-- **VLAN & multi-network** — tag IPs with one or more VLANs; manage multiple subnets side-by-side
+- **Multiple IPs per host** — support servers/VMs with more than one NIC or VLAN leg
 - **Ping / reachability** — live status indicators per IP
 - **Proxmox integration** — auto-discover VMs and LXCs
 - **Service health checks** — HTTP probes with UP/DOWN badges
-- **Change history / audit log** — full edit history per entry
 
 **Phase 3 — longer-term (2027+):**
 - Network topology map, uptime alerts, REST API, network scanner, multi-user auth
@@ -233,12 +245,15 @@ No code editing required. Click the **⚙️ Settings** icon in the app header t
 
 | Setting | Description |
 |---|---|
-| Network name | Display name shown in the header |
+| Network name | Display name shown in the header and network tabs |
 | Subnet | Your network prefix — paste the full address (`192.168.0.0`) or just the prefix (`192.168.1` for /24, `192.168` for /16). Trailing zeros are stripped automatically. |
 | DHCP range | Start and end of the DHCP pool (single octets for /24, e.g. `1`/`170`; two octets for /16, e.g. `2.20`/`2.250`) |
 | DHCP Reservations | Host portions of IPs with DHCP reservations — can be anywhere on the network, not just within the DHCP pool |
 | Static range | Start and end of your static assignments |
-| Locations | Add, rename, or remove physical location labels across your network |
+| Locations | Add, rename, or remove physical location labels for the active network |
+| Display | Toggle whether free IP cards appear in the main list (turn off for large /16 networks) |
+| Backup & Restore | Download a full `.json` backup or restore from a previous backup |
+| Delete Network | Removes the active network and all its IP entries (shown only when multiple networks exist) |
 
 Settings are saved automatically and persist across sessions.
 
