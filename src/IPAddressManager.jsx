@@ -1235,9 +1235,13 @@ export default function IPAddressManager() {
   };
 
   const handleSaveItem = (updatedItem) => {
-    setIpData(prev => prev.map(item =>
-      item.ip === updatedItem.ip ? { ...updatedItem, updatedAt: new Date().toISOString() } : item
-    ));
+    const stamped = { ...updatedItem, updatedAt: new Date().toISOString() };
+    setIpData(prev => {
+      const exists = prev.some(item => item.ip === stamped.ip);
+      return exists
+        ? prev.map(item => item.ip === stamped.ip ? stamped : item)
+        : [...prev, stamped];
+    });
     setHasChanges(true);
     setEditingItem(null);
     setExpandedCard(null);
