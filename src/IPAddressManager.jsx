@@ -29,7 +29,7 @@ function formatDate(iso) {
 }
 
 // Settings Modal Component
-function SettingsModal({ config, onSave, onClose, onClear }) {
+function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLocation, onDeleteLocation }) {
   const [form, setForm] = useState({
     networkName: config.networkName,
     subnet: config.subnet,
@@ -41,6 +41,8 @@ function SettingsModal({ config, onSave, onClose, onClear }) {
   });
   const [error, setError] = useState('');
   const [confirmClear, setConfirmClear] = useState(false);
+  const [editingLoc, setEditingLoc] = useState(null); // { old, draft }
+  const [newLocation, setNewLocation] = useState('');
 
   const handleSave = (e) => {
     e.preventDefault();
@@ -184,6 +186,60 @@ function SettingsModal({ config, onSave, onClose, onClear }) {
             <Save className="w-4 h-4" />
             Save Settings
           </button>
+
+          {/* Manage Locations */}
+          <div className="pt-2 border-t border-slate-200">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Locations</p>
+            <div className="flex flex-wrap gap-2 mb-2">
+              {locations.filter(l => l).map(loc => (
+                <div key={loc} className="flex items-center gap-1 bg-slate-100 rounded-lg px-2 py-1">
+                  {editingLoc?.old === loc ? (
+                    <>
+                      <input
+                        autoFocus
+                        className="text-xs border border-blue-300 rounded px-1 py-0.5 w-28 outline-none"
+                        value={editingLoc.draft}
+                        onChange={e => setEditingLoc(ev => ({ ...ev, draft: e.target.value }))}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' && editingLoc.draft.trim()) { onRenameLocation(loc, editingLoc.draft.trim()); setEditingLoc(null); }
+                          if (e.key === 'Escape') setEditingLoc(null);
+                        }}
+                      />
+                      <button type="button" onClick={() => { if (editingLoc.draft.trim()) { onRenameLocation(loc, editingLoc.draft.trim()); setEditingLoc(null); }}} className="text-blue-500 hover:text-blue-700 text-xs font-bold">✓</button>
+                      <button type="button" onClick={() => setEditingLoc(null)} className="text-slate-400 hover:text-slate-600 text-xs">✕</button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-xs text-slate-700">{loc}</span>
+                      <button type="button" onClick={() => setEditingLoc({ old: loc, draft: loc })} className="text-slate-400 hover:text-blue-500 text-xs ml-1" title="Rename">✎</button>
+                      <button type="button" onClick={() => onDeleteLocation(loc)} className="text-slate-400 hover:text-red-500 text-xs" title="Remove from all entries">✕</button>
+                    </>
+                  )}
+                </div>
+              ))}
+              {locations.filter(l => l).length === 0 && (
+                <p className="text-xs text-slate-400">No locations yet — add one below or import data.</p>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                className="flex-1 text-sm border border-slate-300 rounded-lg px-3 py-1.5 outline-none focus:border-teal-400"
+                placeholder="Add a new location…"
+                value={newLocation}
+                onChange={e => setNewLocation(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && newLocation.trim()) { onRenameLocation(null, newLocation.trim()); setNewLocation(''); }
+                }}
+              />
+              <button
+                type="button"
+                disabled={!newLocation.trim()}
+                onClick={() => { onRenameLocation(null, newLocation.trim()); setNewLocation(''); }}
+                className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-40 text-white rounded-lg text-sm font-medium transition-colors"
+              >Add</button>
+            </div>
+          </div>
 
           {/* Danger Zone */}
           <div className="pt-2 border-t border-slate-200">
@@ -1112,8 +1168,9 @@ export default function IPAddressManager() {
   // Derived data
   const locations = useMemo(() => {
     const fromData = getUniqueValues(ipData, 'location');
-    return [...new Set([...fromData, 'Garage', 'Office', 'House', 'Loft', 'Proxmox1', 'Proxmox2', 'Proxmox3', 'Proxmox4', 'Proxmox5', 'Proxmox6'])].sort();
-  }, [ipData]);
+    const extra = networkConfig.extraLocations || [];
+    return [...new Set([...fromData, ...extra])].filter(Boolean).sort();
+  }, [ipData, networkConfig.extraLocations]);
 
   const types = useMemo(() => getUniqueValues(ipData, 'type'), [ipData]);
 
@@ -1128,7 +1185,12 @@ export default function IPAddressManager() {
     const is16   = subnetOctetCount(subnet) === 2;
     const startOrd = rangeOrdinal(networkConfig.staticStart, subnet);
     const endOrd   = rangeOrdinal(networkConfig.staticEnd,   subnet);
-    const assignedIPs = new Set(ipData.map(item => item.ip));
+    // Exclude legacy 'Free' entries — older databases stored released IPs
+    // as assetName==='Free' rows; with the new range-based model they are
+    // simply absent from ipData.  Treat them as unassigned for compatibility.
+    const assignedIPs = new Set(
+      ipData.filter(item => item.assetName !== 'Free').map(item => item.ip)
+    );
     const free = [];
     for (let ord = startOrd; ord <= endOrd; ord++) {
       const ip = is16
@@ -1228,6 +1290,37 @@ export default function IPAddressManager() {
     setSelectedTag('');
   };
 
+  // Rename a location across all entries.
+  // oldName===null means "add new" from the text box — nothing to rename yet,
+  // but the name will appear in the dropdown next time the user edits an entry.
+  // We achieve this by keeping a separate managed list in networkConfig.
+  const handleRenameLocation = (oldName, newName) => {
+    if (!newName || newName === oldName) return;
+    if (oldName === null) {
+      // Add to the managed extra-locations list stored in networkConfig
+      setNetworkConfig(prev => ({
+        ...prev,
+        extraLocations: [...new Set([...(prev.extraLocations || []), newName])],
+      }));
+      return;
+    }
+    setIpData(prev =>
+      prev.map(item =>
+        item.location === oldName ? { ...item, location: newName, updatedAt: new Date().toISOString() } : item
+      )
+    );
+    setHasChanges(true);
+  };
+
+  const handleDeleteLocation = (name) => {
+    setIpData(prev =>
+      prev.map(item =>
+        item.location === name ? { ...item, location: '', updatedAt: new Date().toISOString() } : item
+      )
+    );
+    setHasChanges(true);
+  };
+
   const copyToClipboard = (ip) => {
     navigator.clipboard.writeText(ip);
     setCopiedIP(ip);
@@ -1248,11 +1341,10 @@ export default function IPAddressManager() {
   };
 
   const handleMarkFree = (ip) => {
-    setIpData(prev => prev.map(item =>
-      item.ip === ip
-        ? { ...item, assetName: 'Free', hostname: '', type: '', location: '', apps: '', tags: [], updatedAt: new Date().toISOString() }
-        : item
-    ));
+    // Remove the entry entirely — free IPs are now derived from the static
+    // range minus ipData, so deleting is all that's needed to return it to
+    // the free pool.
+    setIpData(prev => prev.filter(item => item.ip !== ip));
     setHasChanges(true);
     setEditingItem(null);
     setExpandedCard(null);
@@ -1344,6 +1436,9 @@ export default function IPAddressManager() {
           onSave={(cfg) => { setNetworkConfig(cfg); setShowSettings(false); }}
           onClose={() => setShowSettings(false)}
           onClear={() => { setIpData([]); setHasChanges(true); setShowSettings(false); }}
+          locations={locations}
+          onRenameLocation={handleRenameLocation}
+          onDeleteLocation={handleDeleteLocation}
         />
       )}
 
