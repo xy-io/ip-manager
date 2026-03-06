@@ -38,6 +38,14 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
+### v1.7 Features
+
+**Bulk selection & bulk edit** — Checkboxes on every card and table row let you select multiple IPs at once. Selecting items reveals a bulk action bar. The Bulk Edit modal lets you add tags (appended to existing), set type, or set location across all selected entries at once. A Release button returns selected IPs to the free pool.
+
+**Location management** — New Locations section in Settings lets you manage physical locations: rename a location across all entries, delete a location, or add new locations before any entry uses them.
+
+**Free IPs in main list** — Free static IPs are computed from the static range minus assigned entries. They appear as searchable "Available" cards/rows in the main view. Clicking an Available IP claims it instantly.
+
 ---
 
 ## Screenshots
@@ -203,6 +211,7 @@ See [`IP_Manager_Roadmap.docx`](./IP_Manager_Roadmap.docx) for the full three-ph
 
 **Phase 1 — near-term (Q1–Q2 2026):**
 - ✅ Tag support, sort controls, last modified date, keyboard shortcuts — all shipped
+- ✅ Bulk selection & bulk edit, Location management, Free IPs in main list — shipped in v1.7
 - **PWA / Offline support** — install to home screen; works without network access
 
 **Phase 2 — mid-term (Q3–Q4 2026):**
@@ -229,6 +238,7 @@ No code editing required. Click the **⚙️ Settings** icon in the app header t
 | DHCP range | Start and end of the DHCP pool (single octets for /24, e.g. `1`/`170`; two octets for /16, e.g. `2.20`/`2.250`) |
 | DHCP Reservations | Host portions of IPs with DHCP reservations — can be anywhere on the network, not just within the DHCP pool |
 | Static range | Start and end of your static assignments |
+| Locations | Add, rename, or remove physical location labels across your network |
 
 Settings are saved automatically and persist across sessions.
 
