@@ -1824,7 +1824,7 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
             <label className="block text-sm font-medium text-slate-700 mb-1">Tags</label>
             {formData.tags.length > 0 && (
               <div className="flex flex-wrap gap-1.5 mb-2">
-                {formData.tags.map(tag => (
+                {formData.tags.slice().sort().map(tag => (
                   <span key={tag} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-violet-100 text-violet-700 border border-violet-200">
                     <Tag className="w-2.5 h-2.5" />{tag}
                     <button type="button" onClick={() => removeTag(tag)} className="hover:text-violet-900 ml-0.5">×</button>
@@ -3097,7 +3097,7 @@ export default function IPAddressManager() {
                               {item.apps}
                             </span>
                           )}
-                          {(item.tags || []).map(tag => (
+                          {(item.tags || []).slice().sort().map(tag => (
                             <span key={tag} onClick={(e) => { e.stopPropagation(); setSelectedTag(selectedTag === tag ? '' : tag); }}
                               className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-violet-100 text-violet-700 border border-violet-200 cursor-pointer hover:bg-violet-200 transition-colors">
                               <Tag className="w-2.5 h-2.5" />{tag}
@@ -3142,7 +3142,7 @@ export default function IPAddressManager() {
                             <div className="col-span-2">
                               <div className="text-slate-400 text-xs uppercase tracking-wide mb-1">Tags</div>
                               <div className="flex flex-wrap gap-1">
-                                {(item.tags || []).map(tag => (
+                                {(item.tags || []).slice().sort().map(tag => (
                                   <span key={tag} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-violet-100 text-violet-700 border border-violet-200">
                                     <Tag className="w-2.5 h-2.5" />{tag}
                                   </span>
@@ -3345,7 +3345,7 @@ export default function IPAddressManager() {
                         <td className="px-4 py-3 text-sm text-slate-600">{item.apps || '—'}</td>
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap gap-1">
-                            {(item.tags || []).map(tag => (
+                            {(item.tags || []).slice().sort().map(tag => (
                               <button key={tag} onClick={() => setSelectedTag(selectedTag === tag ? '' : tag)}
                                 className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full border transition-colors ${
                                   selectedTag === tag ? 'bg-violet-600 text-white border-violet-600' : 'bg-violet-50 text-violet-700 border-violet-200 hover:bg-violet-100'
