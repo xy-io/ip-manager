@@ -101,6 +101,35 @@ app.get('/api/auth/status', (req, res) => {
   res.json({ authenticated: isValidSession(req.cookies[SESSION_COOKIE]) });
 });
 
+// Change credentials — requires a valid session AND the current password
+app.post('/api/auth/change-password', (req, res) => {
+  if (!isValidSession(req.cookies[SESSION_COOKIE])) {
+    return res.status(401).json({ error: 'Unauthorised' });
+  }
+  const { currentPassword, newUsername, newPassword } = req.body || {};
+  if (!currentPassword || !newUsername || !newPassword) {
+    return res.status(400).json({ error: 'currentPassword, newUsername and newPassword are required' });
+  }
+  // Reload to pick up any manual edits to credentials.env
+  credentials = loadCredentials();
+  if (currentPassword !== credentials.password) {
+    return res.status(401).json({ error: 'Current password is incorrect' });
+  }
+  // Write the new credentials to credentials.env
+  const envFile = path.join(__dirname, 'credentials.env');
+  const content = `IP_MANAGER_USERNAME=${newUsername}\nIP_MANAGER_PASSWORD=${newPassword}\n`;
+  try {
+    fs.writeFileSync(envFile, content, 'utf8');
+    credentials = { username: newUsername, password: newPassword };
+    // Invalidate all existing sessions so everyone must re-login
+    sessions.clear();
+    res.clearCookie(SESSION_COOKIE);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Could not write credentials file: ' + err.message });
+  }
+});
+
 // ── Database setup ────────────────────────────────────────────────────────────
 
 const DB_PATH = path.join(__dirname, 'ip-manager.db');

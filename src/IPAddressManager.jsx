@@ -75,6 +75,51 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
   const [confirmRestore, setConfirmRestore] = useState(false);
   const restoreFileRef = useRef(null);
 
+  // Account / change-password state
+  const [pwForm, setPwForm] = useState({ currentPassword: '', newUsername: '', newPassword: '', confirmPassword: '' });
+  const [pwError, setPwError] = useState('');
+  const [pwSuccess, setPwSuccess] = useState(false);
+  const [pwLoading, setPwLoading] = useState(false);
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    setPwError('');
+    setPwSuccess(false);
+    if (pwForm.newPassword !== pwForm.confirmPassword) {
+      return setPwError('New passwords do not match');
+    }
+    if (pwForm.newPassword.length < 4) {
+      return setPwError('New password must be at least 4 characters');
+    }
+    if (!pwForm.newUsername.trim()) {
+      return setPwError('Username cannot be blank');
+    }
+    setPwLoading(true);
+    try {
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          currentPassword: pwForm.currentPassword,
+          newUsername: pwForm.newUsername.trim(),
+          newPassword: pwForm.newPassword,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setPwSuccess(true);
+        // Server cleared all sessions — reload to show login screen
+        setTimeout(() => window.location.reload(), 1500);
+      } else {
+        setPwError(data.error || 'Failed to update credentials');
+      }
+    } catch {
+      setPwError('Could not reach the server');
+    } finally {
+      setPwLoading(false);
+    }
+  };
+
   // ── Backup download ──────────────────────────────────────────────────────────
   const handleDownloadBackup = () => {
     const backup = {
@@ -406,6 +451,49 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
                 className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-40 text-white rounded-lg text-sm font-medium transition-colors"
               >Add</button>
             </div>
+          </div>
+
+          {/* Account */}
+          <div className="pt-2 border-t border-slate-200">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Account</p>
+            <form onSubmit={handleChangePassword} className="space-y-3">
+              <div>
+                <label className={labelCls}>Current Password</label>
+                <input type="password" autoComplete="current-password" value={pwForm.currentPassword}
+                  onChange={e => setPwForm(f => ({ ...f, currentPassword: e.target.value }))}
+                  className={inputCls} placeholder="Enter current password" />
+              </div>
+              <div>
+                <label className={labelCls}>New Username</label>
+                <input type="text" autoComplete="username" value={pwForm.newUsername}
+                  onChange={e => setPwForm(f => ({ ...f, newUsername: e.target.value }))}
+                  className={inputCls} placeholder="New username" />
+              </div>
+              <div>
+                <label className={labelCls}>New Password</label>
+                <input type="password" autoComplete="new-password" value={pwForm.newPassword}
+                  onChange={e => setPwForm(f => ({ ...f, newPassword: e.target.value }))}
+                  className={inputCls} placeholder="New password (min 4 chars)" />
+              </div>
+              <div>
+                <label className={labelCls}>Confirm New Password</label>
+                <input type="password" autoComplete="new-password" value={pwForm.confirmPassword}
+                  onChange={e => setPwForm(f => ({ ...f, confirmPassword: e.target.value }))}
+                  className={inputCls} placeholder="Repeat new password" />
+              </div>
+              {pwError && (
+                <p className="text-red-600 text-sm flex items-center gap-1">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />{pwError}
+                </p>
+              )}
+              {pwSuccess && (
+                <p className="text-emerald-600 text-sm">✓ Credentials updated — signing you out…</p>
+              )}
+              <button type="submit" disabled={pwLoading || pwSuccess}
+                className="w-full bg-slate-700 hover:bg-slate-800 disabled:bg-slate-300 text-white text-sm font-semibold py-2 rounded-lg transition-colors">
+                {pwLoading ? 'Saving…' : 'Update Login Credentials'}
+              </button>
+            </form>
           </div>
 
           {/* Danger Zone */}
@@ -2069,7 +2157,9 @@ export default function IPAddressManager() {
     );
   }
   if (auth === 'none') {
-    return <LoginScreen onLogin={() => { setAuth('ok'); setPersistMode('loading'); }} />;
+    // Reload the page after login so the full init/data-loading flow reruns
+    // with the auth cookie already set — avoids stale-state data wipe issues.
+    return <LoginScreen onLogin={() => window.location.reload()} />;
   }
 
   return (
