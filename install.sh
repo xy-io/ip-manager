@@ -47,8 +47,21 @@ ok "Package lists updated"
 # ── 2. Install dependencies ──────────────────────────────────
 # build-essential is needed to compile better-sqlite3 native bindings
 log "Installing dependencies (curl, git, nginx, build-essential, arp-scan)..."
-apt-get install -y -qq curl git nginx build-essential python3 arp-scan
+apt-get install -y -qq curl git nginx build-essential python3 arp-scan libcap2-bin
 ok "Dependencies installed"
+
+# Grant arp-scan the raw socket capability it needs to send ARP packets.
+# The service runs as www-data (non-root), so without this arp-scan fails
+# silently and the server falls back to the kernel ARP cache instead of
+# doing a real scan.
+log "Granting arp-scan raw socket capability (CAP_NET_RAW)..."
+ARPSCAN_BIN=$(which arp-scan 2>/dev/null || echo "")
+if [ -n "$ARPSCAN_BIN" ]; then
+  setcap cap_net_raw+ep "$ARPSCAN_BIN"
+  ok "arp-scan can now run without root (setcap cap_net_raw+ep $ARPSCAN_BIN)"
+else
+  warn "arp-scan not found in PATH — skipping setcap. ARP scan will fall back to kernel ARP cache."
+fi
 
 # ── 3. Install Node.js ───────────────────────────────────────
 if command -v node &>/dev/null; then
@@ -205,8 +218,12 @@ set -e
 echo "Pulling latest changes from GitHub..."
 git -C /opt/ip-manager pull
 
-echo "Ensuring arp-scan is installed..."
-apt-get install -y -qq arp-scan 2>/dev/null || true
+echo "Ensuring arp-scan is installed and has correct capabilities..."
+apt-get install -y -qq arp-scan libcap2-bin 2>/dev/null || true
+ARPSCAN_BIN=$(which arp-scan 2>/dev/null || echo "")
+if [ -n "$ARPSCAN_BIN" ]; then
+  setcap cap_net_raw+ep "$ARPSCAN_BIN" 2>/dev/null && echo "  setcap ok: $ARPSCAN_BIN" || true
+fi
 
 echo "Installing frontend packages..."
 cd /opt/ip-manager && rm -rf node_modules package-lock.json && npm install 2>&1 | grep -E "error|warn|ERR" || true

@@ -463,6 +463,7 @@ app.post('/api/arp/scan', async (req, res) => {
 
   let raw = [];
   let method = 'arp-scan';
+  let scanWarning = null;
 
   try {
     const cmd = buildArpScanCmd(subnet, iface);
@@ -470,9 +471,16 @@ app.post('/api/arp/scan', async (req, res) => {
                                    stdio: ['pipe', 'pipe', 'pipe'] });
     raw = parseArpScanOutput(stdout);
   } catch (err) {
-    // arp-scan not installed or failed — fall back to kernel ARP cache
+    // arp-scan not installed or lacks raw socket capability — fall back to kernel ARP cache.
+    // Most likely cause: service runs as www-data without CAP_NET_RAW.
+    // Fix: run  setcap cap_net_raw+ep $(which arp-scan)  on the server.
     console.warn('[arp-scan] Primary scan failed:', err.message, '— falling back to /proc/net/arp');
     method = 'arp-cache';
+    scanWarning = err.message.includes('Operation not permitted') || err.message.includes('EPERM')
+      ? 'arp-scan lacks raw socket permission. Run: setcap cap_net_raw+ep $(which arp-scan)'
+      : err.message.includes('not found') || err.message.includes('ENOENT')
+      ? 'arp-scan is not installed. Run: apt-get install arp-scan && setcap cap_net_raw+ep $(which arp-scan)'
+      : `arp-scan failed: ${err.message}`;
     try {
       raw = parseArpCache();
     } catch (fallbackErr) {
@@ -508,7 +516,7 @@ app.post('/api/arp/scan', async (req, res) => {
     return 0;
   });
 
-  res.json({ results, method, total: results.length });
+  res.json({ results, method, total: results.length, scanWarning });
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────────

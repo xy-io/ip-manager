@@ -971,11 +971,13 @@ function ARPScanModal({ onClose, onImport, subnet }) {
   const [scanError, setScanError]   = useState('');
   const [results, setResults]       = useState([]);
   const [method, setMethod]         = useState('');
+  const [scanWarning, setScanWarning] = useState(null);
   const [selected, setSelected]     = useState(new Set());
 
   const startScan = async () => {
     if (!scanSubnet.trim()) return setScanError('Please enter a subnet to scan.');
     setScanError('');
+    setScanWarning(null);
     setScanning(true);
     try {
       const res = await fetch('/api/arp/scan', {
@@ -987,6 +989,7 @@ function ARPScanModal({ onClose, onImport, subnet }) {
       if (!res.ok) { setScanError(data.error || 'Scan failed'); setScanning(false); return; }
       setResults(data.results || []);
       setMethod(data.method || 'arp-scan');
+      setScanWarning(data.scanWarning || null);
       // Pre-select all Untracked and OutOfRange rows
       const preselect = new Set((data.results || []).filter(r => r.status !== 'Tracked').map(r => r.ip));
       setSelected(preselect);
@@ -1119,12 +1122,25 @@ function ARPScanModal({ onClose, onImport, subnet }) {
           {/* ── Step 2: Results ── */}
           {step === 2 && (
             <div className="space-y-4">
+
+              {/* ARP cache fallback warning — shown when arp-scan failed */}
+              {scanWarning && (
+                <div className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-300 rounded-lg">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <div className="text-sm">
+                    <p className="font-semibold text-amber-800">Results from kernel ARP cache — not a live scan</p>
+                    <p className="text-amber-700 mt-0.5 text-xs">{scanWarning}</p>
+                    <p className="text-amber-600 mt-1 text-xs">These are only devices that have recently communicated with the server — most devices on your network will be missing. Fix the permissions on the server and scan again for complete results.</p>
+                  </div>
+                </div>
+              )}
+
               {/* Summary chips */}
               <div className="flex gap-2 flex-wrap text-xs">
                 <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-lg font-medium">{tracked.length} tracked</span>
                 <span className="px-2 py-1 bg-amber-100 text-amber-700 rounded-lg font-medium">{untracked.length} untracked</span>
                 {outRange.length > 0 && <span className="px-2 py-1 bg-slate-100 text-slate-500 rounded-lg font-medium">{outRange.length} out of range</span>}
-                <span className="px-2 py-1 bg-slate-50 text-slate-400 rounded-lg">via {method}</span>
+                <span className={`px-2 py-1 rounded-lg ${method === 'arp-cache' ? 'bg-amber-100 text-amber-600 font-medium' : 'bg-slate-50 text-slate-400'}`}>via {method}</span>
               </div>
 
               {/* Results table */}
