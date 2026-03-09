@@ -962,7 +962,7 @@ function ProxmoxImportModal({ onClose, onImport }) {
 
 // ── ARP Scan Modal ────────────────────────────────────────────────────────────
 
-function ARPScanModal({ onClose, onImport, subnet }) {
+function ARPScanModal({ onClose, onImport, subnet, networkConfig }) {
   const [step, setStep]             = useState(1); // 1 = config, 2 = results
   const [scanSubnet, setScanSubnet] = useState(subnet); // editable copy
   const [iface, setIface]           = useState('');
@@ -987,11 +987,18 @@ function ARPScanModal({ onClose, onImport, subnet }) {
       });
       const data = await res.json();
       if (!res.ok) { setScanError(data.error || 'Scan failed'); setScanning(false); return; }
-      setResults(data.results || []);
+      // Upgrade 'Untracked' → 'DHCP' or 'Static' using the network config
+      const classified = (data.results || []).map(r => {
+        if (r.status !== 'Untracked') return r;
+        const inDhcp = networkConfig && networkConfig.dhcpEnabled !== false
+          && isInDHCPRange(r.ip, networkConfig);
+        return { ...r, status: inDhcp ? 'DHCP' : 'Static' };
+      });
+      setResults(classified);
       setMethod(data.method || 'arp-scan');
       setScanWarning(data.scanWarning || null);
-      // Pre-select all Untracked and OutOfRange rows
-      const preselect = new Set((data.results || []).filter(r => r.status !== 'Tracked').map(r => r.ip));
+      // Pre-select Static untracked only — DHCP addresses deselected by default
+      const preselect = new Set(classified.filter(r => r.status === 'Static' || r.status === 'OutOfRange').map(r => r.ip));
       setSelected(preselect);
       setStep(2);
     } catch (err) {
@@ -1013,6 +1020,10 @@ function ARPScanModal({ onClose, onImport, subnet }) {
     else setSelected(new Set(importable.map(r => r.ip)));
   };
 
+  const selectStaticOnly = () => {
+    setSelected(new Set(results.filter(r => r.status === 'Static').map(r => r.ip)));
+  };
+
   const doImport = () => {
     const rows = results
       .filter(r => selected.has(r.ip))
@@ -1028,16 +1039,18 @@ function ARPScanModal({ onClose, onImport, subnet }) {
     onClose();
   };
 
-  const tracked   = results.filter(r => r.status === 'Tracked');
-  const untracked = results.filter(r => r.status === 'Untracked');
-  const outRange  = results.filter(r => r.status === 'OutOfRange');
+  const tracked    = results.filter(r => r.status === 'Tracked');
+  const staticIPs  = results.filter(r => r.status === 'Static');
+  const dhcpIPs    = results.filter(r => r.status === 'DHCP');
+  const outRange   = results.filter(r => r.status === 'OutOfRange');
   const importable = results.filter(r => r.status !== 'Tracked');
 
   const inputCls = 'w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent';
 
   const statusBadge = (status) => {
-    if (status === 'Tracked')    return <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-700">✓ Tracked</span>;
-    if (status === 'Untracked')  return <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700">◯ Untracked</span>;
+    if (status === 'Tracked') return <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-700">✓ Tracked</span>;
+    if (status === 'Static')  return <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700">◯ Static</span>;
+    if (status === 'DHCP')    return <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">~ DHCP</span>;
     return <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-500">⊘ Out of range</span>;
   };
 
@@ -1056,7 +1069,7 @@ function ARPScanModal({ onClose, onImport, subnet }) {
               <p className="text-sm text-slate-500 mt-0.5">
                 {step === 1
                   ? `Scan your network for active devices`
-                  : `Found ${results.length} device${results.length !== 1 ? 's' : ''} — ${untracked.length} untracked`}
+                  : `Found ${results.length} device${results.length !== 1 ? 's' : ''} — ${staticIPs.length} static untracked, ${dhcpIPs.length} DHCP`}
               </p>
             </div>
             <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg"><X className="w-5 h-5 text-slate-500" /></button>
@@ -1138,10 +1151,19 @@ function ARPScanModal({ onClose, onImport, subnet }) {
               {/* Summary chips */}
               <div className="flex gap-2 flex-wrap text-xs">
                 <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-lg font-medium">{tracked.length} tracked</span>
-                <span className="px-2 py-1 bg-amber-100 text-amber-700 rounded-lg font-medium">{untracked.length} untracked</span>
+                {staticIPs.length > 0 && <span className="px-2 py-1 bg-amber-100 text-amber-700 rounded-lg font-medium">{staticIPs.length} static untracked</span>}
+                {dhcpIPs.length > 0 && <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-lg font-medium">{dhcpIPs.length} DHCP</span>}
                 {outRange.length > 0 && <span className="px-2 py-1 bg-slate-100 text-slate-500 rounded-lg font-medium">{outRange.length} out of range</span>}
                 <span className={`px-2 py-1 rounded-lg ${method === 'arp-cache' ? 'bg-amber-100 text-amber-600 font-medium' : 'bg-slate-50 text-slate-400'}`}>via {method}</span>
               </div>
+
+              {/* DHCP info note */}
+              {dhcpIPs.length > 0 && (
+                <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800">
+                  <AlertCircle className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+                  <span><strong>{dhcpIPs.length} DHCP address{dhcpIPs.length !== 1 ? 'es' : ''}</strong> found in your DHCP pool — these are deselected by default as they may be temporary leases. Tick them if you want to record them.</span>
+                </div>
+              )}
 
               {/* Results table */}
               {results.length > 0 ? (
@@ -1149,9 +1171,14 @@ function ARPScanModal({ onClose, onImport, subnet }) {
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-sm font-medium text-slate-700">{importable.length} importable device{importable.length !== 1 ? 's' : ''}</p>
                     {importable.length > 0 && (
-                      <button onClick={toggleAll} className="text-xs text-teal-600 hover:underline">
-                        {selected.size === importable.length ? 'Deselect all' : 'Select all'}
-                      </button>
+                      <div className="flex gap-3 text-xs">
+                        {dhcpIPs.length > 0 && staticIPs.length > 0 && (
+                          <button onClick={selectStaticOnly} className="text-teal-600 hover:underline">Static only</button>
+                        )}
+                        <button onClick={toggleAll} className="text-teal-600 hover:underline">
+                          {selected.size === importable.length ? 'Deselect all' : 'Select all'}
+                        </button>
+                      </div>
                     )}
                   </div>
                   <div className="border border-slate-200 rounded-lg overflow-hidden">
@@ -2898,6 +2925,7 @@ export default function IPAddressManager() {
       {showARPScan && (
         <ARPScanModal
           subnet={networkConfig.subnet}
+          networkConfig={networkConfig}
           onImport={handleImport}
           onClose={() => setShowARPScan(false)}
         />
