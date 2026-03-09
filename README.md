@@ -297,6 +297,58 @@ Settings are saved automatically and persist across sessions.
 
 ---
 
+## Proxmox Integration
+
+The purple **Proxmox** button in the app header lets you discover all VMs and LXC containers from a Proxmox host and import them in one click. It requires a Proxmox API token — here's how to set one up.
+
+### Step 1 — Create the API token
+
+1. Open your Proxmox web UI and go to **Datacenter → Permissions → API Tokens**
+2. Click **Add**
+3. Set **User** to `root@pam` (or any Proxmox user with read access)
+4. Set **Token ID** to something memorable, e.g. `ipmanager`
+5. Leave **Privilege Separation** _unchecked_ — this lets the token inherit the user's full permissions without needing extra role assignments
+6. Click **Add** — **copy the token secret immediately**; it will not be shown again
+
+> **If you left Privilege Separation checked** you need to assign a role manually: go to **Datacenter → Permissions → Add → API Token Permission**, set Path to `/`, select your token, and set Role to **PVEAuditor**.
+
+### Step 2 — Note the token format
+
+The token string follows this pattern:
+
+```
+USER@REALM!TOKENID=SECRET-UUID
+```
+
+Example:
+
+```
+root@pam!ipmanager=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+```
+
+Paste this full string into the **API Token** field in the import modal.
+
+### Step 3 — Run the import
+
+1. Click the purple **Proxmox** button in the app header
+2. Enter your Proxmox host IP or hostname (port defaults to 8006)
+3. Paste the API token
+4. Leave **Ignore TLS certificate errors** checked if you're using a self-signed cert (the default for most home lab setups)
+5. Click **Discover VMs & LXCs** — the app queries the Proxmox API and lists all containers and VMs with IP addresses
+6. Review the results, select the entries you want, choose **Merge** or **Replace**, and click **Import**
+
+### Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| "401 Unauthorized" | Wrong token string or token was deleted | Re-create the token and copy the full `USER@REALM!TOKENID=SECRET` string |
+| VM has no IP in results | QEMU guest agent not running inside the VM | Install and enable `qemu-guest-agent` inside the VM, then restart it |
+| LXC has no IP | Container is stopped | Start the container — stopped LXCs don't report network interfaces |
+| "certificate verify failed" | Self-signed TLS cert on Proxmox | Enable **Ignore TLS certificate errors** in the modal |
+| Connection refused | Wrong host/port or firewall | Verify the IP and that port 8006 is reachable from the IP manager's LXC |
+
+---
+
 ## Importing Your IP Data
 
 Click the **Import** button in the app header to load your own data from a `.csv`, `.xlsx`, or `.xls` file. The import flow is three steps:

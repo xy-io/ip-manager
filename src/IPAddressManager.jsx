@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Search, Server, Monitor, Wifi, HardDrive, Camera, Shield, Globe, Filter, X, MapPin, Cpu, Box, CircleDot, ChevronDown, ChevronUp, Copy, Check, Zap, Download, Edit3, Plus, Trash2, Save, AlertCircle, Settings, Upload, FileText, AlertTriangle, CheckCircle, ChevronRight, Tag, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Search, Server, Monitor, Wifi, HardDrive, Camera, Shield, Globe, Filter, X, MapPin, Cpu, Box, CircleDot, ChevronDown, ChevronUp, Copy, Check, Zap, Download, Edit3, Plus, Trash2, Save, AlertCircle, Settings, Upload, FileText, AlertTriangle, CheckCircle, ChevronRight, Tag, ArrowUpDown, ArrowUp, ArrowDown, HelpCircle } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 // Default network configuration (overridden by Settings modal / localStorage)
@@ -741,6 +741,7 @@ function ProxmoxImportModal({ onClose, onImport }) {
   const [noIp, setNoIp]           = useState([]);   // entries without IPs
   const [selected, setSelected]   = useState(new Set());
   const [importMode, setImportMode] = useState('merge');
+  const [showProxmoxHelp, setShowProxmoxHelp] = useState(false);
 
   const discover = async () => {
     setDiscoverError('');
@@ -828,9 +829,56 @@ function ProxmoxImportModal({ onClose, onImport }) {
                   className={inputCls} placeholder="root@pam!ipmanager=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
                   onKeyDown={e => e.key === 'Enter' && host && apiToken && discover()} />
                 <p className="text-xs text-slate-400 mt-1">
-                  Create in Proxmox → Datacenter → Permissions → API Tokens. The <strong>PVEAuditor</strong> role is enough.
+                  Format: <code className="font-mono bg-slate-100 px-1 rounded">USER@REALM!TOKENID=SECRET</code>
+                  &nbsp;&mdash; e.g. <code className="font-mono bg-slate-100 px-1 rounded">root@pam!ipmanager=abc123…</code>
                 </p>
               </div>
+
+              {/* ── Collapsible setup guide ── */}
+              <div className="rounded-lg border border-purple-200 bg-purple-50 overflow-hidden">
+                <button type="button"
+                  onClick={() => setShowProxmoxHelp(h => !h)}
+                  className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-purple-100 transition-colors">
+                  <span className="text-sm font-semibold text-purple-800 flex items-center gap-2">
+                    <HelpCircle className="w-4 h-4 text-purple-500" />
+                    How to create a Proxmox API token
+                  </span>
+                  <ChevronRight className={`w-4 h-4 text-purple-400 transition-transform ${showProxmoxHelp ? 'rotate-90' : ''}`} />
+                </button>
+                {showProxmoxHelp && (
+                  <div className="px-4 pb-4 space-y-3 text-xs text-purple-900">
+                    <div>
+                      <p className="font-semibold text-purple-700 mb-1">Step 1 — Create the API token</p>
+                      <ol className="space-y-1 list-decimal list-inside text-purple-800">
+                        <li>In the Proxmox web UI, go to <strong>Datacenter → Permissions → API Tokens</strong></li>
+                        <li>Click <strong>Add</strong></li>
+                        <li>Set <strong>User</strong> to <code className="font-mono bg-purple-100 px-1 rounded">root@pam</code> (or any Proxmox user)</li>
+                        <li>Set <strong>Token ID</strong> to something memorable, e.g. <code className="font-mono bg-purple-100 px-1 rounded">ipmanager</code></li>
+                        <li>Leave <strong>Privilege Separation</strong> <em>unchecked</em> — this lets the token inherit the user's permissions without extra role steps</li>
+                        <li>Click <strong>Add</strong> — <strong>copy the secret immediately</strong>, it will not be shown again</li>
+                      </ol>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-purple-700 mb-1">Step 2 — Assign the role (only if Privilege Separation is ON)</p>
+                      <ol className="space-y-1 list-decimal list-inside text-purple-800">
+                        <li>Go to <strong>Datacenter → Permissions → Add → API Token Permission</strong></li>
+                        <li>Set Path to <code className="font-mono bg-purple-100 px-1 rounded">/</code></li>
+                        <li>Select your token, set Role to <strong>PVEAuditor</strong></li>
+                        <li>Click <strong>Add</strong></li>
+                      </ol>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-purple-700 mb-1">Token format</p>
+                      <code className="block font-mono bg-purple-100 px-2 py-1 rounded text-purple-800">USER@REALM!TOKENID=SECRET-UUID</code>
+                      <code className="block font-mono bg-purple-100 px-2 py-1 rounded text-purple-800 mt-1">root@pam!ipmanager=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx</code>
+                    </div>
+                    <div className="bg-amber-50 border border-amber-200 rounded p-2 text-amber-800">
+                      <strong>VMs not showing an IP?</strong> Install and enable the <strong>QEMU guest agent</strong> inside the VM — Proxmox needs it to read the IP. LXC containers report IPs automatically.
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={ignoreTls} onChange={e => setIgnoreTls(e.target.checked)}
                   className="rounded border-slate-300 text-purple-600 focus:ring-purple-500" />
