@@ -40,6 +40,26 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
+### v1.11 Features
+
+**ARP network scan** — Click the teal **ARP Scan** button in the header (API mode only) to sweep your subnet for active devices. The server runs `arp-scan`, returns each device's IP, MAC address, vendor, and hostname (where resolvable via reverse DNS), then cross-references against your existing entries. Results are shown in a table with status badges — **✓ Tracked** (already in the manager), **◯ Untracked** (on your subnet but not yet recorded), or **⊘ Out of range**. Untracked devices are pre-selected for import with one click. The subnet is pre-filled from your network settings but can be edited. `arp-scan` is now installed automatically by the install script; the server falls back to the kernel ARP cache if it isn't available.
+
+**DHCP toggle** — Network Settings now has an Enabled/Disabled toggle on the DHCP Pool section. Turn DHCP off for networks where everything is statically assigned — the DHCP range fields collapse and all IPs are treated as static.
+
+**Multi-network settings fixes** — Resolved a bug where changes to a second network's name, subnet, or ranges appeared to have no effect (a silent crash caused by numeric vs string type mismatch in the form).
+
+**Credential change fix** — Resolved a bug where changing username/password in Settings → Account had no effect (an inner `<form>` nested inside the outer settings form was silently intercepted by the browser).
+
+---
+
+### v1.10 Features
+
+**Proxmox one-shot import** — Click the purple **Proxmox** button in the header to connect to your Proxmox host using an API token. The app discovers all VMs and LXC containers with IP addresses and presents them in a preview table. Choose Merge (safe, incremental) or Replace mode, select which entries to import, and click Import. Requires a Proxmox API token with the PVEAuditor role.
+
+**Tag management in Settings** — Settings → Tags lets you see all tags across the active network, rename a tag (updates every entry that uses it), add pre-defined tags before assigning them to any entry, and delete a tag from all entries at once. The Edit modal now shows a dropdown of existing tags as you type so you can pick from the current set rather than retyping. Tags display in alphabetical order everywhere.
+
+---
+
 ### v1.9 Features
 
 **Login / authentication** — The app is now protected by a username and password login screen. Default credentials are `admin` / `admin`. After signing in, go to **Settings → Account** to set your own username and password — no server access required. Credentials are stored in `server/credentials.env` on the LXC. Sessions persist for the lifetime of the browser tab; a sign-out button appears in the header.
@@ -146,12 +166,13 @@ bash <(curl -fsSL https://raw.githubusercontent.com/xy-io/ip-manager/main/instal
 The script will:
 
 1. Update apt packages
-2. Install `git`, `curl`, and `nginx`
+2. Install `git`, `curl`, `nginx`, and `arp-scan`
 3. Install Node.js 20 LTS
 4. Clone this repository to `/opt/ip-manager`
 5. Run `npm install` and `npm run build`
-6. Configure Nginx to serve the app on **port 80**
-7. Create an `ip-manager-update` command for future updates
+6. Set correct file ownership so the service user can write the database and credentials
+7. Configure Nginx to serve the app on **port 80**
+8. Create an `ip-manager-update` command for future updates
 
 When it finishes, open the container's IP in your browser and you're done.
 
@@ -233,6 +254,9 @@ See [`IP_Manager_Roadmap.docx`](./IP_Manager_Roadmap.docx) for the full three-ph
 - ✅ Multi-network / VLAN support, Full backup & restore, Hide free IP cards toggle — shipped in v1.8
 - ✅ Login screen & credential management — shipped in v1.9
 - ✅ Proxmox one-shot import — discover all VMs and LXCs from a Proxmox host and import in one click — shipped in v1.10
+- ✅ Tag management in Settings — add, rename, delete tags; suggestions dropdown on edit modal — shipped in v1.10
+- ✅ ARP network scan — one-shot subnet sweep, cross-references against manager, import untracked devices — shipped in v1.11
+- ✅ DHCP toggle — disable DHCP pool per network for fully static setups — shipped in v1.11
 - **PWA / Offline support** — install to home screen; works without network access
 
 **Phase 2 — mid-term (Q3–Q4 2026):**
@@ -240,7 +264,6 @@ See [`IP_Manager_Roadmap.docx`](./IP_Manager_Roadmap.docx) for the full three-ph
 - **Ping / reachability** — live status indicators per IP
 - **Proxmox scheduled sync** — automatically re-discover and update Proxmox entries on a schedule
 - **Pi-hole import (v6)** — one-shot import of Pi-hole v6 local DNS records to populate or enrich existing entries
-- **ARP scan — one-shot** — scan the configured subnet on demand from the server; returns IP, MAC address, and hostname (where available); cross-references against existing entries to highlight untracked devices and unclaimed IPs
 - **Service health checks** — HTTP probes with UP/DOWN badges
 
 **Phase 3 — longer-term (2027+):**
@@ -260,8 +283,9 @@ No code editing required. Click the **⚙️ Settings** icon in the app header t
 |---|---|
 | Network name | Display name shown in the header and network tabs |
 | Subnet | Your network prefix — paste the full address (`192.168.0.0`) or just the prefix (`192.168.1` for /24, `192.168` for /16). Trailing zeros are stripped automatically. |
-| DHCP range | Start and end of the DHCP pool (single octets for /24, e.g. `1`/`170`; two octets for /16, e.g. `2.20`/`2.250`) |
-| DHCP Reservations | Host portions of IPs with DHCP reservations — can be anywhere on the network, not just within the DHCP pool |
+| DHCP enabled | Toggle the DHCP pool on or off. Disable for networks where everything is statically assigned. |
+| DHCP range | Start and end of the DHCP pool (single octets for /24, e.g. `1`/`170`; two octets for /16, e.g. `2.20`/`2.250`). Hidden when DHCP is disabled. |
+| DHCP Reservations | Host portions of IPs with DHCP reservations — can be anywhere on the network, not just within the DHCP pool. Hidden when DHCP is disabled. |
 | Static range | Start and end of your static assignments |
 | Locations | Add, rename, or remove physical location labels for the active network |
 | Display | Toggle whether free IP cards appear in the main list (turn off for large /16 networks) |
