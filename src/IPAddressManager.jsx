@@ -1658,7 +1658,7 @@ function BulkEditModal({ count, onApply, onClose, types, locations, allTags }) {
 }
 
 // Edit Modal Component
-function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddLocation }) {
+function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddLocation, allTags }) {
   const [formData, setFormData] = useState({
     assetName: item.assetName,
     hostname: item.hostname,
@@ -1669,6 +1669,7 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
     tags: item.tags || [],
   });
   const [tagInput, setTagInput] = useState('');
+  const [showTagSuggestions, setShowTagSuggestions] = useState(false);
   // Separate draft state for the "add new location" text input.
   // We must NOT write the typed value into formData.location until the user
   // commits, because formData.location === '__new__' is the condition that
@@ -1831,15 +1832,41 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
                 ))}
               </div>
             )}
-            <input
-              type="text"
-              value={tagInput}
-              onChange={e => setTagInput(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); if (tagInput.trim()) addTag(tagInput); } }}
-              onBlur={() => { if (tagInput.trim()) addTag(tagInput); }}
-              placeholder="Type a tag and press Enter (e.g. media, iot, monitoring)"
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
-            />
+            <div className="relative">
+              <input
+                type="text"
+                value={tagInput}
+                onChange={e => { setTagInput(e.target.value); setShowTagSuggestions(true); }}
+                onFocus={() => setShowTagSuggestions(true)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); if (tagInput.trim()) { addTag(tagInput); setShowTagSuggestions(false); } }
+                  if (e.key === 'Escape') setShowTagSuggestions(false);
+                }}
+                onBlur={() => setTimeout(() => setShowTagSuggestions(false), 150)}
+                placeholder="Type a tag and press Enter, or pick from list…"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
+              />
+              {showTagSuggestions && (() => {
+                const suggestions = (allTags || []).filter(t =>
+                  !formData.tags.includes(t) &&
+                  (tagInput === '' || t.toLowerCase().includes(tagInput.toLowerCase()))
+                );
+                return suggestions.length > 0 ? (
+                  <div className="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                    {suggestions.map(t => (
+                      <button
+                        key={t}
+                        type="button"
+                        onMouseDown={e => { e.preventDefault(); addTag(t); setShowTagSuggestions(false); }}
+                        className="w-full text-left px-3 py-1.5 text-sm text-slate-700 hover:bg-violet-50 hover:text-violet-700 flex items-center gap-2"
+                      >
+                        <Tag className="w-3 h-3 text-violet-400 flex-shrink-0" />{t}
+                      </button>
+                    ))}
+                  </div>
+                ) : null;
+              })()}
+            </div>
           </div>
 
           <div>
@@ -2082,8 +2109,9 @@ export default function IPAddressManager() {
   const allTags = useMemo(() => {
     const tagSet = new Set();
     networkIpData.forEach(item => (item.tags || []).forEach(t => t && tagSet.add(t)));
+    (networkConfig.extraTags || []).forEach(t => t && tagSet.add(t));
     return [...tagSet].sort();
-  }, [networkIpData]);
+  }, [networkIpData, networkConfig.extraTags]);
 
   const freeStaticIPs = useMemo(() => {
     const subnet = networkConfig.subnet;
@@ -2250,19 +2278,33 @@ export default function IPAddressManager() {
     setHasChanges(true);
   };
 
-  // Rename a tag across all IP entries (oldTag === null → add brand-new tag as no-op since
-  // tags only live on entries; adding here is a no-op but keeps the API symmetric with locations)
   const handleRenameTag = (oldTag, newTag) => {
-    if (!newTag || newTag === oldTag) return;
-    if (oldTag !== null) {
+    if (!newTag) return;
+    const trimmed = newTag.trim();
+    if (!trimmed || trimmed === oldTag) return;
+
+    if (oldTag === null) {
+      // Add a brand-new pre-defined tag (stored in extraTags, similar to extraLocations)
+      setNetworks(prev => prev.map(n =>
+        n.id === activeNetworkId
+          ? { ...n, extraTags: [...new Set([...(n.extraTags || []), trimmed])] }
+          : n
+      ));
+    } else {
+      // Rename across all IP entries
       const now = new Date().toISOString();
       setIpData(prev => prev.map(item => {
         if (!(item.tags || []).includes(oldTag)) return item;
-        return { ...item, tags: item.tags.map(t => t === oldTag ? newTag : t), updatedAt: now };
+        return { ...item, tags: item.tags.map(t => t === oldTag ? trimmed : t), updatedAt: now };
       }));
-      setHasChanges(true);
+      // Also rename in extraTags if it's there
+      setNetworks(prev => prev.map(n =>
+        n.id === activeNetworkId
+          ? { ...n, extraTags: (n.extraTags || []).map(t => t === oldTag ? trimmed : t) }
+          : n
+      ));
     }
-    // Adding a brand-new tag from Settings is a no-op — tags only exist once applied to entries.
+    setHasChanges(true);
   };
 
   const handleDeleteTag = (tag) => {
@@ -2271,6 +2313,12 @@ export default function IPAddressManager() {
       (item.tags || []).includes(tag)
         ? { ...item, tags: item.tags.filter(t => t !== tag), updatedAt: now }
         : item
+    ));
+    // Also remove from extraTags
+    setNetworks(prev => prev.map(n =>
+      n.id === activeNetworkId
+        ? { ...n, extraTags: (n.extraTags || []).filter(t => t !== tag) }
+        : n
     ));
     setHasChanges(true);
   };
@@ -2559,6 +2607,7 @@ export default function IPAddressManager() {
           locations={locations}
           types={types}
           onAddLocation={(name) => handleRenameLocation(null, name)}
+          allTags={allTags}
         />
       )}
 
