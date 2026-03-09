@@ -5,10 +5,101 @@
 
 const express = require('express');
 const Database = require('better-sqlite3');
+const cookieParser = require('cookie-parser');
+const crypto = require('crypto');
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
 app.use(express.json({ limit: '2mb' }));
+app.use(cookieParser());
+
+// ── Credentials ───────────────────────────────────────────────────────────────
+// Reads from IP_MANAGER_USERNAME / IP_MANAGER_PASSWORD env vars.
+// If not set, falls back to a credentials.env file in the server directory.
+// If that doesn't exist either, defaults to admin / admin (with a warning).
+
+function loadCredentials() {
+  if (process.env.IP_MANAGER_USERNAME && process.env.IP_MANAGER_PASSWORD) {
+    return {
+      username: process.env.IP_MANAGER_USERNAME,
+      password: process.env.IP_MANAGER_PASSWORD,
+    };
+  }
+  const envFile = path.join(__dirname, 'credentials.env');
+  if (fs.existsSync(envFile)) {
+    const lines = fs.readFileSync(envFile, 'utf8').split('\n');
+    const env = {};
+    lines.forEach(line => {
+      const [k, ...rest] = line.split('=');
+      if (k && rest.length) env[k.trim()] = rest.join('=').trim();
+    });
+    if (env.IP_MANAGER_USERNAME && env.IP_MANAGER_PASSWORD) {
+      return { username: env.IP_MANAGER_USERNAME, password: env.IP_MANAGER_PASSWORD };
+    }
+  }
+  console.warn('[auth] No credentials configured — using defaults (admin/admin). Create server/credentials.env to set your own.');
+  return { username: 'admin', password: 'admin' };
+}
+
+let credentials = loadCredentials();
+
+// ── Session store ─────────────────────────────────────────────────────────────
+// Simple in-memory map of token → expiry. Sessions are cleared on server restart.
+
+const SESSION_COOKIE = 'ip-manager-session';
+const sessions = new Map(); // token → expires timestamp (0 = browser-session only)
+
+function createSession() {
+  const token = crypto.randomBytes(32).toString('hex');
+  sessions.set(token, 0); // 0 = no absolute expiry, lives until server restart or logout
+  return token;
+}
+
+function isValidSession(token) {
+  if (!token || !sessions.has(token)) return false;
+  const expires = sessions.get(token);
+  if (expires && Date.now() > expires) {
+    sessions.delete(token);
+    return false;
+  }
+  return true;
+}
+
+// ── Auth middleware ───────────────────────────────────────────────────────────
+// Applied to all /api/* routes except /api/auth/*
+
+function requireAuth(req, res, next) {
+  if (isValidSession(req.cookies[SESSION_COOKIE])) return next();
+  res.status(401).json({ error: 'Unauthorised' });
+}
+
+// ── Auth routes (unprotected) ─────────────────────────────────────────────────
+
+app.post('/api/auth/login', (req, res) => {
+  // Reload credentials on each login attempt so changes to credentials.env
+  // take effect without restarting the server
+  credentials = loadCredentials();
+  const { username, password } = req.body || {};
+  if (username === credentials.username && password === credentials.password) {
+    const token = createSession();
+    // httpOnly prevents JS access; sameSite=strict prevents CSRF
+    res.cookie(SESSION_COOKIE, token, { httpOnly: true, sameSite: 'strict' });
+    return res.json({ ok: true });
+  }
+  res.status(401).json({ error: 'Invalid username or password' });
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  const token = req.cookies[SESSION_COOKIE];
+  if (token) sessions.delete(token);
+  res.clearCookie(SESSION_COOKIE);
+  res.json({ ok: true });
+});
+
+app.get('/api/auth/status', (req, res) => {
+  res.json({ authenticated: isValidSession(req.cookies[SESSION_COOKIE]) });
+});
 
 // ── Database setup ────────────────────────────────────────────────────────────
 
@@ -32,7 +123,10 @@ const dbSet = (key, value) => {
   db.prepare('INSERT OR REPLACE INTO store (key, value) VALUES (?, ?)').run(key, JSON.stringify(value));
 };
 
-// ── Routes ────────────────────────────────────────────────────────────────────
+// ── Protected routes ──────────────────────────────────────────────────────────
+// All /api/* routes below this point require a valid session.
+
+app.use('/api', requireAuth);
 
 // Health check — used by the React app to detect API mode
 app.get('/api/health', (req, res) => {
@@ -124,4 +218,5 @@ const HOST = '127.0.0.1'; // only accessible via Nginx proxy, not directly from 
 app.listen(PORT, HOST, () => {
   console.log(`IP Manager API listening on ${HOST}:${PORT}`);
   console.log(`Database: ${DB_PATH}`);
+  console.log(`Auth: username="${credentials.username}"`);
 });

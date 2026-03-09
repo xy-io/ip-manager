@@ -530,6 +530,9 @@ function loadIpData() {
 // ── API helpers (SQLite backend on LXC) ──────────────────────────────────────
 // Returns true if the API server is reachable. Falls back silently to
 // localStorage mode if running locally without the server.
+// Called whenever any API request gets a 401 — registered by the component on mount.
+let onUnauthenticated = null;
+
 async function detectApi() {
   try {
     const res = await fetch('/api/health', { signal: AbortSignal.timeout(2000) });
@@ -541,16 +544,104 @@ async function detectApi() {
 
 async function apiGet(path) {
   const res = await fetch(path);
+  if (res.status === 401) { onUnauthenticated?.(); throw new Error('Unauthorised'); }
   if (!res.ok) throw new Error(`API ${path} returned ${res.status}`);
   return res.json();
 }
 
 async function apiPut(path, body) {
-  await fetch(path, {
+  const res = await fetch(path, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+  if (res.status === 401) { onUnauthenticated?.(); }
+}
+
+// ── Login screen ──────────────────────────────────────────────────────────────
+
+function LoginScreen({ onLogin }) {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      if (res.ok) {
+        onLogin();
+      } else {
+        setError('Invalid username or password');
+      }
+    } catch {
+      setError('Could not reach the server. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-8">
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-14 h-14 bg-emerald-100 rounded-2xl mb-4">
+            <Shield className="w-7 h-7 text-emerald-600" />
+          </div>
+          <h1 className="text-2xl font-bold text-slate-800">IP Address Manager</h1>
+          <p className="text-slate-500 text-sm mt-1">Sign in to continue</p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Username</label>
+            <input
+              type="text"
+              autoFocus
+              autoComplete="username"
+              value={username}
+              onChange={e => setUsername(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+              placeholder="admin"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
+            <input
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+              placeholder="••••••••"
+            />
+          </div>
+
+          {error && (
+            <div className="flex items-center gap-2 text-red-600 text-sm bg-red-50 px-3 py-2 rounded-lg">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading || !username || !password}
+            className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-semibold py-2.5 rounded-lg transition-colors"
+          >
+            {loading ? 'Signing in…' : 'Sign in'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
 }
 
 // Helper functions
@@ -1410,6 +1501,20 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
 
 // Main Component
 export default function IPAddressManager() {
+  // Auth state: 'checking' while we verify the session, 'ok' when logged in, 'none' when not.
+  const [auth, setAuth] = useState('checking');
+
+  // Register the global 401 handler so apiGet/apiPut can signal session expiry.
+  useEffect(() => {
+    onUnauthenticated = () => setAuth('none');
+    return () => { onUnauthenticated = null; };
+  }, []);
+
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    setAuth('none');
+  };
+
   // Persistence mode — 'loading' until API check completes, then 'api' or 'local'
   const [persistMode, setPersistMode] = useState('loading');
 
@@ -1442,9 +1547,27 @@ export default function IPAddressManager() {
   const [sortDir, setSortDir] = useState('asc');
   const searchRef = useRef(null);
 
-  // ── On mount: detect API and load server data if available ─────────────────
+  // ── On mount: check auth status, then detect API and load data ───────────────
   useEffect(() => {
     (async () => {
+      // Always check auth status first — if the server is up and we're not
+      // logged in, show the login screen immediately.
+      try {
+        const statusRes = await fetch('/api/auth/status');
+        if (statusRes.ok) {
+          const { authenticated } = await statusRes.json();
+          if (!authenticated) {
+            setAuth('none');
+            setPersistMode('local'); // fall back to localStorage while logged out
+            return;
+          }
+          setAuth('ok');
+        }
+      } catch {
+        // Server unreachable — skip auth, fall through to localStorage mode
+        setAuth('ok');
+      }
+
       const hasApi = await detectApi();
       if (hasApi) {
         try {
@@ -1937,6 +2060,18 @@ export default function IPAddressManager() {
     return networkConfig.fixedInDHCP.some(f => rangeOrdinal(f, networkConfig.subnet) === ord);
   };
 
+  // Show login screen while checking or when unauthenticated
+  if (auth === 'checking') {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-slate-400 text-sm">Loading…</div>
+      </div>
+    );
+  }
+  if (auth === 'none') {
+    return <LoginScreen onLogin={() => { setAuth('ok'); setPersistMode('loading'); }} />;
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       {/* Settings Modal */}
@@ -2096,6 +2231,15 @@ export default function IPAddressManager() {
               >
                 <Settings className="w-4 h-4" />
               </button>
+              {persistMode === 'api' && (
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-red-50 hover:text-red-600 text-slate-500 font-medium rounded-lg transition-colors"
+                  title="Sign out"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
               <button
                 onClick={() => setViewMode('cards')}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
