@@ -240,11 +240,13 @@ See [`IP_Manager_Roadmap.docx`](./IP_Manager_Roadmap.docx) for the full three-ph
 - **Ping / reachability** — live status indicators per IP
 - **Proxmox scheduled sync** — automatically re-discover and update Proxmox entries on a schedule
 - **Pi-hole import (v6)** — one-shot import of Pi-hole v6 local DNS records to populate or enrich existing entries
+- **ARP scan — one-shot** — scan the configured subnet on demand from the server; returns IP, MAC address, and hostname (where available); cross-references against existing entries to highlight untracked devices and unclaimed IPs
 - **Service health checks** — HTTP probes with UP/DOWN badges
 
 **Phase 3 — longer-term (2027+):**
 - **Proxmox live status** — real-time VM/LXC power state badges using the Proxmox API
 - **Pi-hole DNS validation** — flag entries where the hostname stored in the IP manager doesn't match what Pi-hole v6 resolves; amber warning badge on the card
+- **ARP scan — background** — periodic scheduled scans (rate-limited, subnet-scoped) that update a "last seen" timestamp on each card and surface newly appeared devices automatically
 - Network topology map, uptime alerts, REST API, network scanner
 - **Multi-user auth** — per-user accounts with role-based access (read-only vs admin)
 
