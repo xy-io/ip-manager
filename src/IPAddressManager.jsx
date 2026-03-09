@@ -7,6 +7,7 @@ const DEFAULT_NETWORK_CONFIG = {
   id: 'net-1',
   networkName: "Home Network",
   subnet: "192.168.0",
+  dhcpEnabled: true,
   dhcpStart: 1,
   dhcpEnd: 170,
   staticStart: 171,
@@ -59,11 +60,12 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
   const [form, setForm] = useState({
     networkName: config.networkName,
     subnet: config.subnet,
-    dhcpStart: config.dhcpStart,
-    dhcpEnd: config.dhcpEnd,
-    staticStart: config.staticStart,
-    staticEnd: config.staticEnd,
-    fixedInDHCP: config.fixedInDHCP.join(', '),
+    dhcpEnabled: config.dhcpEnabled !== false, // default true for existing networks
+    dhcpStart: String(config.dhcpStart),
+    dhcpEnd: String(config.dhcpEnd),
+    staticStart: String(config.staticStart),
+    staticEnd: String(config.staticEnd),
+    fixedInDHCP: (config.fixedInDHCP || []).join(', '),
   });
   const [error, setError] = useState('');
   const [confirmClear, setConfirmClear] = useState(false);
@@ -188,26 +190,29 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
 
     if (!subnet.match(/^\d{1,3}\.\d{1,3}\.\d{1,3}$/) && !subnet.match(/^\d{1,3}\.\d{1,3}$/))
       return setError('Enter a 2-octet prefix for /16 (e.g. 192.168) or 3-octet prefix for /24 (e.g. 192.168.1). You can also paste the full network address (e.g. 192.168.0.0) and trailing zeros will be stripped automatically.');
-    if (!rangePattern.test(form.dhcpStart.trim()) || !rangePattern.test(form.dhcpEnd.trim()) ||
-        !rangePattern.test(form.staticStart.trim()) || !rangePattern.test(form.staticEnd.trim()))
-      return setError(`Range values must be in the format ${rangeHint} for a /${is16 ? '16' : '24'} network.`);
+    if (form.dhcpEnabled) {
+      if (!rangePattern.test(form.dhcpStart.trim()) || !rangePattern.test(form.dhcpEnd.trim()))
+        return setError(`DHCP range values must be in the format ${rangeHint} for a /${is16 ? '16' : '24'} network.`);
+      if (rangeOrdinal(form.dhcpStart.trim(), subnet) >= rangeOrdinal(form.dhcpEnd.trim(), subnet))
+        return setError('DHCP start must be less than DHCP end.');
+    }
 
-    const dhcpStart   = form.dhcpStart.trim();
-    const dhcpEnd     = form.dhcpEnd.trim();
+    if (!rangePattern.test(form.staticStart.trim()) || !rangePattern.test(form.staticEnd.trim()))
+      return setError(`Static range values must be in the format ${rangeHint} for a /${is16 ? '16' : '24'} network.`);
+
+    const dhcpStart   = form.dhcpEnabled ? form.dhcpStart.trim() : '';
+    const dhcpEnd     = form.dhcpEnabled ? form.dhcpEnd.trim() : '';
     const staticStart = form.staticStart.trim();
     const staticEnd   = form.staticEnd.trim();
 
-    if (rangeOrdinal(dhcpStart, subnet) >= rangeOrdinal(dhcpEnd, subnet))
-      return setError('DHCP start must be less than DHCP end.');
     if (rangeOrdinal(staticStart, subnet) >= rangeOrdinal(staticEnd, subnet))
       return setError('Static start must be less than static end.');
 
-    const fixedInDHCP = form.fixedInDHCP
-      .split(',')
-      .map(s => s.trim())
-      .filter(s => s && rangePattern.test(s));
+    const fixedInDHCP = form.dhcpEnabled
+      ? form.fixedInDHCP.split(',').map(s => s.trim()).filter(s => s && rangePattern.test(s))
+      : [];
 
-    const newConfig = { networkName: form.networkName, subnet, dhcpStart, dhcpEnd, staticStart, staticEnd, fixedInDHCP };
+    const newConfig = { networkName: form.networkName, subnet, dhcpEnabled: form.dhcpEnabled, dhcpStart, dhcpEnd, staticStart, staticEnd, fixedInDHCP };
     onSave(newConfig); // parent handles persistence (API or localStorage)
   };
 
@@ -251,20 +256,38 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
 
           {/* DHCP range */}
           <div className="p-4 bg-amber-50 rounded-xl border border-amber-200 space-y-4">
-            <p className="text-xs font-semibold text-amber-700 uppercase tracking-wider">⚡ DHCP Pool</p>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className={labelCls}>Start</label>
-                <input type="text" className={inputCls} placeholder={subnetOctetCount(form.subnet) === 2 ? "e.g. 0.1" : "e.g. 1"} {...f('dhcpStart')} />
-              </div>
-              <div>
-                <label className={labelCls}>End</label>
-                <input type="text" className={inputCls} placeholder={subnetOctetCount(form.subnet) === 2 ? "e.g. 0.254" : "e.g. 170"} {...f('dhcpEnd')} />
-              </div>
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-amber-700 uppercase tracking-wider">⚡ DHCP Pool</p>
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <span className="text-xs text-amber-700 font-medium">{form.dhcpEnabled ? 'Enabled' : 'Disabled'}</span>
+                <button
+                  type="button"
+                  onClick={() => setForm(f => ({ ...f, dhcpEnabled: !f.dhcpEnabled }))}
+                  className={`relative inline-flex h-5 w-9 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${form.dhcpEnabled ? 'bg-amber-500' : 'bg-slate-300'}`}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ${form.dhcpEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
+                </button>
+              </label>
             </div>
+            {form.dhcpEnabled && (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className={labelCls}>Start</label>
+                  <input type="text" className={inputCls} placeholder={subnetOctetCount(form.subnet) === 2 ? "e.g. 0.1" : "e.g. 1"} {...f('dhcpStart')} />
+                </div>
+                <div>
+                  <label className={labelCls}>End</label>
+                  <input type="text" className={inputCls} placeholder={subnetOctetCount(form.subnet) === 2 ? "e.g. 0.254" : "e.g. 170"} {...f('dhcpEnd')} />
+                </div>
+              </div>
+            )}
+            {!form.dhcpEnabled && (
+              <p className="text-xs text-amber-600">No DHCP pool — all IPs on this network are treated as static.</p>
+            )}
           </div>
 
-          {/* DHCP Reservations */}
+          {/* DHCP Reservations — only shown when DHCP is enabled */}
+          {form.dhcpEnabled && (
           <div className="p-4 bg-blue-50 rounded-xl border border-blue-200 space-y-4">
             <p className="text-xs font-semibold text-blue-700 uppercase tracking-wider">🔒 DHCP Reservations</p>
             <div>
@@ -273,6 +296,7 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
               <p className="text-xs text-slate-400 mt-1">Comma-separated host portions of IPs that have DHCP reservations. These can be anywhere on the network — inside or outside the DHCP pool.</p>
             </div>
           </div>
+          )}
 
           {/* Static range */}
           <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-200 space-y-4">
@@ -299,10 +323,12 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
           {/* Preview — shows normalised subnet so user sees what will be saved */}
           {(() => { const ps = normaliseSubnet(form.subnet); return (
           <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs font-mono text-slate-500 space-y-1">
-            <p><span className="text-slate-400">Network:    </span>{subnetCIDR(ps)}</p>
-            <p><span className="text-slate-400">DHCP pool:  </span>{ps}.{form.dhcpStart} – {ps}.{form.dhcpEnd}</p>
+            <p><span className="text-slate-400">Network:      </span>{subnetCIDR(ps)}</p>
+            {form.dhcpEnabled
+              ? <p><span className="text-slate-400">DHCP pool:    </span>{ps}.{form.dhcpStart} – {ps}.{form.dhcpEnd}</p>
+              : <p><span className="text-slate-400">DHCP pool:    </span><span className="text-slate-400 not-italic">disabled</span></p>}
             <p><span className="text-slate-400">Static range: </span>{ps}.{form.staticStart} – {ps}.{form.staticEnd}</p>
-            {form.fixedInDHCP && <p><span className="text-slate-400">Fixed IPs:  </span>{form.fixedInDHCP.split(',').map(s => `${ps}.${s.trim()}`).join(', ')}</p>}
+            {form.dhcpEnabled && form.fixedInDHCP && <p><span className="text-slate-400">Fixed IPs:    </span>{form.fixedInDHCP.split(',').map(s => `${ps}.${s.trim()}`).join(', ')}</p>}
           </div>
           ); })()}
 
@@ -1361,6 +1387,7 @@ const normaliseSubnet = (raw) => {
 };
 
 const isInDHCPRange = (ip, config = DEFAULT_NETWORK_CONFIG) => {
+  if (config.dhcpEnabled === false) return false;
   const ord = ipOrdinal(ip, config.subnet);
   return ord >= rangeOrdinal(config.dhcpStart, config.subnet) &&
          ord <= rangeOrdinal(config.dhcpEnd, config.subnet);
