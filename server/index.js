@@ -7,6 +7,7 @@ const express = require('express');
 const Database = require('better-sqlite3');
 const cookieParser = require('cookie-parser');
 const crypto = require('crypto');
+const https = require('https');
 const path = require('path');
 const fs = require('fs');
 
@@ -127,6 +128,156 @@ app.post('/api/auth/change-password', (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: 'Could not write credentials file: ' + err.message });
+  }
+});
+
+// ── Proxmox integration ───────────────────────────────────────────────────────
+
+// Low-level helper: makes a single GET request to the Proxmox API.
+// Returns the parsed `data` field of the JSON response.
+function proxmoxFetch(host, port, apiPath, token, ignoreTls) {
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: host,
+      port,
+      path: `/api2/json${apiPath}`,
+      method: 'GET',
+      headers: { Authorization: `PVEAPIToken=${token}` },
+      rejectUnauthorized: !ignoreTls,
+      timeout: 8000,
+    }, (res) => {
+      let raw = '';
+      res.on('data', c => raw += c);
+      res.on('end', () => {
+        try {
+          const body = JSON.parse(raw);
+          resolve(body.data ?? body);
+        } catch {
+          reject(new Error('Invalid JSON from Proxmox'));
+        }
+      });
+    });
+    req.on('timeout', () => { req.destroy(); reject(new Error('Request timed out')); });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+// Extract valid IPv4 addresses from a list, skipping loopback and link-local.
+function filterIPs(ips) {
+  return ips.filter(ip =>
+    ip &&
+    /^\d{1,3}(\.\d{1,3}){3}$/.test(ip) &&
+    !ip.startsWith('127.') &&
+    !ip.startsWith('169.254.')
+  );
+}
+
+// Discover all VMs and LXCs across all nodes on a Proxmox host.
+// Returns { entries: [...], noIp: [...] }
+async function discoverProxmox(host, port, token, ignoreTls) {
+  const entries = [];
+  const noIp    = [];
+  const nodes   = await proxmoxFetch(host, port, '/nodes', token, ignoreTls);
+
+  for (const { node } of nodes) {
+    // ── LXC containers ──────────────────────────────────────────────────────
+    let lxcs = [];
+    try { lxcs = await proxmoxFetch(host, port, `/nodes/${node}/lxc`, token, ignoreTls); }
+    catch { /* node may have no LXC service */ }
+
+    for (const lxc of lxcs) {
+      let ips = [];
+      try {
+        const ifaces = await proxmoxFetch(host, port, `/nodes/${node}/lxc/${lxc.vmid}/interfaces`, token, ignoreTls);
+        if (Array.isArray(ifaces)) {
+          ips = filterIPs(ifaces.map(i => (i.inet || '').split('/')[0]));
+        }
+      } catch { /* container may be stopped */ }
+
+      const base = {
+        assetName: lxc.name || `CT-${lxc.vmid}`,
+        hostname:  lxc.name || '',
+        type:      'LXC',
+        location:  node,
+        apps:      '',
+        notes:     `VMID: ${lxc.vmid} | Node: ${node} | Status: ${lxc.status}`,
+        tags:      ['proxmox'],
+        updatedAt: new Date().toISOString(),
+      };
+      if (ips.length) {
+        entries.push({ ...base, ip: ips[0] });
+        // Additional IPs on the same container become separate entries
+        ips.slice(1).forEach(ip => entries.push({ ...base, ip, assetName: `${base.assetName} (${ip})` }));
+      } else {
+        noIp.push({ ...base, ip: '', _vmid: lxc.vmid, _node: node });
+      }
+    }
+
+    // ── QEMU virtual machines ───────────────────────────────────────────────
+    let vms = [];
+    try { vms = await proxmoxFetch(host, port, `/nodes/${node}/qemu`, token, ignoreTls); }
+    catch { /* node may have no QEMU service */ }
+
+    for (const vm of vms) {
+      let ips = [];
+      try {
+        // Guest agent required — silently skipped if unavailable
+        const agent = await proxmoxFetch(host, port, `/nodes/${node}/qemu/${vm.vmid}/agent/network-get-interfaces`, token, ignoreTls);
+        if (agent?.result && Array.isArray(agent.result)) {
+          ips = filterIPs(
+            agent.result.flatMap(iface =>
+              (iface['ip-addresses'] || [])
+                .filter(a => a['ip-address-type'] === 'ipv4')
+                .map(a => a['ip-address'])
+            )
+          );
+        }
+      } catch { /* no guest agent installed */ }
+
+      const base = {
+        assetName: vm.name || `VM-${vm.vmid}`,
+        hostname:  vm.name || '',
+        type:      'Virtual',
+        location:  node,
+        apps:      '',
+        notes:     `VMID: ${vm.vmid} | Node: ${node} | Status: ${vm.status}`,
+        tags:      ['proxmox'],
+        updatedAt: new Date().toISOString(),
+      };
+      if (ips.length) {
+        entries.push({ ...base, ip: ips[0] });
+        ips.slice(1).forEach(ip => entries.push({ ...base, ip, assetName: `${base.assetName} (${ip})` }));
+      } else {
+        noIp.push({ ...base, ip: '', _vmid: vm.vmid, _node: node });
+      }
+    }
+  }
+
+  return { entries, noIp };
+}
+
+// POST /api/proxmox/discover — proxies to Proxmox API (avoids browser CORS/TLS issues)
+app.post('/api/proxmox/discover', async (req, res) => {
+  const { host: rawHost, apiToken, ignoreTls } = req.body || {};
+  if (!rawHost || !apiToken) {
+    return res.status(400).json({ error: 'host and apiToken are required' });
+  }
+
+  // Normalise host: strip protocol, extract optional port
+  let host = rawHost.replace(/^https?:\/\//i, '').trim().replace(/\/+$/, '');
+  let port = 8006;
+  const colonIdx = host.lastIndexOf(':');
+  if (colonIdx > 0 && !host.includes(']')) { // ignore IPv6 colons
+    const maybePort = parseInt(host.slice(colonIdx + 1));
+    if (!isNaN(maybePort)) { port = maybePort; host = host.slice(0, colonIdx); }
+  }
+
+  try {
+    const result = await discoverProxmox(host, port, apiToken, !!ignoreTls);
+    res.json(result);
+  } catch (err) {
+    res.status(502).json({ error: `Could not connect to Proxmox: ${err.message}` });
   }
 });
 

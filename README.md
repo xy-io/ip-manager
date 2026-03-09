@@ -232,15 +232,17 @@ See [`IP_Manager_Roadmap.docx`](./IP_Manager_Roadmap.docx) for the full three-ph
 - ✅ Change history / audit log — shipped in v1.7
 - ✅ Multi-network / VLAN support, Full backup & restore, Hide free IP cards toggle — shipped in v1.8
 - ✅ Login screen & credential management — shipped in v1.9
+- ✅ Proxmox one-shot import — discover all VMs and LXCs from a Proxmox host and import in one click — shipped in v1.10
 - **PWA / Offline support** — install to home screen; works without network access
 
 **Phase 2 — mid-term (Q3–Q4 2026):**
 - **Multiple IPs per host** — support servers/VMs with more than one NIC or VLAN leg
 - **Ping / reachability** — live status indicators per IP
-- **Proxmox integration** — auto-discover VMs and LXCs
+- **Proxmox scheduled sync** — automatically re-discover and update Proxmox entries on a schedule
 - **Service health checks** — HTTP probes with UP/DOWN badges
 
 **Phase 3 — longer-term (2027+):**
+- **Proxmox live status** — real-time VM/LXC power state badges using the Proxmox API
 - Network topology map, uptime alerts, REST API, network scanner
 - **Multi-user auth** — per-user accounts with role-based access (read-only vs admin)
 
