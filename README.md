@@ -40,6 +40,10 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
+### v1.9 Features
+
+**Login / authentication** — The app is now protected by a username and password login screen. Default credentials are `admin` / `admin`. After signing in, go to **Settings → Account** to set your own username and password — no server access required. Credentials are stored in `server/credentials.env` on the LXC. Sessions persist for the lifetime of the browser tab; a sign-out button appears in the header.
+
 ### v1.8 Features
 
 **Multi-network / VLAN support** — Click **Add Network** (next to the ⚙️ Settings button) to add a second subnet — e.g. a dedicated IoT VLAN or a separate 172.16.x.x management segment. Network tabs appear at the top of the page; switching tabs instantly scopes all views, stats, free IPs, and search to that network. Each network has its own independent config. Delete a network (and all its entries) from Settings → Danger Zone when no longer needed.
@@ -203,6 +207,7 @@ ip-manager/
 ├── server/
 │   ├── index.js               # Express + SQLite API server (port 3001)
 │   ├── package.json           # Server dependencies
+│   ├── credentials.env        # Login credentials (edit to change username/password)
 │   └── ip-manager.db          # SQLite database (created on first run)
 ├── public/
 │   └── favicon.svg
@@ -226,6 +231,7 @@ See [`IP_Manager_Roadmap.docx`](./IP_Manager_Roadmap.docx) for the full three-ph
 - ✅ Bulk selection & bulk edit, Location management, Free IPs in main list — shipped in v1.7
 - ✅ Change history / audit log — shipped in v1.7
 - ✅ Multi-network / VLAN support, Full backup & restore, Hide free IP cards toggle — shipped in v1.8
+- ✅ Login screen & credential management — shipped in v1.9
 - **PWA / Offline support** — install to home screen; works without network access
 
 **Phase 2 — mid-term (Q3–Q4 2026):**
@@ -235,7 +241,8 @@ See [`IP_Manager_Roadmap.docx`](./IP_Manager_Roadmap.docx) for the full three-ph
 - **Service health checks** — HTTP probes with UP/DOWN badges
 
 **Phase 3 — longer-term (2027+):**
-- Network topology map, uptime alerts, REST API, network scanner, multi-user auth
+- Network topology map, uptime alerts, REST API, network scanner
+- **Multi-user auth** — per-user accounts with role-based access (read-only vs admin)
 
 ---
 
@@ -253,6 +260,7 @@ No code editing required. Click the **⚙️ Settings** icon in the app header t
 | Locations | Add, rename, or remove physical location labels for the active network |
 | Display | Toggle whether free IP cards appear in the main list (turn off for large /16 networks) |
 | Backup & Restore | Download a full `.json` backup or restore from a previous backup |
+| Account | Change the login username and password without touching the server |
 | Delete Network | Removes the active network and all its IP entries (shown only when multiple networks exist) |
 
 Settings are saved automatically and persist across sessions.

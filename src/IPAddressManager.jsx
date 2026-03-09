@@ -727,6 +727,10 @@ function LoginScreen({ onLogin }) {
             {loading ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
+
+        <div className="mt-6 p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-500 text-center">
+          <span className="font-medium">First time?</span> Sign in with <span className="font-mono bg-white px-1 py-0.5 rounded border border-slate-200">admin</span> / <span className="font-mono bg-white px-1 py-0.5 rounded border border-slate-200">admin</span>, then go to <span className="font-medium">Settings → Account</span> to set your own credentials.
+        </div>
       </div>
     </div>
   );
