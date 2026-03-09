@@ -1203,6 +1203,9 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
   // commits, because formData.location === '__new__' is the condition that
   // keeps the input visible — writing to it mid-keystroke collapses the field.
   const [newLocationDraft, setNewLocationDraft] = useState('');
+  // Remember what was selected before the user opened "+ Add new location"
+  // so we can restore it if they cancel without typing anything.
+  const prevLocationRef = useRef('');
 
   const commitNewLocation = () => {
     const v = newLocationDraft.trim();
@@ -1210,8 +1213,10 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
       setFormData(prev => ({ ...prev, location: v }));
       onAddLocation?.(v); // persist to networkConfig.extraLocations immediately
     } else {
-      setFormData(prev => ({ ...prev, location: '' })); // cancelled
+      // Cancelled — restore whatever was selected before opening "+ Add new location"
+      setFormData(prev => ({ ...prev, location: prevLocationRef.current }));
     }
+    setNewLocationDraft('');
   };
 
   const addTag = (raw) => {
@@ -1297,7 +1302,14 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
               <label className="block text-sm font-medium text-slate-700 mb-1">Location</label>
               <select
                 value={formData.location}
-                onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                onChange={(e) => {
+                  if (e.target.value === '__new__') {
+                    // Save current location so we can restore it if the user cancels
+                    prevLocationRef.current = formData.location;
+                    setNewLocationDraft('');
+                  }
+                  setFormData({ ...formData, location: e.target.value });
+                }}
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white"
               >
                 <option value="">Select location...</option>
@@ -1318,7 +1330,7 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
                 value={newLocationDraft}
                 onChange={(e) => setNewLocationDraft(e.target.value)}
                 onBlur={commitNewLocation}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitNewLocation(); } if (e.key === 'Escape') { setFormData(prev => ({ ...prev, location: '' })); setNewLocationDraft(''); } }}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitNewLocation(); } if (e.key === 'Escape') { setFormData(prev => ({ ...prev, location: prevLocationRef.current })); setNewLocationDraft(''); } }}
                 placeholder="e.g., Basement"
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
               />
