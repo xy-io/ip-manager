@@ -93,10 +93,16 @@ cd "$APP_DIR/server"
 npm install 2>&1 | grep -E "error|warn|ERR" || true
 ok "API server packages installed"
 
-# ── 6a. Set permissions so www-data can create the SQLite database ───
+# ── 6a. Set permissions so www-data can write the database and credentials ───
 log "Setting permissions on server directory..."
 chown -R www-data:www-data "$APP_DIR/server"
-ok "Permissions set for www-data on server directory"
+# Pre-create credentials.env so www-data can write to it later (changing
+# an existing file doesn't require directory write permission, but creating
+# a new file does — so we create it now as root while we still can).
+touch "$APP_DIR/server/credentials.env"
+chown www-data:www-data "$APP_DIR/server/credentials.env"
+chmod 600 "$APP_DIR/server/credentials.env"
+ok "Permissions set — server directory and credentials.env owned by www-data"
 
 # ── 7. Create systemd service for the API ────────────────────
 log "Creating systemd service for the API server..."
@@ -211,6 +217,10 @@ cd /opt/ip-manager/server && npm install 2>&1 | grep -E "error|warn|ERR" || true
 
 echo "Setting permissions..."
 chown -R www-data:www-data /opt/ip-manager/server
+# Ensure credentials.env exists and is writable by the service user
+touch /opt/ip-manager/server/credentials.env
+chown www-data:www-data /opt/ip-manager/server/credentials.env
+chmod 600 /opt/ip-manager/server/credentials.env
 
 echo "Restarting API server..."
 systemctl restart ip-manager-api
