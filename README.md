@@ -239,10 +239,12 @@ See [`IP_Manager_Roadmap.docx`](./IP_Manager_Roadmap.docx) for the full three-ph
 - **Multiple IPs per host** — support servers/VMs with more than one NIC or VLAN leg
 - **Ping / reachability** — live status indicators per IP
 - **Proxmox scheduled sync** — automatically re-discover and update Proxmox entries on a schedule
+- **Pi-hole import (v6)** — one-shot import of Pi-hole v6 local DNS records to populate or enrich existing entries
 - **Service health checks** — HTTP probes with UP/DOWN badges
 
 **Phase 3 — longer-term (2027+):**
 - **Proxmox live status** — real-time VM/LXC power state badges using the Proxmox API
+- **Pi-hole DNS validation** — flag entries where the hostname stored in the IP manager doesn't match what Pi-hole v6 resolves; amber warning badge on the card
 - Network topology map, uptime alerts, REST API, network scanner
 - **Multi-user auth** — per-user accounts with role-based access (read-only vs admin)
 
