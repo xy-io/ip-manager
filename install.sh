@@ -46,8 +46,8 @@ ok "Package lists updated"
 
 # ── 2. Install dependencies ──────────────────────────────────
 # build-essential is needed to compile better-sqlite3 native bindings
-log "Installing dependencies (curl, git, nginx, build-essential)..."
-apt-get install -y -qq curl git nginx build-essential python3
+log "Installing dependencies (curl, git, nginx, build-essential, arp-scan)..."
+apt-get install -y -qq curl git nginx build-essential python3 arp-scan
 ok "Dependencies installed"
 
 # ── 3. Install Node.js ───────────────────────────────────────
@@ -204,6 +204,9 @@ cat > /usr/local/bin/ip-manager-update <<UPDATESCRIPT
 set -e
 echo "Pulling latest changes from GitHub..."
 git -C /opt/ip-manager pull
+
+echo "Ensuring arp-scan is installed..."
+apt-get install -y -qq arp-scan 2>/dev/null || true
 
 echo "Installing frontend packages..."
 cd /opt/ip-manager && rm -rf node_modules package-lock.json && npm install 2>&1 | grep -E "error|warn|ERR" || true

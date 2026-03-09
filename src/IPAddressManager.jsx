@@ -963,22 +963,25 @@ function ProxmoxImportModal({ onClose, onImport }) {
 // ── ARP Scan Modal ────────────────────────────────────────────────────────────
 
 function ARPScanModal({ onClose, onImport, subnet }) {
-  const [step, setStep]           = useState(1); // 1 = config, 2 = results
-  const [iface, setIface]         = useState('');
-  const [scanning, setScanning]   = useState(false);
-  const [scanError, setScanError] = useState('');
-  const [results, setResults]     = useState([]);
-  const [method, setMethod]       = useState('');
-  const [selected, setSelected]   = useState(new Set());
+  const [step, setStep]             = useState(1); // 1 = config, 2 = results
+  const [scanSubnet, setScanSubnet] = useState(subnet); // editable copy
+  const [iface, setIface]           = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [scanning, setScanning]     = useState(false);
+  const [scanError, setScanError]   = useState('');
+  const [results, setResults]       = useState([]);
+  const [method, setMethod]         = useState('');
+  const [selected, setSelected]     = useState(new Set());
 
   const startScan = async () => {
+    if (!scanSubnet.trim()) return setScanError('Please enter a subnet to scan.');
     setScanError('');
     setScanning(true);
     try {
       const res = await fetch('/api/arp/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subnet, interface: iface.trim() || undefined }),
+        body: JSON.stringify({ subnet: scanSubnet.trim(), interface: iface.trim() || undefined }),
       });
       const data = await res.json();
       if (!res.ok) { setScanError(data.error || 'Scan failed'); setScanning(false); return; }
@@ -1049,7 +1052,7 @@ function ARPScanModal({ onClose, onImport, subnet }) {
               </h2>
               <p className="text-sm text-slate-500 mt-0.5">
                 {step === 1
-                  ? `Scan ${subnet} for active devices`
+                  ? `Scan your network for active devices`
                   : `Found ${results.length} device${results.length !== 1 ? 's' : ''} — ${untracked.length} untracked`}
               </p>
             </div>
@@ -1075,22 +1078,36 @@ function ARPScanModal({ onClose, onImport, subnet }) {
           {step === 1 && (
             <div className="space-y-5">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Subnet</label>
-                <div className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50 text-slate-500 font-mono">{subnet}</div>
-                <p className="text-xs text-slate-400 mt-1">Configured in Settings — editing not required for most setups</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Network Interface <span className="text-slate-400 font-normal">(optional)</span></label>
-                <input type="text" value={iface} onChange={e => setIface(e.target.value)}
-                  className={inputCls} placeholder="e.g. eth0, enp3s0 — leave blank for auto"
+                <label className="block text-sm font-medium text-slate-700 mb-1">Subnet to scan</label>
+                <input type="text" value={scanSubnet} onChange={e => setScanSubnet(e.target.value)}
+                  className={inputCls + ' font-mono'} placeholder="e.g. 192.168.0 or 192.168.0.0/24"
                   onKeyDown={e => e.key === 'Enter' && !scanning && startScan()} />
-                <p className="text-xs text-slate-400 mt-1">Leave blank and arp-scan will choose automatically</p>
+                <p className="text-xs text-slate-400 mt-1">Pre-filled from your network settings — change if you want to scan a different subnet.</p>
               </div>
+
               <div className="bg-teal-50 border border-teal-200 rounded-lg p-3 text-xs text-teal-800 space-y-1">
                 <p className="font-semibold">How it works</p>
                 <p>Sends a single ARP broadcast packet to each IP in your subnet — very lightweight (~15 KB for a /24). Returns each device's MAC address and, where resolvable, its hostname.</p>
-                <p className="text-teal-600 mt-1">Requires <code className="bg-teal-100 px-1 rounded">arp-scan</code> on the server. Falls back to the kernel ARP cache if not installed.</p>
               </div>
+
+              {/* Advanced options */}
+              <div>
+                <button type="button" onClick={() => setShowAdvanced(v => !v)}
+                  className="text-xs text-slate-400 hover:text-slate-600 flex items-center gap-1">
+                  <ChevronDown className={`w-3 h-3 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} />
+                  Advanced options
+                </button>
+                {showAdvanced && (
+                  <div className="mt-3">
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Network Interface <span className="text-slate-400 font-normal">(optional)</span></label>
+                    <input type="text" value={iface} onChange={e => setIface(e.target.value)}
+                      className={inputCls} placeholder="e.g. eth0, enp3s0 — leave blank for auto"
+                      onKeyDown={e => e.key === 'Enter' && !scanning && startScan()} />
+                    <p className="text-xs text-slate-400 mt-1">Only needed if your server has multiple network interfaces. Leave blank for automatic selection.</p>
+                  </div>
+                )}
+              </div>
+
               {scanError && (
                 <div className="flex items-start gap-2 text-red-600 text-sm bg-red-50 px-3 py-2 rounded-lg">
                   <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />{scanError}
