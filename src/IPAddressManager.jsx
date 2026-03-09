@@ -1187,7 +1187,7 @@ function BulkEditModal({ count, onApply, onClose, types, locations, allTags }) {
 }
 
 // Edit Modal Component
-function EditModal({ item, onSave, onClose, onMarkFree, locations, types }) {
+function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddLocation }) {
   const [formData, setFormData] = useState({
     assetName: item.assetName,
     hostname: item.hostname,
@@ -1206,8 +1206,12 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types }) {
 
   const commitNewLocation = () => {
     const v = newLocationDraft.trim();
-    if (v) setFormData(prev => ({ ...prev, location: v }));
-    else setFormData(prev => ({ ...prev, location: '' })); // cancelled
+    if (v) {
+      setFormData(prev => ({ ...prev, location: v }));
+      onAddLocation?.(v); // persist to networkConfig.extraLocations immediately
+    } else {
+      setFormData(prev => ({ ...prev, location: '' })); // cancelled
+    }
   };
 
   const addTag = (raw) => {
@@ -1220,7 +1224,15 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSave({ ...item, ...formData });
+    // Resolve any pending new-location draft — blur may not have committed
+    // yet if the user clicked Save directly from the text input.
+    const finalLocation = formData.location === '__new__'
+      ? newLocationDraft.trim()
+      : formData.location;
+    if (finalLocation && formData.location === '__new__') {
+      onAddLocation?.(finalLocation);
+    }
+    onSave({ ...item, ...formData, location: finalLocation });
   };
 
   const isFree = item.assetName === 'Free';
@@ -1972,6 +1984,7 @@ export default function IPAddressManager() {
           onMarkFree={handleMarkFree}
           locations={locations}
           types={types}
+          onAddLocation={(name) => handleRenameLocation(null, name)}
         />
       )}
 
