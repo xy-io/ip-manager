@@ -1730,11 +1730,18 @@ export default function IPAddressManager() {
   };
 
   const handleDeleteLocation = (name) => {
+    // Clear the location from all IP entries
     setIpData(prev =>
       prev.map(item =>
         item.location === name ? { ...item, location: '', updatedAt: new Date().toISOString() } : item
       )
     );
+    // Remove from extraLocations so it doesn't reappear from the network config
+    setNetworks(prev => prev.map(n =>
+      n.id === activeNetworkId
+        ? { ...n, extraLocations: (n.extraLocations || []).filter(l => l !== name) }
+        : n
+    ));
     setHasChanges(true);
   };
 
