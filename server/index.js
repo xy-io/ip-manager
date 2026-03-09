@@ -17,8 +17,13 @@ app.use(cookieParser());
 
 // ── Credentials ───────────────────────────────────────────────────────────────
 // Reads from IP_MANAGER_USERNAME / IP_MANAGER_PASSWORD env vars.
-// If not set, falls back to a credentials.env file in the server directory.
+// If not set, falls back to a credentials.env file.
+// The file path can be overridden with CREDENTIALS_FILE env var (useful when
+// the server directory is read-only, e.g. deployed under /opt).
 // If that doesn't exist either, defaults to admin / admin (with a warning).
+
+// Resolve the credentials file path once at startup.
+const CREDENTIALS_FILE = process.env.CREDENTIALS_FILE || path.join(__dirname, 'credentials.env');
 
 function loadCredentials() {
   if (process.env.IP_MANAGER_USERNAME && process.env.IP_MANAGER_PASSWORD) {
@@ -27,7 +32,7 @@ function loadCredentials() {
       password: process.env.IP_MANAGER_PASSWORD,
     };
   }
-  const envFile = path.join(__dirname, 'credentials.env');
+  const envFile = CREDENTIALS_FILE;
   if (fs.existsSync(envFile)) {
     const lines = fs.readFileSync(envFile, 'utf8').split('\n');
     const env = {};
@@ -39,7 +44,7 @@ function loadCredentials() {
       return { username: env.IP_MANAGER_USERNAME, password: env.IP_MANAGER_PASSWORD };
     }
   }
-  console.warn('[auth] No credentials configured — using defaults (admin/admin). Create server/credentials.env to set your own.');
+  console.warn(`[auth] No credentials configured — using defaults (admin/admin). Set CREDENTIALS_FILE env var or create ${CREDENTIALS_FILE} to persist your own.`);
   return { username: 'admin', password: 'admin' };
 }
 
@@ -116,8 +121,8 @@ app.post('/api/auth/change-password', (req, res) => {
   if (currentPassword !== credentials.password) {
     return res.status(401).json({ error: 'Current password is incorrect' });
   }
-  // Write the new credentials to credentials.env
-  const envFile = path.join(__dirname, 'credentials.env');
+  // Write the new credentials to credentials.env (or CREDENTIALS_FILE if set)
+  const envFile = CREDENTIALS_FILE;
   const content = `IP_MANAGER_USERNAME=${newUsername}\nIP_MANAGER_PASSWORD=${newPassword}\n`;
   try {
     fs.writeFileSync(envFile, content, 'utf8');
