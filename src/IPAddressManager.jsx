@@ -83,8 +83,7 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
   const [pwSuccess, setPwSuccess] = useState(false);
   const [pwLoading, setPwLoading] = useState(false);
 
-  const handleChangePassword = async (e) => {
-    e.preventDefault();
+  const handleChangePassword = async () => {
     setPwError('');
     setPwSuccess(false);
     if (pwForm.newPassword !== pwForm.confirmPassword) {
@@ -512,7 +511,7 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
           {/* Account */}
           <div className="pt-2 border-t border-slate-200">
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Account</p>
-            <form onSubmit={handleChangePassword} className="space-y-3">
+            <div className="space-y-3">
               <div>
                 <label className={labelCls}>Current Password</label>
                 <input type="password" autoComplete="current-password" value={pwForm.currentPassword}
@@ -545,11 +544,12 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
               {pwSuccess && (
                 <p className="text-emerald-600 text-sm">✓ Credentials updated — signing you out…</p>
               )}
-              <button type="submit" disabled={pwLoading || pwSuccess}
+              <button type="button" disabled={pwLoading || pwSuccess}
+                onClick={handleChangePassword}
                 className="w-full bg-slate-700 hover:bg-slate-800 disabled:bg-slate-300 text-white text-sm font-semibold py-2 rounded-lg transition-colors">
                 {pwLoading ? 'Saving…' : 'Update Login Credentials'}
               </button>
-            </form>
+            </div>
           </div>
 
           {/* Danger Zone */}
