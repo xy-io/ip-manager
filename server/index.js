@@ -390,6 +390,122 @@ app.post('/api/import', (req, res) => {
   res.json({ imported: rows.length, skipped: 0, errors: [] });
 });
 
+// ── ARP scanning ──────────────────────────────────────────────────────────────
+
+const { execSync }   = require('child_process');
+const dnsPromises    = require('dns').promises;
+
+// Escape a single shell argument safely
+function shellEsc(arg) {
+  return "'" + arg.replace(/'/g, "'\\''") + "'";
+}
+
+// Parse arp-scan stdout — tab-separated: IP \t MAC \t Vendor
+// Skips header/footer lines that don't match the IP pattern
+function parseArpScanOutput(output) {
+  const ipMacLine = /^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\s+([0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5})\s+(.+)$/;
+  return output.split('\n').reduce((acc, line) => {
+    const m = line.trim().match(ipMacLine);
+    if (m) acc.push({ ip: m[1], mac: m[2], vendor: m[3].trim() });
+    return acc;
+  }, []);
+}
+
+// Fallback: read the kernel ARP cache from /proc/net/arp
+// Only shows recently-seen devices but requires no extra tools
+function parseArpCache() {
+  const content = fs.readFileSync('/proc/net/arp', 'utf8');
+  const ipRx  = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
+  const macRx = /^[0-9a-f]{2}(?::[0-9a-f]{2}){5}$/i;
+  return content.split('\n').slice(1).reduce((acc, line) => {
+    const p = line.trim().split(/\s+/);
+    if (p.length >= 4 && ipRx.test(p[0]) && macRx.test(p[3]) && p[3] !== '00:00:00:00:00:00') {
+      acc.push({ ip: p[0], mac: p[3], vendor: 'Unknown (ARP cache)' });
+    }
+    return acc;
+  }, []);
+}
+
+// Reverse-DNS lookup — silently returns '' on any failure
+async function reverseLookup(ip) {
+  try {
+    const names = await dnsPromises.reverse(ip);
+    return names[0] || '';
+  } catch {
+    return '';
+  }
+}
+
+// Build the arp-scan command from subnet + optional interface
+// Normalises "192.168.1" → "192.168.1.0/24"  and  "192.168" → "192.168.0.0/16"
+function buildArpScanCmd(subnet, iface) {
+  let cidr = subnet;
+  if (!cidr.includes('/')) {
+    const octets = cidr.split('.');
+    if (octets.length === 2)      cidr = `${cidr}.0.0/16`;
+    else if (octets.length === 3) cidr = `${cidr}.0/24`;
+  }
+  const ifaceFlag = iface ? `-I ${shellEsc(iface)} ` : '';
+  return `arp-scan ${ifaceFlag}${cidr}`;
+}
+
+// POST /api/arp/scan
+// Body: { subnet: "192.168.1", interface?: "eth0" }
+// Returns: { results: [{ ip, mac, vendor, hostname, status }], method: 'arp-scan'|'arp-cache' }
+app.post('/api/arp/scan', async (req, res) => {
+  const { subnet, interface: iface } = req.body || {};
+  if (!subnet) return res.status(400).json({ error: 'subnet is required' });
+
+  let raw = [];
+  let method = 'arp-scan';
+
+  try {
+    const cmd = buildArpScanCmd(subnet, iface);
+    const stdout = execSync(cmd, { encoding: 'utf8', timeout: 30000,
+                                   stdio: ['pipe', 'pipe', 'pipe'] });
+    raw = parseArpScanOutput(stdout);
+  } catch (err) {
+    // arp-scan not installed or failed — fall back to kernel ARP cache
+    console.warn('[arp-scan] Primary scan failed:', err.message, '— falling back to /proc/net/arp');
+    method = 'arp-cache';
+    try {
+      raw = parseArpCache();
+    } catch (fallbackErr) {
+      return res.status(500).json({ error: `Scan failed: ${err.message}. Fallback also failed: ${fallbackErr.message}` });
+    }
+  }
+
+  // Reverse-DNS lookups in parallel (best-effort)
+  const withHostnames = await Promise.all(
+    raw.map(async entry => ({ ...entry, hostname: await reverseLookup(entry.ip) }))
+  );
+
+  // Cross-reference against stored IP data
+  const ipData = dbGet('ip_data') || [];
+  const inManager = new Set(ipData.map(e => e.ip));
+
+  // Determine subnet prefix for "is this IP in range?" check
+  const prefix = subnet.replace(/\/\d+$/, '').split('.').filter(Boolean);
+
+  const results = withHostnames.map(entry => {
+    const tracked = inManager.has(entry.ip);
+    const inRange = entry.ip.split('.').slice(0, prefix.length).join('.') === prefix.join('.');
+    return {
+      ...entry,
+      status: tracked ? 'Tracked' : inRange ? 'Untracked' : 'OutOfRange',
+    };
+  }).sort((a, b) => {
+    const aOct = a.ip.split('.').map(Number);
+    const bOct = b.ip.split('.').map(Number);
+    for (let i = 0; i < 4; i++) {
+      if (aOct[i] !== bOct[i]) return aOct[i] - bOct[i];
+    }
+    return 0;
+  });
+
+  res.json({ results, method, total: results.length });
+});
+
 // ── Start ─────────────────────────────────────────────────────────────────────
 
 const PORT = 3001;
