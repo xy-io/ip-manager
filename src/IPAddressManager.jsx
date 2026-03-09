@@ -2201,11 +2201,10 @@ export default function IPAddressManager() {
 
                   <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto">
                     {freeStaticIPs.map(ip => {
-                      const item = ipData.find(i => i.ip === ip);
                       return (
                         <button
                           key={ip}
-                          onClick={() => setEditingItem(item)}
+                          onClick={() => setEditingItem({ ip, assetName: '', hostname: '', type: 'Physical', location: '', apps: '', notes: '', tags: [] })}
                           className="group px-3 py-1.5 font-mono text-xs rounded-lg transition-all bg-white text-emerald-700 hover:bg-emerald-500 hover:text-white border border-emerald-200 hover:border-emerald-500 flex items-center gap-2"
                         >
                           {ipSuffix(ip, networkConfig.subnet)}
