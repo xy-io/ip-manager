@@ -55,7 +55,7 @@ function formatDate(iso) {
 }
 
 // Settings Modal Component
-function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLocation, onDeleteLocation, canDeleteNetwork, onDeleteNetwork, showFreeInList, onToggleShowFreeInList, ipData, networks, onRestore }) {
+function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLocation, onDeleteLocation, tags, onRenameTag, onDeleteTag, canDeleteNetwork, onDeleteNetwork, showFreeInList, onToggleShowFreeInList, ipData, networks, onRestore }) {
   const [form, setForm] = useState({
     networkName: config.networkName,
     subnet: config.subnet,
@@ -70,6 +70,8 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
   const [confirmDeleteNetwork, setConfirmDeleteNetwork] = useState(false);
   const [editingLoc, setEditingLoc] = useState(null); // { old, draft }
   const [newLocation, setNewLocation] = useState('');
+  const [editingTag, setEditingTag] = useState(null); // { old, draft }
+  const [newTag, setNewTag] = useState('');
   const [restoreError, setRestoreError] = useState('');
   const [restorePreview, setRestorePreview] = useState(null); // { networks, ipData, exportedAt }
   const [confirmRestore, setConfirmRestore] = useState(false);
@@ -448,6 +450,60 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
                 type="button"
                 disabled={!newLocation.trim()}
                 onClick={() => { onRenameLocation(null, newLocation.trim()); setNewLocation(''); }}
+                className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-40 text-white rounded-lg text-sm font-medium transition-colors"
+              >Add</button>
+            </div>
+          </div>
+
+          {/* Manage Tags */}
+          <div className="pt-2 border-t border-slate-200">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Tags</p>
+            <div className="flex flex-wrap gap-2 mb-2">
+              {tags.filter(t => t).map(tag => (
+                <div key={tag} className="flex items-center gap-1 bg-slate-100 rounded-lg px-2 py-1">
+                  {editingTag?.old === tag ? (
+                    <>
+                      <input
+                        autoFocus
+                        className="text-xs border border-blue-300 rounded px-1 py-0.5 w-28 outline-none"
+                        value={editingTag.draft}
+                        onChange={e => setEditingTag(ev => ({ ...ev, draft: e.target.value }))}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' && editingTag.draft.trim()) { onRenameTag(tag, editingTag.draft.trim()); setEditingTag(null); }
+                          if (e.key === 'Escape') setEditingTag(null);
+                        }}
+                      />
+                      <button type="button" onClick={() => { if (editingTag.draft.trim()) { onRenameTag(tag, editingTag.draft.trim()); setEditingTag(null); }}} className="text-blue-500 hover:text-blue-700 text-xs font-bold">✓</button>
+                      <button type="button" onClick={() => setEditingTag(null)} className="text-slate-400 hover:text-slate-600 text-xs">✕</button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-xs text-slate-700">{tag}</span>
+                      <button type="button" onClick={() => setEditingTag({ old: tag, draft: tag })} className="text-slate-400 hover:text-blue-500 text-xs ml-1" title="Rename tag">✎</button>
+                      <button type="button" onClick={() => onDeleteTag(tag)} className="text-slate-400 hover:text-red-500 text-xs" title="Remove tag from all entries">✕</button>
+                    </>
+                  )}
+                </div>
+              ))}
+              {tags.filter(t => t).length === 0 && (
+                <p className="text-xs text-slate-400">No tags yet — add tags to IP entries to see them here.</p>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                className="flex-1 text-sm border border-slate-300 rounded-lg px-3 py-1.5 outline-none focus:border-teal-400"
+                placeholder="Add a new tag…"
+                value={newTag}
+                onChange={e => setNewTag(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && newTag.trim()) { onRenameTag(null, newTag.trim()); setNewTag(''); }
+                }}
+              />
+              <button
+                type="button"
+                disabled={!newTag.trim()}
+                onClick={() => { onRenameTag(null, newTag.trim()); setNewTag(''); }}
                 className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-40 text-white rounded-lg text-sm font-medium transition-colors"
               >Add</button>
             </div>
@@ -2024,9 +2080,9 @@ export default function IPAddressManager() {
   const types = useMemo(() => getUniqueValues(networkIpData, 'type'), [networkIpData]);
 
   const allTags = useMemo(() => {
-    const set = new Set();
-    networkIpData.forEach(item => (item.tags || []).forEach(t => t && set.add(t)));
-    return Array.from(set).sort();
+    const tagSet = new Set();
+    networkIpData.forEach(item => (item.tags || []).forEach(t => t && tagSet.add(t)));
+    return [...tagSet].sort();
   }, [networkIpData]);
 
   const freeStaticIPs = useMemo(() => {
@@ -2190,6 +2246,31 @@ export default function IPAddressManager() {
       n.id === activeNetworkId
         ? { ...n, extraLocations: (n.extraLocations || []).filter(l => l !== name) }
         : n
+    ));
+    setHasChanges(true);
+  };
+
+  // Rename a tag across all IP entries (oldTag === null → add brand-new tag as no-op since
+  // tags only live on entries; adding here is a no-op but keeps the API symmetric with locations)
+  const handleRenameTag = (oldTag, newTag) => {
+    if (!newTag || newTag === oldTag) return;
+    if (oldTag !== null) {
+      const now = new Date().toISOString();
+      setIpData(prev => prev.map(item => {
+        if (!(item.tags || []).includes(oldTag)) return item;
+        return { ...item, tags: item.tags.map(t => t === oldTag ? newTag : t), updatedAt: now };
+      }));
+      setHasChanges(true);
+    }
+    // Adding a brand-new tag from Settings is a no-op — tags only exist once applied to entries.
+  };
+
+  const handleDeleteTag = (tag) => {
+    const now = new Date().toISOString();
+    setIpData(prev => prev.map(item =>
+      (item.tags || []).includes(tag)
+        ? { ...item, tags: item.tags.filter(t => t !== tag), updatedAt: now }
+        : item
     ));
     setHasChanges(true);
   };
@@ -2433,6 +2514,9 @@ export default function IPAddressManager() {
           locations={locations}
           onRenameLocation={handleRenameLocation}
           onDeleteLocation={handleDeleteLocation}
+          tags={allTags}
+          onRenameTag={handleRenameTag}
+          onDeleteTag={handleDeleteTag}
           canDeleteNetwork={networks.length > 1}
           onDeleteNetwork={handleDeleteNetwork}
           showFreeInList={showFreeInList}
