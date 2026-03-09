@@ -1198,6 +1198,17 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types }) {
     tags: item.tags || [],
   });
   const [tagInput, setTagInput] = useState('');
+  // Separate draft state for the "add new location" text input.
+  // We must NOT write the typed value into formData.location until the user
+  // commits, because formData.location === '__new__' is the condition that
+  // keeps the input visible — writing to it mid-keystroke collapses the field.
+  const [newLocationDraft, setNewLocationDraft] = useState('');
+
+  const commitNewLocation = () => {
+    const v = newLocationDraft.trim();
+    if (v) setFormData(prev => ({ ...prev, location: v }));
+    else setFormData(prev => ({ ...prev, location: '' })); // cancelled
+  };
 
   const addTag = (raw) => {
     const newTags = raw.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
@@ -1290,8 +1301,12 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types }) {
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">New Location Name</label>
               <input
+                autoFocus
                 type="text"
-                onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                value={newLocationDraft}
+                onChange={(e) => setNewLocationDraft(e.target.value)}
+                onBlur={commitNewLocation}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitNewLocation(); } if (e.key === 'Escape') { setFormData(prev => ({ ...prev, location: '' })); setNewLocationDraft(''); } }}
                 placeholder="e.g., Basement"
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
               />
