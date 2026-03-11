@@ -10,6 +10,7 @@ const crypto = require('crypto');
 const https = require('https');
 const path = require('path');
 const fs = require('fs');
+const { exec } = require('child_process');
 
 const app = express();
 app.use(express.json({ limit: '2mb' }));
@@ -517,6 +518,75 @@ app.post('/api/arp/scan', async (req, res) => {
   });
 
   res.json({ results, method, total: results.length, scanWarning });
+});
+
+// ── Ping / reachability ───────────────────────────────────────────────────────
+
+let pingCache = { results: {}, timestamp: 0, warning: null };
+const PING_CACHE_TTL = 20 * 1000; // 20 s — serve cached results within this window
+const PING_INTERVAL  = 60 * 1000; // 60 s — background re-scan cadence
+
+function getTrackedIPs() {
+  const rows = dbGet('ip_data') || [];
+  return rows
+    .filter(r => r.ip && r.status !== 'free')
+    .map(r => r.ip);
+}
+
+function runFping(ips) {
+  return new Promise((resolve) => {
+    if (!ips.length) return resolve({ results: {}, warning: null });
+
+    // fping flags:
+    //   -a  print only alive hosts to stdout
+    //   -q  quiet (suppress per-packet stats)
+    //   -t  per-host timeout in ms
+    //   -c1 send exactly 1 ping per host
+    const cmd = `fping -a -q -t 500 -c 1 ${ips.map(ip => `"${ip}"`).join(' ')} 2>/dev/null`;
+    exec(cmd, { timeout: 15000 }, (err, stdout, stderr) => {
+      // fping exits with 1 when some hosts are unreachable — that's normal, not an error.
+      // A real error looks like ENOENT (not installed) or EPERM (no cap_net_raw).
+      if (err && err.code !== 1 && !stdout) {
+        const msg = err.message || '';
+        const warning = msg.includes('not found') || msg.includes('ENOENT')
+          ? 'fping is not installed. Run: apt-get install fping && setcap cap_net_raw+ep $(which fping)'
+          : msg.includes('Operation not permitted') || msg.includes('EPERM')
+          ? 'fping lacks raw socket permission. Run: setcap cap_net_raw+ep $(which fping)'
+          : `fping error: ${msg}`;
+        console.warn('[ping]', warning);
+        return resolve({ results: {}, warning });
+      }
+
+      const alive = new Set(stdout.trim().split('\n').filter(Boolean));
+      const results = {};
+      for (const ip of ips) results[ip] = alive.has(ip) ? 'up' : 'down';
+      resolve({ results, warning: null });
+    });
+  });
+}
+
+async function refreshPingCache() {
+  const ips = getTrackedIPs();
+  if (!ips.length) return;
+  const { results, warning } = await runFping(ips);
+  pingCache = { results, timestamp: Date.now(), warning };
+}
+
+// Background poller — runs immediately on startup, then every PING_INTERVAL
+refreshPingCache();
+setInterval(refreshPingCache, PING_INTERVAL);
+
+// GET /api/ping-status — returns cached results; forces refresh if cache is stale
+app.get('/api/ping-status', requireAuth, async (req, res) => {
+  const force = req.query.force === '1';
+  const stale = (Date.now() - pingCache.timestamp) > PING_CACHE_TTL;
+  if (force || stale) await refreshPingCache();
+  res.json({
+    results:   pingCache.results,
+    warning:   pingCache.warning,
+    cachedAt:  pingCache.timestamp,
+    nextIn:    Math.max(0, PING_INTERVAL - (Date.now() - pingCache.timestamp)),
+  });
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────────

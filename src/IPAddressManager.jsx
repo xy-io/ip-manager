@@ -2308,6 +2308,12 @@ export default function IPAddressManager() {
   const [showProxmoxImport, setShowProxmoxImport] = useState(false);
   const [showARPScan, setShowARPScan] = useState(false);
 
+  // Ping / reachability — { [ip]: 'up' | 'down' }, null = not yet fetched
+  const [pingStatus, setPingStatus] = useState({});
+  const [pingLoading, setPingLoading] = useState(false);
+  const [pingWarning, setPingWarning] = useState(null);
+  const [pingLastAt, setPingLastAt] = useState(null); // Date
+
   // UI display preferences (browser-local; not synced to server)
   const [uiPrefs, setUiPrefs] = useState(loadUiPrefs);
 
@@ -2453,6 +2459,30 @@ export default function IPAddressManager() {
   useEffect(() => {
     try { localStorage.setItem('ip-manager-ui-prefs', JSON.stringify(uiPrefs)); } catch {}
   }, [uiPrefs]);
+
+  // ── Ping / reachability ──────────────────────────────────────────────────────
+  const fetchPingStatus = async (force = false) => {
+    if (persistMode !== 'api') return; // only when server is available
+    setPingLoading(true);
+    try {
+      const res = await fetch(`/api/ping-status${force ? '?force=1' : ''}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setPingStatus(data.results || {});
+      setPingWarning(data.warning || null);
+      setPingLastAt(new Date());
+    } catch { /* silently ignore network errors */ } finally {
+      setPingLoading(false);
+    }
+  };
+
+  // Initial fetch + 60-second auto-poll
+  useEffect(() => {
+    if (persistMode !== 'api') return;
+    fetchPingStatus();
+    const timer = setInterval(() => fetchPingStatus(), 60_000);
+    return () => clearInterval(timer);
+  }, [persistMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Derived network state ────────────────────────────────────────────────────
 
@@ -3075,6 +3105,19 @@ export default function IPAddressManager() {
                   ARP Scan
                 </button>
               )}
+              {persistMode === 'api' && (
+                <button
+                  onClick={() => fetchPingStatus(true)}
+                  disabled={pingLoading}
+                  title={pingLastAt ? `Last checked: ${pingLastAt.toLocaleTimeString()}` : 'Check reachability of all tracked IPs'}
+                  className="flex items-center gap-2 px-4 py-2 bg-sky-600 hover:bg-sky-700 disabled:bg-sky-400 text-white font-medium rounded-lg transition-colors"
+                >
+                  {pingLoading
+                    ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    : <Zap className="w-4 h-4" />}
+                  Ping
+                </button>
+              )}
               <button
                 onClick={() => setShowImport(true)}
                 className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-800 text-white font-medium rounded-lg transition-colors"
@@ -3375,6 +3418,18 @@ export default function IPAddressManager() {
         </p>
       </div>
 
+      {/* Ping warning — shown when fping is unavailable */}
+      {pingWarning && (
+        <div className="max-w-7xl mx-auto px-4 mb-2">
+          <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+            <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5 text-amber-500" />
+            <div>
+              <span className="font-semibold">Ping unavailable: </span>{pingWarning}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Content */}
       <div className="max-w-7xl mx-auto px-4 pb-8">
         {viewMode === 'cards' ? (
@@ -3450,7 +3505,16 @@ export default function IPAddressManager() {
                     </div>
 
                     <div className="mb-2">
-                      <div className={`font-mono text-lg font-semibold ${isFree ? 'text-emerald-700' : 'text-slate-800'}`}>{item.ip}</div>
+                      <div className="flex items-center gap-2">
+                        <div className={`font-mono text-lg font-semibold ${isFree ? 'text-emerald-700' : 'text-slate-800'}`}>{item.ip}</div>
+                        {!isFree && !isReserved && pingStatus[item.ip] != null && (
+                          <span title={pingStatus[item.ip] === 'up' ? 'Online' : 'Offline'}
+                            className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${pingStatus[item.ip] === 'up' ? 'bg-emerald-400' : 'bg-red-400'}`} />
+                        )}
+                        {!isFree && !isReserved && pingStatus[item.ip] == null && pingLastAt && (
+                          <span title="Status unknown" className="inline-block w-2 h-2 rounded-full flex-shrink-0 bg-slate-300" />
+                        )}
+                      </div>
                       <div className={`text-sm ${isFree ? 'text-emerald-600 font-semibold' : isReserved ? 'text-slate-400 italic' : 'font-medium text-slate-700'}`}>
                         {isFree ? 'Available for use' : item.assetName}
                       </div>
@@ -3683,15 +3747,24 @@ export default function IPAddressManager() {
                           />
                         </td>
                         <td className="px-4 py-3">
-                          <button
-                            onClick={() => copyToClipboard(item.ip)}
-                            className={`font-mono text-sm font-medium flex items-center gap-2 ${
-                              isFree ? 'text-emerald-700 hover:text-emerald-800' : 'text-slate-800 hover:text-emerald-600'
-                            }`}
-                          >
-                            {item.ip}
-                            {copiedIP === item.ip && <Check className="w-3 h-3 text-emerald-600" />}
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => copyToClipboard(item.ip)}
+                              className={`font-mono text-sm font-medium flex items-center gap-1.5 ${
+                                isFree ? 'text-emerald-700 hover:text-emerald-800' : 'text-slate-800 hover:text-emerald-600'
+                              }`}
+                            >
+                              {item.ip}
+                              {copiedIP === item.ip && <Check className="w-3 h-3 text-emerald-600" />}
+                            </button>
+                            {!isFree && !isReserved && pingStatus[item.ip] != null && (
+                              <span title={pingStatus[item.ip] === 'up' ? 'Online' : 'Offline'}
+                                className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${pingStatus[item.ip] === 'up' ? 'bg-emerald-400' : 'bg-red-400'}`} />
+                            )}
+                            {!isFree && !isReserved && pingStatus[item.ip] == null && pingLastAt && (
+                              <span title="Status unknown" className="inline-block w-2 h-2 rounded-full flex-shrink-0 bg-slate-300" />
+                            )}
+                          </div>
                         </td>
                         <td className={`px-4 py-3 text-sm ${
                           isFree ? 'text-emerald-600 font-semibold' : isReserved ? 'text-slate-400 italic' : 'text-slate-700'

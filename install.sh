@@ -46,14 +46,12 @@ ok "Package lists updated"
 
 # ── 2. Install dependencies ──────────────────────────────────
 # build-essential is needed to compile better-sqlite3 native bindings
-log "Installing dependencies (curl, git, nginx, build-essential, arp-scan)..."
-apt-get install -y -qq curl git nginx build-essential python3 arp-scan libcap2-bin
+log "Installing dependencies (curl, git, nginx, build-essential, arp-scan, fping)..."
+apt-get install -y -qq curl git nginx build-essential python3 arp-scan fping libcap2-bin
 ok "Dependencies installed"
 
-# Grant arp-scan the raw socket capability it needs to send ARP packets.
-# The service runs as www-data (non-root), so without this arp-scan fails
-# silently and the server falls back to the kernel ARP cache instead of
-# doing a real scan.
+# Grant arp-scan + fping the raw socket capability they need to send raw packets.
+# The service runs as www-data (non-root); without setcap both tools fail silently.
 log "Granting arp-scan raw socket capability (CAP_NET_RAW)..."
 ARPSCAN_BIN=$(which arp-scan 2>/dev/null || echo "")
 if [ -n "$ARPSCAN_BIN" ]; then
@@ -61,6 +59,15 @@ if [ -n "$ARPSCAN_BIN" ]; then
   ok "arp-scan can now run without root (setcap cap_net_raw+ep $ARPSCAN_BIN)"
 else
   warn "arp-scan not found in PATH — skipping setcap. ARP scan will fall back to kernel ARP cache."
+fi
+
+log "Granting fping raw socket capability (CAP_NET_RAW)..."
+FPING_BIN=$(which fping 2>/dev/null || echo "")
+if [ -n "$FPING_BIN" ]; then
+  setcap cap_net_raw+ep "$FPING_BIN"
+  ok "fping can now run without root (setcap cap_net_raw+ep $FPING_BIN)"
+else
+  warn "fping not found in PATH — ping/reachability checks will not work."
 fi
 
 # ── 3. Install Node.js ───────────────────────────────────────
@@ -218,11 +225,15 @@ set -e
 echo "Pulling latest changes from GitHub..."
 git -C /opt/ip-manager pull
 
-echo "Ensuring arp-scan is installed and has correct capabilities..."
-apt-get install -y -qq arp-scan libcap2-bin 2>/dev/null || true
-ARPSCAN_BIN=$(which arp-scan 2>/dev/null || echo "")
-if [ -n "$ARPSCAN_BIN" ]; then
-  setcap cap_net_raw+ep "$ARPSCAN_BIN" 2>/dev/null && echo "  setcap ok: $ARPSCAN_BIN" || true
+echo "Ensuring arp-scan and fping are installed and have correct capabilities..."
+apt-get install -y -qq arp-scan fping libcap2-bin 2>/dev/null || true
+ARPSCAN_BIN=\$(which arp-scan 2>/dev/null || echo "")
+if [ -n "\$ARPSCAN_BIN" ]; then
+  setcap cap_net_raw+ep "\$ARPSCAN_BIN" 2>/dev/null && echo "  setcap ok: \$ARPSCAN_BIN" || true
+fi
+FPING_BIN=\$(which fping 2>/dev/null || echo "")
+if [ -n "\$FPING_BIN" ]; then
+  setcap cap_net_raw+ep "\$FPING_BIN" 2>/dev/null && echo "  setcap ok: \$FPING_BIN" || true
 fi
 
 echo "Installing frontend packages..."
