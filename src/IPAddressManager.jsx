@@ -1886,13 +1886,18 @@ function HelpModal({ onClose }) {
         <P>When you look up a hostname you get an IP address (a forward lookup). A PTR record is the reverse — given an IP address, it returns the hostname registered in DNS. For example, <code className="font-mono bg-slate-100 px-1 rounded text-xs">192.168.0.171</code> might resolve to <code className="font-mono bg-slate-100 px-1 rounded text-xs">server.home.lab</code> if that PTR record exists on your DNS server.</P>
 
         <H3>Running a DNS lookup</H3>
-        <P>Click the <strong>DNS</strong> button in the header to run an immediate reverse lookup for all tracked IPs. Results appear as small grey text beneath each IP address on cards and in the table. The lookup runs automatically in the background every 24 hours — you only need to click the button when you want a fresh result right now.</P>
+        <P>Click the <strong>DNS</strong> button in the header to run an immediate reverse lookup for all tracked IPs. The lookup also runs automatically in the background every 24 hours — you only need to click the button when you want a fresh result right now.</P>
+
+        <H3>How results are displayed</H3>
+        <P>IP Manager compares each PTR result against the hostname you have stored for that entry and only shows something when it adds new information:</P>
+        <div className="space-y-0 mb-3">
+          <Row label="Match">PTR record matches the stored hostname — nothing extra is shown. Your DNS and your records agree; no need to repeat it.</Row>
+          <Row label="No hostname stored">No hostname on the entry — the PTR result is shown in grey beneath the IP as a useful fill-in.</Row>
+          <Row label="Mismatch">PTR differs from the stored hostname — shown in amber as <code className="font-mono bg-slate-100 px-1 rounded text-xs">⚠ DNS: other-name.domain</code>. Worth investigating — could be a stale DNS record or a typo in your entry.</Row>
+        </div>
 
         <H3>Configuring the DNS server</H3>
         <P>By default, lookups use the system resolver on the server (whatever is configured in <code className="font-mono bg-slate-100 px-1 rounded text-xs">/etc/resolv.conf</code>). To use a specific server — your Pi-hole, your router, or a public resolver — open <strong>Settings (⚙) → DNS Reverse Lookup</strong> and enter the IP address of the server you want to use (e.g. <code className="font-mono bg-slate-100 px-1 rounded text-xs">192.168.0.6</code> or <code className="font-mono bg-slate-100 px-1 rounded text-xs">1.1.1.1</code>). Leave the field blank to return to the system default.</P>
-
-        <H3>Matching PTR records to stored hostnames</H3>
-        <P>If an entry in your IP list has a <strong>Hostname</strong> field set, IP Manager compares it to the PTR result from DNS. A match confirms your DNS and your IP records are in sync. A mismatch (different name) appears with an amber indicator — useful for catching stale DNS records or copy-paste errors.</P>
 
         <H3>Why might a lookup return nothing?</H3>
         <div className="space-y-0">
