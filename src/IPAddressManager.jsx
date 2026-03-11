@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Search, Server, Monitor, Wifi, HardDrive, Camera, Shield, Globe, Filter, X, MapPin, Cpu, Box, CircleDot, ChevronDown, ChevronUp, Copy, Check, Zap, Download, Edit3, Plus, Trash2, Save, AlertCircle, Settings, Upload, FileText, AlertTriangle, CheckCircle, ChevronRight, Tag, ArrowUpDown, ArrowUp, ArrowDown, HelpCircle } from 'lucide-react';
+import { Search, Server, Monitor, Wifi, HardDrive, Camera, Shield, Globe, Filter, X, MapPin, Cpu, Box, CircleDot, ChevronDown, ChevronUp, Copy, Check, Zap, Download, Edit3, Plus, Trash2, Save, AlertCircle, Settings, Upload, FileText, AlertTriangle, CheckCircle, ChevronRight, Tag, ArrowUpDown, ArrowUp, ArrowDown, HelpCircle, LogOut } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 // Default network configuration (overridden by Settings modal / localStorage)
@@ -56,7 +56,7 @@ function formatDate(iso) {
 }
 
 // Settings Modal Component
-function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLocation, onDeleteLocation, tags, onRenameTag, onDeleteTag, canDeleteNetwork, onDeleteNetwork, showFreeInList, onToggleShowFreeInList, ipData, networks, onRestore }) {
+function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLocation, onDeleteLocation, tags, onRenameTag, onDeleteTag, canDeleteNetwork, onDeleteNetwork, showFreeInList, onToggleShowFreeInList, ipData, networks, onRestore, dnsConfig, onSaveDnsConfig }) {
   const [form, setForm] = useState({
     networkName: config.networkName,
     subnet: config.subnet,
@@ -78,6 +78,9 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
   const [restorePreview, setRestorePreview] = useState(null); // { networks, ipData, exportedAt }
   const [confirmRestore, setConfirmRestore] = useState(false);
   const restoreFileRef = useRef(null);
+
+  // DNS config form state (local draft until saved)
+  const [dnsForm, setDnsForm] = useState({ server: dnsConfig?.server || '', enabled: dnsConfig?.enabled !== false });
 
   // Account / change-password state
   const [pwForm, setPwForm] = useState({ currentPassword: '', newUsername: '', newPassword: '', confirmPassword: '' });
@@ -359,6 +362,44 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
               </button>
             </label>
           </div>
+
+          {/* DNS Reverse Lookup */}
+          {onSaveDnsConfig && (
+            <div className="pt-2 border-t border-slate-200">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">DNS Reverse Lookup</p>
+              <p className="text-xs text-slate-500 mb-3">
+                Resolves PTR records for all tracked IPs. Runs automatically every 24 hours. Leave server blank to use the system default resolver.
+              </p>
+              <div className="flex gap-2 mb-2">
+                <input
+                  type="text"
+                  placeholder="DNS server IP (e.g. 192.168.0.6 or 8.8.8.8) — blank = system default"
+                  value={dnsForm.server}
+                  onChange={e => setDnsForm(p => ({ ...p, server: e.target.value }))}
+                  className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => onSaveDnsConfig({ server: dnsForm.server, enabled: dnsForm.enabled })}
+                  className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-sm font-medium whitespace-nowrap transition-colors"
+                >
+                  Save
+                </button>
+              </div>
+              <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={dnsForm.enabled}
+                  onChange={e => setDnsForm(p => ({ ...p, enabled: e.target.checked }))}
+                  className="rounded border-slate-300 text-teal-600 focus:ring-teal-500"
+                />
+                Enable automatic DNS lookup (every 24 hours)
+              </label>
+              {dnsConfig?.lastRun && (
+                <p className="text-xs text-slate-400 mt-2">Last run: {new Date(dnsConfig.lastRun).toLocaleString()}</p>
+              )}
+            </div>
+          )}
 
           {/* Backup & Restore */}
           <div className="pt-2 border-t border-slate-200">
@@ -1543,7 +1584,9 @@ function HelpModal({ onClose }) {
     { id: 'proxmox',    label: 'Proxmox Import' },
     { id: 'arp',        label: 'ARP Scan' },
     { id: 'ping',       label: 'Ping / Reachability' },
+    { id: 'backup',     label: 'Backup & Restore' },
     { id: 'importexp',  label: 'Import & Export' },
+    { id: 'dns',        label: 'DNS Lookup' },
     { id: 'shortcuts',  label: 'Keyboard Shortcuts' },
   ];
 
@@ -1588,9 +1631,10 @@ function HelpModal({ onClose }) {
           <Row label="Proxmox">Discover and import VMs & LXC containers from a Proxmox host.</Row>
           <Row label="ARP Scan">Sweep your subnet for active devices and import untracked ones.</Row>
           <Row label="Ping">Force an immediate reachability check of all tracked IPs.</Row>
+          <Row label="DNS">Run a reverse DNS (PTR) lookup for all tracked IPs — see what your DNS server thinks each IP is called.</Row>
           <Row label="Import">Load IP data from a CSV or Excel file.</Row>
           <Row label="Export">Download all data as a formatted .xlsx file.</Row>
-          <Row label="⚙">Network Settings — subnet, DHCP range, locations, tags, backup & restore.</Row>
+          <Row label="⚙">Network Settings — subnet, DHCP range, DNS server, locations, tags, backup & restore.</Row>
         </div>
       </div>
     ),
@@ -1802,6 +1846,60 @@ function HelpModal({ onClose }) {
 
         <H3>Exporting</H3>
         <P>Click <strong>Export</strong> in the header to download a formatted <code className="font-mono bg-slate-100 px-1 rounded text-xs">.xlsx</code> file containing all entries in the active network, preserving all fields.</P>
+      </div>
+    ),
+
+    backup: (
+      <div>
+        <H2>Backup & Restore</H2>
+        <P>Backup and Restore live in <strong>Settings (⚙)</strong> — they are distinct from Export, which only downloads the active network as a spreadsheet. A backup captures <em>everything</em>.</P>
+
+        <H3>What a backup includes</H3>
+        <P>A full backup is a single <code className="font-mono bg-slate-100 px-1 rounded text-xs">.json</code> file containing all networks, all IP entries across every network, all tags, all notes, all custom locations, and the complete change history. It contains everything needed to fully restore the app on a new machine or after a server rebuild.</P>
+
+        <H3>Downloading a backup</H3>
+        <P>Open <strong>Settings (⚙)</strong> and scroll to the <strong>Backup & Restore</strong> section. Click <strong>Download Full Backup (.json)</strong>. Save the file somewhere safe — an external drive, cloud storage, or another server. The filename includes today's date so you can keep multiple versions.</P>
+        <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800 mb-3">
+          <strong>Tip:</strong> Take a backup before any major change — restoring a network, importing a large dataset, or upgrading the server. It takes two seconds and gives you a full rollback point.
+        </div>
+
+        <H3>Restoring from a backup</H3>
+        <P>In <strong>Settings (⚙) → Backup & Restore</strong>, click <strong>Restore from Backup…</strong> and select your <code className="font-mono bg-slate-100 px-1 rounded text-xs">.json</code> file. A preview panel shows the backup date, how many networks it contains, and how many IP entries. Review it, then click <strong>Yes, Restore Now</strong>.</P>
+        <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800 mb-3">
+          <strong>Warning:</strong> A restore replaces <em>all</em> current data — every network and every IP entry — with the contents of the backup file. This cannot be undone. Always download a fresh backup first if you want a way back.
+        </div>
+
+        <H3>Difference between Backup and Export</H3>
+        <div className="space-y-0">
+          <Row label="Backup (.json)">Everything — all networks, all entries, tags, notes, history. Use for disaster recovery, server migrations, and full snapshots.</Row>
+          <Row label="Export (.xlsx)">The active network only, as a formatted spreadsheet. Use for sharing data, reporting, or opening in Excel.</Row>
+        </div>
+      </div>
+    ),
+
+    dns: (
+      <div>
+        <H2>DNS Lookup</H2>
+        <P>The DNS Lookup feature runs a <strong>reverse DNS (PTR) lookup</strong> for every tracked IP address and displays the result alongside each entry. It answers the question: "What does DNS think this IP is called?"</P>
+
+        <H3>What is a PTR record?</H3>
+        <P>When you look up a hostname you get an IP address (a forward lookup). A PTR record is the reverse — given an IP address, it returns the hostname registered in DNS. For example, <code className="font-mono bg-slate-100 px-1 rounded text-xs">192.168.0.171</code> might resolve to <code className="font-mono bg-slate-100 px-1 rounded text-xs">server.home.lab</code> if that PTR record exists on your DNS server.</P>
+
+        <H3>Running a DNS lookup</H3>
+        <P>Click the <strong>DNS</strong> button in the header to run an immediate reverse lookup for all tracked IPs. Results appear as small grey text beneath each IP address on cards and in the table. The lookup runs automatically in the background every 24 hours — you only need to click the button when you want a fresh result right now.</P>
+
+        <H3>Configuring the DNS server</H3>
+        <P>By default, lookups use the system resolver on the server (whatever is configured in <code className="font-mono bg-slate-100 px-1 rounded text-xs">/etc/resolv.conf</code>). To use a specific server — your Pi-hole, your router, or a public resolver — open <strong>Settings (⚙) → DNS Reverse Lookup</strong> and enter the IP address of the server you want to use (e.g. <code className="font-mono bg-slate-100 px-1 rounded text-xs">192.168.0.6</code> or <code className="font-mono bg-slate-100 px-1 rounded text-xs">1.1.1.1</code>). Leave the field blank to return to the system default.</P>
+
+        <H3>Matching PTR records to stored hostnames</H3>
+        <P>If an entry in your IP list has a <strong>Hostname</strong> field set, IP Manager compares it to the PTR result from DNS. A match confirms your DNS and your IP records are in sync. A mismatch (different name) appears with an amber indicator — useful for catching stale DNS records or copy-paste errors.</P>
+
+        <H3>Why might a lookup return nothing?</H3>
+        <div className="space-y-0">
+          <Row label="No PTR record">The IP has no reverse DNS entry. Common for DHCP clients — most home routers don't create PTR records automatically.</Row>
+          <Row label="Wrong DNS server">The configured DNS server doesn't hold your LAN's reverse zone. Try setting it to your local DNS (e.g. Pi-hole or router IP).</Row>
+          <Row label="Disabled">DNS lookup is disabled in Settings. Toggle it on to resume background lookups.</Row>
+        </div>
       </div>
     ),
 
@@ -2656,6 +2754,12 @@ export default function IPAddressManager() {
   const [pingWarning, setPingWarning] = useState(null);
   const [pingLastAt, setPingLastAt] = useState(null); // Date
 
+  // DNS reverse lookup — { [ip]: { ptr: string | null } }
+  const [dnsStatus,  setDnsStatus]  = useState({});
+  const [dnsLoading, setDnsLoading] = useState(false);
+  const [dnsLastAt,  setDnsLastAt]  = useState(null); // Date
+  const [dnsConfig,  setDnsConfig]  = useState({ server: '', enabled: true, lastRun: null });
+
   // UI display preferences (browser-local; not synced to server)
   const [uiPrefs, setUiPrefs] = useState(loadUiPrefs);
 
@@ -2825,6 +2929,39 @@ export default function IPAddressManager() {
     fetchPingStatus();
     const timer = setInterval(() => fetchPingStatus(), 60_000);
     return () => clearInterval(timer);
+  }, [persistMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── DNS reverse lookup ───────────────────────────────────────────────────────
+  const fetchDnsStatus = async (force = false) => {
+    if (persistMode !== 'api') return;
+    setDnsLoading(true);
+    try {
+      const res = await fetch(`/api/dns-status${force ? '?force=1' : ''}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setDnsStatus(data.results || {});
+      setDnsLastAt(data.cachedAt ? new Date(data.cachedAt) : null);
+      if (data.config) setDnsConfig(data.config);
+    } catch { /* silently ignore network errors */ } finally {
+      setDnsLoading(false);
+    }
+  };
+
+  const handleSaveDnsConfig = async (cfg) => {
+    try {
+      await fetch('/api/dns-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cfg),
+      });
+      setDnsConfig(prev => ({ ...prev, ...cfg }));
+    } catch { /* ignore */ }
+  };
+
+  // Load cached DNS results on mount (no auto-poll — runs every 24h server-side)
+  useEffect(() => {
+    if (persistMode !== 'api') return;
+    fetchDnsStatus(false);
   }, [persistMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Derived network state ────────────────────────────────────────────────────
@@ -3322,6 +3459,8 @@ export default function IPAddressManager() {
             setActiveNetworkId(restoredNetworks[0]?.id || 'net-1');
             setShowSettings(false);
           }}
+          dnsConfig={dnsConfig}
+          onSaveDnsConfig={handleSaveDnsConfig}
         />
       )}
 
@@ -3463,6 +3602,17 @@ export default function IPAddressManager() {
                       : <Zap className="w-4 h-4 flex-shrink-0" />}
                     Ping
                   </button>
+                  <button
+                    onClick={() => fetchDnsStatus(true)}
+                    disabled={dnsLoading}
+                    title={dnsLastAt ? `DNS last run: ${dnsLastAt.toLocaleString()}` : 'Run reverse DNS (PTR) lookup for all tracked IPs'}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-60 text-white text-sm font-medium rounded-lg whitespace-nowrap transition-colors"
+                  >
+                    {dnsLoading
+                      ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin flex-shrink-0" />
+                      : <Globe className="w-4 h-4 flex-shrink-0" />}
+                    DNS
+                  </button>
                 </div>
               )}
 
@@ -3513,10 +3663,11 @@ export default function IPAddressManager() {
                 {persistMode === 'api' && (
                   <button
                     onClick={handleLogout}
-                    className="p-2 bg-slate-100 hover:bg-red-50 hover:text-red-500 text-slate-500 rounded-lg transition-colors"
+                    className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-red-50 hover:text-red-500 text-slate-500 rounded-lg transition-colors text-sm font-medium whitespace-nowrap"
                     title="Sign out"
                   >
-                    <X className="w-4 h-4" />
+                    <LogOut className="w-4 h-4 flex-shrink-0" />
+                    Sign out
                   </button>
                 )}
               </div>
@@ -3876,6 +4027,11 @@ export default function IPAddressManager() {
                           <span title="Status unknown" className="inline-block w-2 h-2 rounded-full flex-shrink-0 bg-slate-300" />
                         )}
                       </div>
+                      {!isFree && !isReserved && dnsStatus[item.ip]?.ptr && (
+                        <div className="text-xs font-mono text-slate-400 truncate leading-tight mt-0.5" title={`PTR: ${dnsStatus[item.ip].ptr}`}>
+                          {dnsStatus[item.ip].ptr}
+                        </div>
+                      )}
                       <div className={`text-sm ${isFree ? 'text-emerald-600 font-semibold' : isReserved ? 'text-slate-400 italic' : 'font-medium text-slate-700'}`}>
                         {isFree ? 'Available for use' : item.assetName}
                       </div>
@@ -4126,6 +4282,11 @@ export default function IPAddressManager() {
                               <span title="Status unknown" className="inline-block w-2 h-2 rounded-full flex-shrink-0 bg-slate-300" />
                             )}
                           </div>
+                          {!isFree && !isReserved && dnsStatus[item.ip]?.ptr && (
+                            <div className="text-xs font-mono text-slate-400 truncate leading-tight mt-0.5" title={`PTR: ${dnsStatus[item.ip].ptr}`}>
+                              {dnsStatus[item.ip].ptr}
+                            </div>
+                          )}
                         </td>
                         <td className={`px-4 py-3 text-sm ${
                           isFree ? 'text-emerald-600 font-semibold' : isReserved ? 'text-slate-400 italic' : 'text-slate-700'

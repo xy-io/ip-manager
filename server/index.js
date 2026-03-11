@@ -609,6 +609,102 @@ app.get('/api/ping-status', requireAuth, async (req, res) => {
   });
 });
 
+// ── DNS reverse lookup ────────────────────────────────────────────────────────
+// Runs PTR lookups for all tracked IPs.
+// Uses Node's built-in dns.Resolver so we can point at a custom server (e.g.
+// a Pi-hole or router) without any extra npm dependencies.
+
+const dnsModule = require('dns');
+
+let dnsCache = { results: {}, timestamp: 0, warning: null };
+const DNS_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours
+
+function getDnsConfig() {
+  return dbGet('dns_config') || { server: '', enabled: true, lastRun: null };
+}
+
+// Build a Resolver pointed at the configured server; fall back to system resolver.
+function makeResolver(server) {
+  const resolver = new dnsModule.Resolver();
+  if (server && server.trim()) {
+    try {
+      resolver.setServers([server.trim()]);
+    } catch (e) {
+      console.warn('[dns] Invalid server address "%s":', server, e.message);
+    }
+  }
+  return resolver;
+}
+
+// PTR lookup for one IP — resolves to hostname string or null on any failure.
+function ptrLookup(resolver, ip) {
+  return new Promise((resolve) => {
+    resolver.reverse(ip, (err, names) => {
+      if (err || !names || !names[0]) return resolve(null);
+      // Strip trailing dot that some resolvers append
+      resolve(names[0].replace(/\.$/, ''));
+    });
+  });
+}
+
+async function refreshDnsCache() {
+  const config = getDnsConfig();
+  if (!config.enabled) return;
+
+  const rows = dbGet('ip_data') || [];
+  const ips  = rows.filter(r => r.ip && r.status !== 'free').map(r => r.ip);
+  if (!ips.length) return;
+
+  const resolver = makeResolver(config.server);
+  const results  = {};
+
+  // Run all lookups concurrently — each one silently returns null on failure
+  await Promise.all(
+    ips.map(async (ip) => {
+      results[ip] = { ptr: await ptrLookup(resolver, ip) };
+    })
+  );
+
+  // Persist last-run timestamp to config
+  const newConfig = { ...config, lastRun: new Date().toISOString() };
+  dbSet('dns_config', newConfig);
+
+  dnsCache = { results, timestamp: Date.now(), warning: null };
+  console.log(`[dns] Reverse lookup complete for ${ips.length} IPs`);
+}
+
+// Background poller — every 24 h; does NOT run immediately at startup
+// (DNS is a slow operation; we fetch cached results on first page load instead)
+setInterval(refreshDnsCache, DNS_INTERVAL);
+
+// GET /api/dns-config
+app.get('/api/dns-config', requireAuth, (req, res) => {
+  const config = getDnsConfig();
+  res.json({ server: config.server || '', enabled: config.enabled !== false, lastRun: config.lastRun || null });
+});
+
+// POST /api/dns-config — update DNS server and enable/disable flag
+app.post('/api/dns-config', requireAuth, (req, res) => {
+  const { server, enabled } = req.body || {};
+  const current = getDnsConfig();
+  const updated = { ...current, server: (server || '').trim(), enabled: enabled !== false };
+  dbSet('dns_config', updated);
+  res.json({ ok: true });
+});
+
+// GET /api/dns-status — returns cached results; ?force=1 triggers an immediate refresh
+app.get('/api/dns-status', requireAuth, async (req, res) => {
+  const force = req.query.force === '1';
+  if (force || !dnsCache.timestamp) await refreshDnsCache();
+  const config = getDnsConfig();
+  res.json({
+    results:  dnsCache.results,
+    warning:  dnsCache.warning,
+    cachedAt: dnsCache.timestamp,
+    config:   { server: config.server || '', enabled: config.enabled !== false, lastRun: config.lastRun || null },
+  });
+});
+
 // ── Start ─────────────────────────────────────────────────────────────────────
 
 const PORT = 3001;
