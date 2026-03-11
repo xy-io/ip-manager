@@ -217,58 +217,17 @@ systemctl enable nginx --quiet
 systemctl restart nginx
 ok "Nginx configured and running"
 
-# ── 9. Create update script ──────────────────────────────────
-log "Creating update helper script..."
-cat > /usr/local/bin/ip-manager-update <<UPDATESCRIPT
+# ── 9. Create update wrapper ──────────────────────────────────
+# The real update logic lives in scripts/update.sh inside the repo so it
+# stays current after every git pull. The wrapper here is intentionally
+# minimal — it never needs to change.
+log "Creating update wrapper at /usr/local/bin/ip-manager-update..."
+cat > /usr/local/bin/ip-manager-update <<'WRAPPER'
 #!/bin/bash
-set -e
-echo "Pulling latest changes from GitHub..."
-git -C /opt/ip-manager pull
-
-echo "Ensuring arp-scan and fping are installed and have correct capabilities..."
-apt-get install -y -qq arp-scan fping libcap2-bin 2>/dev/null || true
-ARPSCAN_BIN=\$(which arp-scan 2>/dev/null || echo "")
-if [ -n "\$ARPSCAN_BIN" ]; then
-  setcap cap_net_raw+ep "\$ARPSCAN_BIN" 2>/dev/null && echo "  setcap ok: \$ARPSCAN_BIN" || true
-fi
-FPING_BIN=\$(which fping 2>/dev/null || echo "")
-if [ -n "\$FPING_BIN" ]; then
-  setcap cap_net_raw+ep "\$FPING_BIN" 2>/dev/null && echo "  setcap ok: \$FPING_BIN" || true
-fi
-
-echo "Installing frontend packages..."
-cd /opt/ip-manager && rm -rf node_modules package-lock.json && npm install 2>&1 | grep -E "error|warn|ERR" || true
-
-echo "Rebuilding React app..."
-npm run build 2>&1 || { echo "[ERROR] React build failed"; exit 1; }
-[ -f /opt/ip-manager/dist/index.html ] || { echo "[ERROR] dist/index.html missing after build"; exit 1; }
-
-echo "Installing API server packages..."
-cd /opt/ip-manager/server && npm install 2>&1 | grep -E "error|warn|ERR" || true
-
-echo "Setting permissions..."
-chown -R www-data:www-data /opt/ip-manager/server
-# Ensure credentials.env exists and is writable by the service user
-touch /opt/ip-manager/server/credentials.env
-chown www-data:www-data /opt/ip-manager/server/credentials.env
-chmod 600 /opt/ip-manager/server/credentials.env
-
-echo "Restarting API server..."
-systemctl restart ip-manager-api
-
-echo "Patching Nginx config (index.html no-cache)..."
-if ! grep -q "no-store" /etc/nginx/sites-available/ip-manager 2>/dev/null; then
-  sed -i 's|location / {|location = /index.html {\n        try_files $uri =404;\n        add_header Cache-Control "no-store, no-cache, must-revalidate";\n        add_header Pragma "no-cache";\n    }\n\n    location / {|' /etc/nginx/sites-available/ip-manager
-fi
-
-echo "Reloading Nginx..."
-systemctl reload nginx
-
-echo ""
-echo "Done! IP Manager updated. Your data is unchanged."
-UPDATESCRIPT
+exec bash /opt/ip-manager/scripts/update.sh "$@"
+WRAPPER
 chmod +x /usr/local/bin/ip-manager-update
-ok "Update script created at /usr/local/bin/ip-manager-update"
+ok "Update wrapper created — logic lives in scripts/update.sh (always current)"
 
 # ── Done ─────────────────────────────────────────────────────
 echo ""
