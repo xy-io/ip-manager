@@ -3061,123 +3061,133 @@ export default function IPAddressManager() {
               <h1 className="text-2xl font-bold text-slate-800">IP Address Manager</h1>
               <p className="text-sm text-slate-500">{networkConfig.networkName} · {subnetCIDR(networkConfig.subnet)}</p>
             </div>
-            <div className="flex gap-2 items-center">
-              {/* Persistence mode badge */}
+            <div className="flex gap-2 items-center flex-wrap">
+
+              {/* ── Status badge ── */}
               {persistMode === 'api' && (
-                <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-50 text-emerald-700 rounded-lg text-xs border border-emerald-200" title="Data is stored in SQLite on the server — shared across all users">
-                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
+                <div className="flex items-center gap-1.5 px-2.5 py-2 bg-emerald-50 text-emerald-700 rounded-lg text-xs font-medium border border-emerald-200 whitespace-nowrap" title="Data stored in SQLite on the server — shared across all users">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
                   SQLite
                 </div>
               )}
               {persistMode === 'local' && (
-                <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-50 text-slate-500 rounded-lg text-xs border border-slate-200" title="Data is stored in this browser only — no API server detected">
-                  <div className="w-1.5 h-1.5 rounded-full bg-slate-400"></div>
+                <div className="flex items-center gap-1.5 px-2.5 py-2 bg-slate-50 text-slate-500 rounded-lg text-xs font-medium border border-slate-200 whitespace-nowrap" title="Data stored in this browser only — no API server detected">
+                  <div className="w-1.5 h-1.5 rounded-full bg-slate-400 flex-shrink-0" />
                   Local
                 </div>
               )}
               {hasChanges && persistMode !== 'api' && (
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 text-amber-700 rounded-lg text-sm border border-amber-200">
-                  <AlertCircle className="w-4 h-4" />
-                  Unsaved changes
+                <div className="flex items-center gap-1.5 px-2.5 py-2 bg-amber-50 text-amber-700 rounded-lg text-xs font-medium border border-amber-200 whitespace-nowrap">
+                  <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                  Unsaved
                 </div>
               )}
+
+              {/* ── Import tools (api-only) ── */}
               {persistMode === 'api' && (
-                <button
-                  onClick={() => setShowProxmoxImport(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-lg transition-colors"
-                  title="Auto-discover VMs and LXCs from Proxmox"
-                >
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="2" y="3" width="20" height="14" rx="2"/>
-                    <path d="M8 21h8M12 17v4"/>
-                    <path d="M7 8h.01M12 8h.01M17 8h.01"/>
-                  </svg>
-                  Proxmox
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => setShowProxmoxImport(true)}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg whitespace-nowrap transition-colors"
+                    title="Auto-discover VMs and LXCs from Proxmox"
+                  >
+                    <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="2" y="3" width="20" height="14" rx="2"/>
+                      <path d="M8 21h8M12 17v4"/>
+                      <path d="M7 8h.01M12 8h.01M17 8h.01"/>
+                    </svg>
+                    Proxmox
+                  </button>
+                  <button
+                    onClick={() => setShowARPScan(true)}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg whitespace-nowrap transition-colors"
+                    title="Scan your subnet for active devices via ARP"
+                  >
+                    <Wifi className="w-4 h-4 flex-shrink-0" />
+                    ARP Scan
+                  </button>
+                  <button
+                    onClick={() => fetchPingStatus(true)}
+                    disabled={pingLoading}
+                    title={pingLastAt ? `Last checked: ${pingLastAt.toLocaleTimeString()}` : 'Check reachability of all tracked IPs'}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-sky-600 hover:bg-sky-700 disabled:opacity-60 text-white text-sm font-medium rounded-lg whitespace-nowrap transition-colors"
+                  >
+                    {pingLoading
+                      ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin flex-shrink-0" />
+                      : <Zap className="w-4 h-4 flex-shrink-0" />}
+                    Ping
+                  </button>
+                </div>
               )}
-              {persistMode === 'api' && (
+
+              {/* ── Data buttons ── */}
+              <div className="flex items-center gap-1.5">
                 <button
-                  onClick={() => setShowARPScan(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white font-medium rounded-lg transition-colors"
-                  title="Scan your subnet for active devices via ARP"
+                  onClick={() => setShowImport(true)}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-slate-700 hover:bg-slate-800 text-white text-sm font-medium rounded-lg whitespace-nowrap transition-colors"
                 >
-                  <Wifi className="w-4 h-4" />
-                  ARP Scan
+                  <Upload className="w-4 h-4 flex-shrink-0" />
+                  Import
                 </button>
-              )}
-              {persistMode === 'api' && (
                 <button
-                  onClick={() => fetchPingStatus(true)}
-                  disabled={pingLoading}
-                  title={pingLastAt ? `Last checked: ${pingLastAt.toLocaleTimeString()}` : 'Check reachability of all tracked IPs'}
-                  className="flex items-center gap-2 px-4 py-2 bg-sky-600 hover:bg-sky-700 disabled:bg-sky-400 text-white font-medium rounded-lg transition-colors"
+                  onClick={handleExportExcel}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg whitespace-nowrap transition-colors"
                 >
-                  {pingLoading
-                    ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    : <Zap className="w-4 h-4" />}
-                  Ping
+                  <Download className="w-4 h-4 flex-shrink-0" />
+                  Export
                 </button>
-              )}
-              <button
-                onClick={() => setShowImport(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-800 text-white font-medium rounded-lg transition-colors"
-              >
-                <Upload className="w-4 h-4" />
-                Import
-              </button>
-              <button
-                onClick={handleExportExcel}
-                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-lg transition-colors"
-              >
-                <Download className="w-4 h-4" />
-                Export
-              </button>
-              {networks.length === 1 && (
+              </div>
+
+              {/* ── Utility icon buttons ── */}
+              <div className="flex items-center gap-1">
+                {networks.length === 1 && (
+                  <button
+                    onClick={handleAddNetwork}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-700 text-sm font-medium rounded-lg border border-dashed border-slate-300 hover:border-slate-400 whitespace-nowrap transition-colors"
+                    title="Add another network (e.g. a VLAN or IoT segment)"
+                  >
+                    <Plus className="w-4 h-4 flex-shrink-0" />
+                    Add Network
+                  </button>
+                )}
                 <button
-                  onClick={handleAddNetwork}
-                  className="flex items-center gap-2 px-3 py-2 bg-slate-50 hover:bg-slate-100 text-slate-500 font-medium rounded-lg border border-dashed border-slate-300 transition-colors text-sm"
-                  title="Add another network (e.g. a VLAN or IoT segment)"
+                  onClick={() => setShowSettings(true)}
+                  className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg transition-colors"
+                  title="Network Settings"
                 >
-                  <Plus className="w-4 h-4" />
-                  Add Network
+                  <Settings className="w-4 h-4" />
                 </button>
-              )}
-              <button
-                onClick={() => setShowSettings(true)}
-                className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium rounded-lg transition-colors"
-                title="Network Settings"
-              >
-                <Settings className="w-4 h-4" />
-              </button>
-              {persistMode === 'api' && (
+                {persistMode === 'api' && (
+                  <button
+                    onClick={handleLogout}
+                    className="p-2 bg-slate-100 hover:bg-red-50 hover:text-red-500 text-slate-500 rounded-lg transition-colors"
+                    title="Sign out"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+
+              {/* ── View toggle ── */}
+              <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
                 <button
-                  onClick={handleLogout}
-                  className="flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-red-50 hover:text-red-600 text-slate-500 font-medium rounded-lg transition-colors"
-                  title="Sign out"
+                  onClick={() => setViewMode('cards')}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+                    viewMode === 'cards' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                  }`}
                 >
-                  <X className="w-4 h-4" />
+                  Cards
                 </button>
-              )}
-              <button
-                onClick={() => setViewMode('cards')}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  viewMode === 'cards'
-                    ? 'bg-slate-800 text-white'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                Cards
-              </button>
-              <button
-                onClick={() => setViewMode('table')}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  viewMode === 'table'
-                    ? 'bg-slate-800 text-white'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                Table
-              </button>
+                <button
+                  onClick={() => setViewMode('table')}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+                    viewMode === 'table' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  Table
+                </button>
+              </div>
+
             </div>
           </div>
 
