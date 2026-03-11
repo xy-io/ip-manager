@@ -544,10 +544,14 @@ function runFping(ips) {
     //   -a  print only alive hosts to stdout (one per line)
     //   -q  quiet — suppress per-packet stats on stderr
     //   -t  per-host timeout in ms
-    //   -c1 send exactly 1 ping per host
+    //
+    // NOTE: do NOT use -c (count mode). In count mode fping writes stats to
+    // stderr instead of printing alive hosts to stdout, so -a has no effect
+    // and stdout comes back empty — every host appears down regardless.
+    // Without -c, fping sends one probe per host by default (correct behaviour).
     //
     // Exit codes:  0 = all alive,  1 = some unreachable (normal),  other = error
-    const args = ['-a', '-q', '-t', '500', '-c', '1', ...ips];
+    const args = ['-a', '-q', '-t', '500', ...ips];
     execFile('fping', args, { timeout: 15000 }, (err, stdout) => {
       if (err) {
         // err.code === 1 means "some hosts unreachable" — that is normal; parse stdout as usual.
