@@ -4027,11 +4027,27 @@ export default function IPAddressManager() {
                           <span title="Status unknown" className="inline-block w-2 h-2 rounded-full flex-shrink-0 bg-slate-300" />
                         )}
                       </div>
-                      {!isFree && !isReserved && dnsStatus[item.ip]?.ptr && (
-                        <div className="text-xs font-mono text-slate-400 truncate leading-tight mt-0.5" title={`PTR: ${dnsStatus[item.ip].ptr}`}>
-                          {dnsStatus[item.ip].ptr}
-                        </div>
-                      )}
+                      {(() => {
+                        if (isFree || isReserved) return null;
+                        const ptr = dnsStatus[item.ip]?.ptr;
+                        if (!ptr) return null;
+                        const norm = s => s.toLowerCase().replace(/\.$/, '').trim();
+                        const matches = item.hostname && norm(ptr) === norm(item.hostname);
+                        if (matches) return null; // hostname already shown below — no need to repeat
+                        return item.hostname ? (
+                          // PTR exists but differs from stored hostname — highlight as mismatch
+                          <div className="text-xs font-mono text-amber-500 truncate leading-tight mt-0.5"
+                               title={`DNS PTR record: ${ptr} — differs from stored hostname: ${item.hostname}`}>
+                            ⚠ DNS: {ptr}
+                          </div>
+                        ) : (
+                          // No stored hostname — show PTR as useful info
+                          <div className="text-xs font-mono text-slate-400 truncate leading-tight mt-0.5"
+                               title={`PTR record from DNS: ${ptr}`}>
+                            {ptr}
+                          </div>
+                        );
+                      })()}
                       <div className={`text-sm ${isFree ? 'text-emerald-600 font-semibold' : isReserved ? 'text-slate-400 italic' : 'font-medium text-slate-700'}`}>
                         {isFree ? 'Available for use' : item.assetName}
                       </div>
@@ -4282,11 +4298,25 @@ export default function IPAddressManager() {
                               <span title="Status unknown" className="inline-block w-2 h-2 rounded-full flex-shrink-0 bg-slate-300" />
                             )}
                           </div>
-                          {!isFree && !isReserved && dnsStatus[item.ip]?.ptr && (
-                            <div className="text-xs font-mono text-slate-400 truncate leading-tight mt-0.5" title={`PTR: ${dnsStatus[item.ip].ptr}`}>
-                              {dnsStatus[item.ip].ptr}
-                            </div>
-                          )}
+                          {(() => {
+                            if (isFree || isReserved) return null;
+                            const ptr = dnsStatus[item.ip]?.ptr;
+                            if (!ptr) return null;
+                            const norm = s => s.toLowerCase().replace(/\.$/, '').trim();
+                            const matches = item.hostname && norm(ptr) === norm(item.hostname);
+                            if (matches) return null;
+                            return item.hostname ? (
+                              <div className="text-xs font-mono text-amber-500 truncate leading-tight mt-0.5"
+                                   title={`DNS PTR record: ${ptr} — differs from stored hostname: ${item.hostname}`}>
+                                ⚠ DNS: {ptr}
+                              </div>
+                            ) : (
+                              <div className="text-xs font-mono text-slate-400 truncate leading-tight mt-0.5"
+                                   title={`PTR record from DNS: ${ptr}`}>
+                                {ptr}
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td className={`px-4 py-3 text-sm ${
                           isFree ? 'text-emerald-600 font-semibold' : isReserved ? 'text-slate-400 italic' : 'text-slate-700'
