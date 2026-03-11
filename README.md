@@ -26,6 +26,7 @@ Managing a home lab network across servers, VMs, containers, cameras, switches, 
 - **Switch views** between Cards (visual) and Table (dense, sortable) layouts
 - **Keyboard shortcuts** — `/` to search, `Esc` to clear/close, `t`/`c` to switch views
 - **Configure your network** — subnet, DHCP range, static range, and DHCP reservations via the Settings panel — no code editing required
+- **Ping / reachability** — live green/red status dots on every IP; auto-refreshes every 60 seconds in the background
 
 ### Network-Aware
 
@@ -39,6 +40,12 @@ The app understands your network layout and is fully configurable via the ⚙️
 | Green entries | Free — available to claim |
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
+
+### v1.12 Features
+
+**Ping / reachability badges** — Every assigned IP card and table row now shows a coloured status dot inline with the IP address: 🟢 green = online, 🔴 red = offline, grey = status not yet known. The server runs `fping` against all tracked IPs, caches results for 20 seconds, and refreshes the cache automatically every 60 seconds in the background — no user action required. A sky-blue **Ping** button in the header forces an immediate refresh and shows a spinner while in-flight; hovering it shows the last-checked timestamp. If `fping` is missing or lacks the required `CAP_NET_RAW` capability, an amber warning banner explains exactly what to run to fix it. `fping` is now installed and granted raw-socket capability automatically by the install and update scripts.
+
+---
 
 ### v1.11 Features
 
@@ -260,8 +267,8 @@ See [`IP_Manager_Roadmap.docx`](./IP_Manager_Roadmap.docx) for the full three-ph
 - **PWA / Offline support** — install to home screen; works without network access
 
 **Phase 2 — mid-term (Q3–Q4 2026):**
+- ✅ **Ping / reachability** — live green/red status dots on every IP, auto-poll every 60 s, manual refresh button — shipped in v1.12
 - **Multiple IPs per host** — support servers/VMs with more than one NIC or VLAN leg
-- **Ping / reachability** — live status indicators per IP
 - **Proxmox scheduled sync** — automatically re-discover and update Proxmox entries on a schedule
 - **Pi-hole import (v6)** — one-shot import of Pi-hole v6 local DNS records to populate or enrich existing entries
 - **Service health checks** — HTTP probes with UP/DOWN badges
