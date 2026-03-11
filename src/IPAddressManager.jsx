@@ -3423,9 +3423,7 @@ export default function IPAddressManager() {
         <div className="max-w-7xl mx-auto px-4 mb-2">
           <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
             <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5 text-amber-500" />
-            <div>
-              <span className="font-semibold">Ping unavailable: </span>{pingWarning}
-            </div>
+            <span className="min-w-0"><span className="font-semibold">Ping unavailable: </span>{pingWarning}</span>
           </div>
         </div>
       )}

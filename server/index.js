@@ -10,7 +10,7 @@ const crypto = require('crypto');
 const https = require('https');
 const path = require('path');
 const fs = require('fs');
-const { exec } = require('child_process');
+const { exec, execFile } = require('child_process');
 
 const app = express();
 app.use(express.json({ limit: '2mb' }));
@@ -537,23 +537,39 @@ function runFping(ips) {
   return new Promise((resolve) => {
     if (!ips.length) return resolve({ results: {}, warning: null });
 
+    // Use execFile (not exec/shell) so error messages never include the full
+    // command string with every IP address in it.
+    //
     // fping flags:
-    //   -a  print only alive hosts to stdout
-    //   -q  quiet (suppress per-packet stats)
+    //   -a  print only alive hosts to stdout (one per line)
+    //   -q  quiet — suppress per-packet stats on stderr
     //   -t  per-host timeout in ms
     //   -c1 send exactly 1 ping per host
-    const cmd = `fping -a -q -t 500 -c 1 ${ips.map(ip => `"${ip}"`).join(' ')} 2>/dev/null`;
-    exec(cmd, { timeout: 15000 }, (err, stdout, stderr) => {
-      // fping exits with 1 when some hosts are unreachable — that's normal, not an error.
-      // A real error looks like ENOENT (not installed) or EPERM (no cap_net_raw).
-      if (err && err.code !== 1 && !stdout) {
-        const msg = err.message || '';
-        const warning = msg.includes('not found') || msg.includes('ENOENT')
-          ? 'fping is not installed. Run: apt-get install fping && setcap cap_net_raw+ep $(which fping)'
-          : msg.includes('Operation not permitted') || msg.includes('EPERM')
-          ? 'fping lacks raw socket permission. Run: setcap cap_net_raw+ep $(which fping)'
-          : `fping error: ${msg}`;
-        console.warn('[ping]', warning);
+    //
+    // Exit codes:  0 = all alive,  1 = some unreachable (normal),  other = error
+    const args = ['-a', '-q', '-t', '500', '-c', '1', ...ips];
+    execFile('fping', args, { timeout: 15000 }, (err, stdout) => {
+      if (err) {
+        // err.code === 1 means "some hosts unreachable" — that is normal; parse stdout as usual.
+        if (err.code === 1) {
+          const alive = new Set(stdout.trim().split('\n').filter(Boolean));
+          const results = {};
+          for (const ip of ips) results[ip] = alive.has(ip) ? 'up' : 'down';
+          return resolve({ results, warning: null });
+        }
+
+        // err.code === 'ENOENT' → binary not found on PATH
+        // err.code === 'EPERM' or err.errno === -1 → lacks CAP_NET_RAW
+        let warning;
+        if (err.code === 'ENOENT') {
+          warning = 'fping is not installed. Run the update script (ip-manager-update) to install it automatically, or manually: apt-get install fping && setcap cap_net_raw+ep $(which fping)';
+        } else if (err.code === 'EPERM' || err.code === 1 || (err.stderr || '').includes('Operation not permitted')) {
+          warning = 'fping lacks raw socket permission. Run: setcap cap_net_raw+ep $(which fping)';
+        } else {
+          // Never expose the raw error — it can contain hundreds of IP addresses.
+          warning = 'fping encountered an error — ping status unavailable. Check server logs for details.';
+        }
+        console.warn('[ping] fping error (code=%s):', err.code, err.message ? err.message.slice(0, 120) : '');
         return resolve({ results: {}, warning });
       }
 
