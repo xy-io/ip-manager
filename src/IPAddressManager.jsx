@@ -1719,6 +1719,7 @@ function HelpModal({ onClose }) {
     { id: 'managing',   label: 'Managing IPs' },
     { id: 'networks',   label: 'Networks & Settings' },
     { id: 'proxmox',    label: 'Proxmox Import' },
+    { id: 'proxmoxsync', label: 'Proxmox Sync' },
     { id: 'arp',        label: 'ARP Scan' },
     { id: 'ping',       label: 'Ping / Reachability' },
     { id: 'backup',     label: 'Backup & Restore' },
@@ -1894,6 +1895,33 @@ function HelpModal({ onClose }) {
 
         <H3>VMs not showing an IP?</H3>
         <P>VMs need the <strong>QEMU guest agent</strong> installed and running inside the VM so Proxmox can read the IP. LXC containers report IPs automatically. Stopped containers may not report interfaces.</P>
+      </div>
+    ),
+
+    proxmoxsync: (
+      <div>
+        <H2>Proxmox Scheduled Sync</H2>
+        <P>Once you've imported entries via the Proxmox button, the scheduled sync keeps them up to date automatically — no manual re-import needed. Its main purpose is detecting <strong>HA failovers</strong>: when Proxmox High Availability migrates a VM or LXC to a different node, the stored node name in your manager goes stale. The sync catches this and corrects it.</P>
+
+        <H3>What it updates</H3>
+        <P>Only entries already tagged <code className="font-mono bg-slate-100 px-1 rounded text-xs">proxmox</code> are ever touched — user-managed entries are ignored even if their IP matches something in Proxmox. For each matching entry, the sync checks three fields:</P>
+        <div className="space-y-2 mb-3">
+          <Row label="Location (node)">The Proxmox node the VM or LXC is currently running on. This is the primary HA failover signal.</Row>
+          <div className="mb-1" />
+          <Row label="Asset name">Updated if Proxmox reports a different name for the VMID.</Row>
+          <div className="mb-1" />
+          <Row label="Notes">Refreshed to reflect the current VMID, node, and power status.</Row>
+        </div>
+        <P>Every change is written into the entry's change history, visible in the expanded card view — so you can see exactly what moved and when.</P>
+
+        <H3>Setting it up</H3>
+        <P>Go to <strong>Settings → Proxmox Scheduled Sync</strong> and enter the same host and API token you use for the one-shot import. Choose a sync interval (default 1 hour, minimum 15 minutes), tick <strong>Enable automatic sync</strong>, and click <strong>Save</strong>.</P>
+
+        <H3>Sync Now</H3>
+        <P>The <strong>Sync Now</strong> button in the same Settings section triggers an immediate run. It shows a spinner while running and updates the last-run time and change count when done. The IP cards refresh automatically if any entries were changed.</P>
+
+        <H3>Things it won't do</H3>
+        <P>The sync never adds new entries — if a new VM appears in Proxmox, you still import it manually via the Proxmox button. It also won't overwrite fields you've customised (like tags, service, or location) on entries that aren't tagged <code className="font-mono bg-slate-100 px-1 rounded text-xs">proxmox</code>.</P>
       </div>
     ),
 
