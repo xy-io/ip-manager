@@ -56,7 +56,7 @@ function formatDate(iso) {
 }
 
 // Settings Modal Component
-function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLocation, onDeleteLocation, tags, onRenameTag, onDeleteTag, canDeleteNetwork, onDeleteNetwork, showFreeInList, onToggleShowFreeInList, ipData, networks, onRestore, dnsConfig, onSaveDnsConfig }) {
+function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLocation, onDeleteLocation, tags, onRenameTag, onDeleteTag, canDeleteNetwork, onDeleteNetwork, showFreeInList, onToggleShowFreeInList, ipData, networks, onRestore, dnsConfig, onSaveDnsConfig, proxmoxSyncConfig, proxmoxSyncStatus, proxmoxSyncLoading, onSaveProxmoxSyncConfig, onRunProxmoxSync }) {
   const [form, setForm] = useState({
     networkName: config.networkName,
     subnet: config.subnet,
@@ -81,6 +81,17 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
 
   // DNS config form state (local draft until saved)
   const [dnsForm, setDnsForm] = useState({ server: dnsConfig?.server || '', enabled: dnsConfig?.enabled !== false });
+
+  // Proxmox sync form state (local draft until saved)
+  const [proxSyncForm, setProxSyncForm] = useState({
+    host:            proxmoxSyncConfig?.host            || '',
+    token:           proxmoxSyncConfig?.token           || '',
+    ignoreTLS:       proxmoxSyncConfig?.ignoreTLS       !== false,
+    enabled:         proxmoxSyncConfig?.enabled         === true,
+    intervalMinutes: proxmoxSyncConfig?.intervalMinutes || 60,
+  });
+  const [showSyncToken, setShowSyncToken] = useState(false);
+  const [proxSyncSaved, setProxSyncSaved] = useState(false);
 
   // Account / change-password state
   const [pwForm, setPwForm] = useState({ currentPassword: '', newUsername: '', newPassword: '', confirmPassword: '' });
@@ -398,6 +409,132 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
               {dnsConfig?.lastRun && (
                 <p className="text-xs text-slate-400 mt-2">Last run: {new Date(dnsConfig.lastRun).toLocaleString()}</p>
               )}
+            </div>
+          )}
+
+          {/* Proxmox Scheduled Sync */}
+          {onSaveProxmoxSyncConfig && (
+            <div className="pt-2 border-t border-slate-200">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Proxmox Scheduled Sync</p>
+              <p className="text-xs text-slate-500 mb-3">
+                Automatically re-queries Proxmox on a schedule and updates any entries that have drifted — useful for catching HA failovers where a VM or LXC migrates to a different node. Only updates entries tagged <span className="font-mono bg-slate-100 px-1 rounded">proxmox</span>.
+              </p>
+
+              {/* Host */}
+              <div className="mb-2">
+                <label className="block text-xs font-medium text-slate-600 mb-1">Proxmox host</label>
+                <input
+                  type="text"
+                  placeholder="192.168.0.50 or pve.home.lab (port defaults to 8006)"
+                  value={proxSyncForm.host}
+                  onChange={e => setProxSyncForm(p => ({ ...p, host: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+                />
+              </div>
+
+              {/* Token */}
+              <div className="mb-2">
+                <label className="block text-xs font-medium text-slate-600 mb-1">API token</label>
+                <div className="flex gap-2">
+                  <input
+                    type={showSyncToken ? 'text' : 'password'}
+                    placeholder="root@pam!tokenid=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                    value={proxSyncForm.token}
+                    onChange={e => setProxSyncForm(p => ({ ...p, token: e.target.value }))}
+                    className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowSyncToken(v => !v)}
+                    className="px-3 py-2 border border-slate-300 rounded-lg text-xs text-slate-500 hover:bg-slate-50 transition-colors"
+                  >
+                    {showSyncToken ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Interval + ignoreTLS row */}
+              <div className="flex gap-4 mb-2 flex-wrap">
+                <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={proxSyncForm.ignoreTLS}
+                    onChange={e => setProxSyncForm(p => ({ ...p, ignoreTLS: e.target.checked }))}
+                    className="rounded border-slate-300 text-purple-600 focus:ring-purple-500"
+                  />
+                  Ignore TLS certificate errors
+                </label>
+
+                <label className="flex items-center gap-2 text-sm text-slate-600">
+                  Sync every
+                  <select
+                    value={proxSyncForm.intervalMinutes}
+                    onChange={e => setProxSyncForm(p => ({ ...p, intervalMinutes: parseInt(e.target.value) }))}
+                    className="px-2 py-1 border border-slate-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  >
+                    <option value={15}>15 min</option>
+                    <option value={30}>30 min</option>
+                    <option value={60}>1 hour</option>
+                    <option value={120}>2 hours</option>
+                    <option value={360}>6 hours</option>
+                    <option value={1440}>24 hours</option>
+                  </select>
+                </label>
+              </div>
+
+              {/* Enable toggle + Save */}
+              <div className="flex items-center gap-3 mb-3">
+                <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none flex-1">
+                  <input
+                    type="checkbox"
+                    checked={proxSyncForm.enabled}
+                    onChange={e => setProxSyncForm(p => ({ ...p, enabled: e.target.checked }))}
+                    className="rounded border-slate-300 text-purple-600 focus:ring-purple-500"
+                  />
+                  Enable automatic sync
+                </label>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await onSaveProxmoxSyncConfig(proxSyncForm);
+                    setProxSyncSaved(true);
+                    setTimeout(() => setProxSyncSaved(false), 2000);
+                  }}
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium whitespace-nowrap transition-colors"
+                >
+                  {proxSyncSaved ? '✓ Saved' : 'Save'}
+                </button>
+              </div>
+
+              {/* Sync Now + last run info */}
+              <div className="flex items-center gap-3 flex-wrap">
+                <button
+                  type="button"
+                  onClick={onRunProxmoxSync}
+                  disabled={proxmoxSyncLoading || proxmoxSyncStatus?.running || !proxmoxSyncConfig?.host || !proxmoxSyncConfig?.token}
+                  className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-purple-50 hover:text-purple-700 text-slate-600 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {(proxmoxSyncLoading || proxmoxSyncStatus?.running) ? (
+                    <><span className="animate-spin text-base">⟳</span> Syncing…</>
+                  ) : (
+                    'Sync Now'
+                  )}
+                </button>
+                <div className="text-xs text-slate-400">
+                  {proxmoxSyncConfig?.lastRun && (
+                    <span>Last sync: {new Date(proxmoxSyncConfig.lastRun).toLocaleString()}</span>
+                  )}
+                  {proxmoxSyncConfig?.lastRun && proxmoxSyncStatus?.changesFound > 0 && (
+                    <span className="ml-2 text-amber-500">· {proxmoxSyncStatus.changesFound} change{proxmoxSyncStatus.changesFound !== 1 ? 's' : ''} found</span>
+                  )}
+                  {proxmoxSyncConfig?.lastRun && (proxmoxSyncStatus?.changesFound === 0) && (
+                    <span className="ml-2 text-green-500">· No changes</span>
+                  )}
+                  {proxmoxSyncStatus?.lastError && (
+                    <span className="ml-2 text-red-500">· Error: {proxmoxSyncStatus.lastError}</span>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 
@@ -2765,6 +2902,11 @@ export default function IPAddressManager() {
   const [dnsLastAt,  setDnsLastAt]  = useState(null); // Date
   const [dnsConfig,  setDnsConfig]  = useState({ server: '', enabled: true, lastRun: null });
 
+  // Proxmox scheduled sync
+  const [proxmoxSyncConfig,  setProxmoxSyncConfig]  = useState({ host: '', token: '', ignoreTLS: true, enabled: false, intervalMinutes: 60, lastRun: null, changesFound: 0 });
+  const [proxmoxSyncStatus,  setProxmoxSyncStatus]  = useState({ running: false, lastError: null, changeLog: [] });
+  const [proxmoxSyncLoading, setProxmoxSyncLoading] = useState(false);
+
   // UI display preferences (browser-local; not synced to server)
   const [uiPrefs, setUiPrefs] = useState(loadUiPrefs);
 
@@ -2967,6 +3109,69 @@ export default function IPAddressManager() {
   useEffect(() => {
     if (persistMode !== 'api') return;
     fetchDnsStatus(false);
+  }, [persistMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Proxmox scheduled sync ───────────────────────────────────────────────────
+
+  const fetchProxmoxSyncConfig = async () => {
+    if (persistMode !== 'api') return;
+    try {
+      const res = await fetch('/api/proxmox-sync/config');
+      if (!res.ok) return;
+      const data = await res.json();
+      setProxmoxSyncConfig(data);
+    } catch { /* ignore */ }
+  };
+
+  const fetchProxmoxSyncStatus = async () => {
+    if (persistMode !== 'api') return;
+    try {
+      const res = await fetch('/api/proxmox-sync/status');
+      if (!res.ok) return;
+      const data = await res.json();
+      setProxmoxSyncStatus(data);
+      // Also refresh config to pick up updated lastRun / changesFound
+      if (!data.running) fetchProxmoxSyncConfig();
+    } catch { /* ignore */ }
+  };
+
+  const handleSaveProxmoxSyncConfig = async (cfg) => {
+    try {
+      await fetch('/api/proxmox-sync/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cfg),
+      });
+      setProxmoxSyncConfig(prev => ({ ...prev, ...cfg }));
+    } catch { /* ignore */ }
+  };
+
+  const handleRunProxmoxSync = async () => {
+    setProxmoxSyncLoading(true);
+    try {
+      await fetch('/api/proxmox-sync/run', { method: 'POST' });
+      // Poll status until the sync finishes
+      const poll = setInterval(async () => {
+        const res = await fetch('/api/proxmox-sync/status');
+        if (!res.ok) { clearInterval(poll); setProxmoxSyncLoading(false); return; }
+        const data = await res.json();
+        setProxmoxSyncStatus(data);
+        if (!data.running) {
+          clearInterval(poll);
+          setProxmoxSyncLoading(false);
+          fetchProxmoxSyncConfig(); // refresh lastRun / changesFound
+          loadData();               // refresh IP cards in case entries changed
+        }
+      }, 1500);
+    } catch {
+      setProxmoxSyncLoading(false);
+    }
+  };
+
+  // Load Proxmox sync config on mount
+  useEffect(() => {
+    if (persistMode !== 'api') return;
+    fetchProxmoxSyncConfig();
   }, [persistMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Derived network state ────────────────────────────────────────────────────
@@ -3466,6 +3671,11 @@ export default function IPAddressManager() {
           }}
           dnsConfig={dnsConfig}
           onSaveDnsConfig={handleSaveDnsConfig}
+          proxmoxSyncConfig={proxmoxSyncConfig}
+          proxmoxSyncStatus={proxmoxSyncStatus}
+          proxmoxSyncLoading={proxmoxSyncLoading}
+          onSaveProxmoxSyncConfig={handleSaveProxmoxSyncConfig}
+          onRunProxmoxSync={handleRunProxmoxSync}
         />
       )}
 

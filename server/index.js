@@ -609,6 +609,166 @@ app.get('/api/ping-status', requireAuth, async (req, res) => {
   });
 });
 
+// ── Proxmox scheduled sync ────────────────────────────────────────────────────
+// Periodically re-queries Proxmox and updates any entries that have drifted
+// (e.g. a VM or LXC migrated to a different node after an HA failover).
+// Only updates entries already tagged 'proxmox' — never auto-adds new ones.
+
+let proxmoxSyncCache = { lastRun: null, changesFound: 0, changeLog: [], running: false, lastError: null };
+let proxmoxSyncTimer  = null;
+const PROXMOX_SYNC_MIN_INTERVAL = 15 * 60 * 1000; // 15 min floor
+
+function getProxmoxSyncConfig() {
+  return dbGet('proxmox_sync_config') || {
+    host: '', token: '', ignoreTLS: true, enabled: false, intervalMinutes: 60,
+    lastRun: null, changesFound: 0,
+  };
+}
+
+function scheduleProxmoxSync() {
+  if (proxmoxSyncTimer) { clearInterval(proxmoxSyncTimer); proxmoxSyncTimer = null; }
+  const config = getProxmoxSyncConfig();
+  if (!config.enabled || !config.host || !config.token) return;
+  const interval = Math.max(PROXMOX_SYNC_MIN_INTERVAL, (config.intervalMinutes || 60) * 60 * 1000);
+  proxmoxSyncTimer = setInterval(runProxmoxSync, interval);
+  console.log(`[proxmox-sync] Scheduled every ${config.intervalMinutes || 60} min`);
+}
+
+async function runProxmoxSync() {
+  if (proxmoxSyncCache.running) return; // prevent overlapping runs
+  const config = getProxmoxSyncConfig();
+  if (!config.enabled || !config.host || !config.token) return;
+
+  proxmoxSyncCache = { ...proxmoxSyncCache, running: true, lastError: null };
+  console.log('[proxmox-sync] Starting sync…');
+
+  try {
+    // Normalise host / port (same logic as the discover endpoint)
+    let host = config.host.replace(/^https?:\/\//i, '').trim().replace(/\/+$/, '');
+    let port = 8006;
+    const colonIdx = host.lastIndexOf(':');
+    if (colonIdx > 0 && !host.includes(']')) {
+      const maybePort = parseInt(host.slice(colonIdx + 1));
+      if (!isNaN(maybePort)) { port = maybePort; host = host.slice(0, colonIdx); }
+    }
+
+    const { entries } = await discoverProxmox(host, port, config.token, !!config.ignoreTLS);
+    const ipData = dbGet('ip_data') || [];
+    const ipMap  = new Map(ipData.map(e => [e.ip, e]));
+
+    let changesFound = 0;
+    const changeLog  = [];
+
+    for (const proxEntry of entries) {
+      const existing = ipMap.get(proxEntry.ip);
+      // Skip IPs not in the manager, and skip entries not tagged 'proxmox'
+      // (we don't want to stomp over user-managed entries just because the IP
+      //  happened to be reused by a Proxmox VM at some point)
+      if (!existing) continue;
+      if (!(existing.tags || []).includes('proxmox')) continue;
+
+      const changes = {};
+
+      // Node change — the primary HA failover signal
+      if (proxEntry.location && proxEntry.location !== existing.location) {
+        changes.location = { from: existing.location, to: proxEntry.location };
+        existing.location = proxEntry.location;
+      }
+      // Name / asset name change
+      if (proxEntry.assetName && proxEntry.assetName !== existing.assetName) {
+        changes.assetName = { from: existing.assetName, to: proxEntry.assetName };
+        existing.assetName = proxEntry.assetName;
+      }
+      // Notes carry VMID, node, and current status — always refresh
+      if (proxEntry.notes && proxEntry.notes !== existing.notes) {
+        changes.notes = { from: existing.notes, to: proxEntry.notes };
+        existing.notes = proxEntry.notes;
+      }
+
+      if (Object.keys(changes).length > 0) {
+        existing.updatedAt = new Date().toISOString();
+        // Prepend to per-entry change history (same format as manual edits)
+        if (!existing.history) existing.history = [];
+        existing.history.unshift({ at: existing.updatedAt, by: 'proxmox-sync', changes });
+        if (existing.history.length > 20) existing.history = existing.history.slice(0, 20);
+        changesFound++;
+        changeLog.push({ ip: existing.ip, name: existing.assetName, changes });
+      }
+    }
+
+    if (changesFound > 0) {
+      dbSet('ip_data', ipData);
+      console.log(`[proxmox-sync] Updated ${changesFound} entr${changesFound === 1 ? 'y' : 'ies'}`);
+    } else {
+      console.log('[proxmox-sync] No changes detected');
+    }
+
+    const lastRun = new Date().toISOString();
+    proxmoxSyncCache = { lastRun, changesFound, changeLog: changeLog.slice(0, 50), running: false, lastError: null };
+
+    // Persist last-run metadata (not the full change log)
+    dbSet('proxmox_sync_config', { ...config, lastRun, changesFound });
+
+  } catch (err) {
+    console.error('[proxmox-sync] Error:', err.message);
+    proxmoxSyncCache = { ...proxmoxSyncCache, running: false, lastError: err.message };
+  }
+}
+
+// GET /api/proxmox-sync/config
+app.get('/api/proxmox-sync/config', requireAuth, (req, res) => {
+  const c = getProxmoxSyncConfig();
+  res.json({
+    host:            c.host            || '',
+    token:           c.token           || '',
+    ignoreTLS:       c.ignoreTLS       !== false,
+    enabled:         c.enabled         === true,
+    intervalMinutes: c.intervalMinutes || 60,
+    lastRun:         c.lastRun         || null,
+    changesFound:    c.changesFound    || 0,
+  });
+});
+
+// POST /api/proxmox-sync/config — save settings and reschedule
+app.post('/api/proxmox-sync/config', requireAuth, (req, res) => {
+  const { host, token, ignoreTLS, enabled, intervalMinutes } = req.body || {};
+  const current = getProxmoxSyncConfig();
+  const updated = {
+    ...current,
+    host:            (host  || '').trim(),
+    token:           (token || '').trim(),
+    ignoreTLS:       ignoreTLS !== false,
+    enabled:         enabled === true,
+    intervalMinutes: Math.max(15, parseInt(intervalMinutes) || 60),
+  };
+  dbSet('proxmox_sync_config', updated);
+  scheduleProxmoxSync(); // apply new schedule immediately
+  res.json({ ok: true });
+});
+
+// GET /api/proxmox-sync/status — in-memory run state
+app.get('/api/proxmox-sync/status', requireAuth, (req, res) => {
+  res.json({
+    lastRun:      proxmoxSyncCache.lastRun,
+    changesFound: proxmoxSyncCache.changesFound,
+    changeLog:    proxmoxSyncCache.changeLog,
+    running:      proxmoxSyncCache.running,
+    lastError:    proxmoxSyncCache.lastError,
+  });
+});
+
+// POST /api/proxmox-sync/run — manual immediate trigger
+app.post('/api/proxmox-sync/run', requireAuth, (req, res) => {
+  if (proxmoxSyncCache.running) {
+    return res.json({ ok: false, message: 'Sync already in progress' });
+  }
+  res.json({ ok: true, message: 'Sync started' });
+  runProxmoxSync(); // fire and forget — client polls /status for results
+});
+
+// Restore schedule on server startup (uses persisted config)
+scheduleProxmoxSync();
+
 // ── DNS reverse lookup ────────────────────────────────────────────────────────
 // Runs PTR lookups for all tracked IPs.
 // Uses Node's built-in dns.Resolver so we can point at a custom server (e.g.

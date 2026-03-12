@@ -41,13 +41,9 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
-### v1.14 Features
+### v1.15 Features
 
-**DNS reverse lookup** — Click the violet **DNS** button in the header (API mode only) to run a reverse PTR lookup for every tracked IP address. Results are compared against the hostname stored in each entry: if they match, nothing extra is shown (no duplication); if the entry has no stored hostname, the PTR record is displayed in grey as a useful fill-in; if the PTR differs from the stored hostname, it is shown in amber with a ⚠ prefix — useful for catching stale DNS records or copy-paste errors. The lookup runs automatically every 24 hours in the background. Configure a specific DNS server (e.g. your Pi-hole or router) in **Settings → DNS Reverse Lookup**, or leave blank to use the system resolver. The feature uses Node's built-in `dns` module — no additional system packages required.
-
-**Logout button** — The header sign-out button now shows a **Sign out** label alongside the LogOut icon, replacing the ambiguous ✕ that testers were finding confusing.
-
-**Help & Reference improvements** — The Help modal gained two new sections: **Backup & Restore** (covers what a backup contains vs an export, how to download and restore, and the "replaces everything" warning) and **DNS Lookup** (explains PTR records, the three-way display logic, DNS server configuration, and common reasons for empty results).
+**Proxmox scheduled sync** — Automatically re-queries your Proxmox host on a configurable schedule (default hourly, minimum 15 minutes) and silently updates any entries that have drifted — the primary use case being HA failover, where a VM or LXC container migrates to a different node and the manager's stored node name goes stale. Only entries already tagged `proxmox` are updated; user-managed entries are never touched. Changes are written back into each entry's change history so you can see exactly what moved and when. Configure the host, API token, TLS setting, interval, and enable/disable toggle in **Settings → Proxmox Scheduled Sync**. A **Sync Now** button triggers an immediate run; the result (last run time, number of changes, any error) is shown inline.
 
 → Full version history: [CHANGELOG.md](./CHANGELOG.md)
 
@@ -231,10 +227,10 @@ See [`IP_Manager_Roadmap.docx`](./IP_Manager_Roadmap.docx) for the full three-ph
 - ✅ **Ping / reachability** — live green/red status dots on every IP, auto-poll every 60 s, manual refresh button — shipped in v1.12
 - ✅ **Help & Reference modal** — full in-app reference guide with 11 sections — shipped in v1.13
 - ✅ **DNS reverse lookup** — PTR lookup for all tracked IPs, mismatch detection, configurable DNS server — shipped in v1.14
+- ✅ **Proxmox scheduled sync** — background sync with HA failover detection, configurable interval, change history — shipped in v1.15
 - **Service health checks** — HTTP/HTTPS probes with UP/DOWN badges alongside ping
 - **ARP scan — background** — periodic scheduled sweeps that update a "last seen" timestamp and surface newly appeared or disappeared devices automatically
 - **Multiple IPs per host** — support servers/VMs with more than one NIC or VLAN leg
-- **Proxmox scheduled sync** — automatically re-discover and update Proxmox entries on a schedule
 
 **Phase 3 — longer-term (2027+):**
 - **Proxmox live status** — real-time VM/LXC power state badges using the Proxmox API
