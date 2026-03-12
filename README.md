@@ -49,14 +49,6 @@ You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and
 
 ---
 
-### v1.15 Features
-
-**Proxmox scheduled sync** — Automatically re-queries your Proxmox host on a configurable schedule (default hourly, minimum 15 minutes) and silently updates any entries that have drifted — the primary use case being HA failover, where a VM or LXC container migrates to a different node and the manager's stored node name goes stale. Only entries already tagged `proxmox` are updated; user-managed entries are never touched. Changes are written back into each entry's change history so you can see exactly what moved and when. Configure the host, API token, TLS setting, interval, and enable/disable toggle in **Settings → Proxmox Scheduled Sync**. A **Sync Now** button triggers an immediate run; the result (last run time, number of changes, any error) is shown inline.
-
-→ Full version history: [CHANGELOG.md](./CHANGELOG.md)
-
----
-
 ## Screenshots
 
 > Cards view showing assigned and free IPs, with the Edit modal open.

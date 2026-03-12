@@ -1725,6 +1725,7 @@ function HelpModal({ onClose }) {
     { id: 'networks',   label: 'Networks & Settings' },
     { id: 'proxmox',    label: 'Proxmox Import' },
     { id: 'proxmoxsync', label: 'Proxmox Sync' },
+    { id: 'hostgroup',  label: 'Multiple IPs per Host' },
     { id: 'arp',        label: 'ARP Scan' },
     { id: 'ping',       label: 'Ping / Reachability' },
     { id: 'backup',     label: 'Backup & Restore' },
@@ -1927,6 +1928,30 @@ function HelpModal({ onClose }) {
 
         <H3>Things it won't do</H3>
         <P>The sync never adds new entries — if a new VM appears in Proxmox, you still import it manually via the Proxmox button. It also won't overwrite fields you've customised (like tags, service, or location) on entries that aren't tagged <code className="font-mono bg-slate-100 px-1 rounded text-xs">proxmox</code>.</P>
+      </div>
+    ),
+
+    hostgroup: (
+      <div>
+        <H2>Multiple IPs per Host</H2>
+        <P>A server or VM with multiple network interfaces (multi-NIC or multi-VLAN) can have all its IP entries linked together so they clearly belong to the same host. Each group has one <strong>primary</strong> entry and one or more <strong>secondary</strong> entries.</P>
+
+        <H3>Linking IPs</H3>
+        <P>Open the Edit modal for the IP you want to be the primary. Scroll to the <strong>Secondary IPs</strong> section at the bottom of the form. Use the dropdown to pick any other standalone (non-free, non-grouped) entry on the same network, then click <strong>+ Link</strong>. You can link multiple secondaries. Click <strong>Save</strong> — the association is stored immediately.</P>
+
+        <H3>How it looks</H3>
+        <div className="space-y-2 mb-3">
+          <Row label="Primary card / row">Shows small blue chip badges listing each secondary IP address, so you can see all interfaces at a glance.</Row>
+          <div className="mb-1" />
+          <Row label="Secondary card / row">Shows a <span className="font-mono text-xs bg-slate-100 px-1 rounded">↳ Primary name</span> label so you always know which host it belongs to.</Row>
+        </div>
+        <P>The same indicators appear in both Cards view and Table view.</P>
+
+        <H3>Unlinking IPs</H3>
+        <P>Open the Edit modal for the primary entry. In the Secondary IPs section, each linked entry has an <strong>×</strong> button — click it to remove the association, then save. You can also unlink from the secondary entry's edit modal; it will be detached from the group.</P>
+
+        <H3>Proxmox auto-grouping</H3>
+        <P>When you import from Proxmox and a single VM or LXC reports multiple IP addresses (because it has multiple NICs or is connected to multiple VLANs), the importer automatically groups those IPs — the first address becomes the primary and the rest become secondaries. No manual linking required.</P>
       </div>
     ),
 
