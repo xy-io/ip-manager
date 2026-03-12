@@ -212,9 +212,10 @@ async function discoverProxmox(host, port, token, ignoreTls) {
         updatedAt: new Date().toISOString(),
       };
       if (ips.length) {
-        entries.push({ ...base, ip: ips[0] });
-        // Additional IPs on the same container become separate entries
-        ips.slice(1).forEach(ip => entries.push({ ...base, ip, assetName: `${base.assetName} (${ip})` }));
+        // Auto-group multi-IP containers with a shared hostId (Option A)
+        const hostId = ips.length > 1 ? `host-${lxc.vmid}-${node}` : undefined;
+        entries.push({ ...base, ip: ips[0], ...(hostId ? { hostId, isPrimary: true } : {}) });
+        ips.slice(1).forEach(ip => entries.push({ ...base, ip, assetName: `${base.assetName} (${ip})`, ...(hostId ? { hostId, isPrimary: false } : {}) }));
       } else {
         noIp.push({ ...base, ip: '', _vmid: lxc.vmid, _node: node });
       }
@@ -252,8 +253,9 @@ async function discoverProxmox(host, port, token, ignoreTls) {
         updatedAt: new Date().toISOString(),
       };
       if (ips.length) {
-        entries.push({ ...base, ip: ips[0] });
-        ips.slice(1).forEach(ip => entries.push({ ...base, ip, assetName: `${base.assetName} (${ip})` }));
+        const hostId = ips.length > 1 ? `host-${vm.vmid}-${node}` : undefined;
+        entries.push({ ...base, ip: ips[0], ...(hostId ? { hostId, isPrimary: true } : {}) });
+        ips.slice(1).forEach(ip => entries.push({ ...base, ip, assetName: `${base.assetName} (${ip})`, ...(hostId ? { hostId, isPrimary: false } : {}) }));
       } else {
         noIp.push({ ...base, ip: '', _vmid: vm.vmid, _node: node });
       }

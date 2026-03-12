@@ -55,6 +55,11 @@ function formatDate(iso) {
   return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+// Generates a short unique ID for host groups (Option A linking)
+function generateHostId() {
+  return `host-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
 // Settings Modal Component
 function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLocation, onDeleteLocation, tags, onRenameTag, onDeleteTag, canDeleteNetwork, onDeleteNetwork, showFreeInList, onToggleShowFreeInList, ipData, networks, onRestore, dnsConfig, onSaveDnsConfig, proxmoxSyncConfig, proxmoxSyncStatus, proxmoxSyncLoading, onSaveProxmoxSyncConfig, onRunProxmoxSync }) {
   const [form, setForm] = useState({
@@ -2637,7 +2642,7 @@ function BulkEditModal({ count, onApply, onClose, types, locations, allTags }) {
 }
 
 // Edit Modal Component
-function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddLocation, allTags }) {
+function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddLocation, allTags, allNetworkEntries }) {
   const [formData, setFormData] = useState({
     assetName: item.assetName,
     hostname: item.hostname,
@@ -2649,6 +2654,22 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
   });
   const [tagInput, setTagInput] = useState('');
   const [showTagSuggestions, setShowTagSuggestions] = useState(false);
+
+  // Host group linking state
+  const [pendingLinks,   setPendingLinks]   = useState([]); // IPs to link as secondary on save
+  const [pendingUnlinks, setPendingUnlinks] = useState([]); // IPs to unlink on save
+
+  // Compute current secondaries from allNetworkEntries (excluding pending unlinks)
+  const existingSecondaries = (allNetworkEntries || []).filter(
+    e => e.hostId && e.hostId === item.hostId && !e.isPrimary && !pendingUnlinks.includes(e.ip)
+  );
+  // Entries available to link: same network, not self, not already in a group, not already pending
+  const linkableEntries = (allNetworkEntries || []).filter(
+    e => e.ip !== item.ip &&
+         e.assetName !== 'Free' && e.assetName !== 'Reserved' &&
+         !e.hostId &&
+         !pendingLinks.includes(e.ip)
+  );
   // Separate draft state for the "add new location" text input.
   // We must NOT write the typed value into formData.location until the user
   // commits, because formData.location === '__new__' is the condition that
@@ -2688,7 +2709,10 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
     if (finalLocation && formData.location === '__new__') {
       onAddLocation?.(finalLocation);
     }
-    onSave({ ...item, ...formData, location: finalLocation });
+    onSave(
+      { ...item, ...formData, location: finalLocation },
+      { link: pendingLinks, unlink: pendingUnlinks }
+    );
   };
 
   const isFree = item.assetName === 'Free';
@@ -2858,6 +2882,81 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm resize-none"
             />
           </div>
+
+          {/* Host Group — only shown for assigned, non-reserved entries */}
+          {!isFree && !isReserved && (
+            <div className="pt-2 border-t border-slate-200">
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Secondary IPs</label>
+              <p className="text-xs text-slate-400 mb-2">
+                Link other IPs to this entry to indicate they belong to the same host (e.g. a management NIC, a second VLAN interface).
+              </p>
+
+              {/* If this entry is itself a secondary, show who the primary is */}
+              {item.hostId && !item.isPrimary && (() => {
+                const primary = (allNetworkEntries || []).find(e => e.hostId === item.hostId && e.isPrimary);
+                return primary ? (
+                  <p className="text-xs text-blue-500 mb-2">
+                    ↳ This is a secondary IP of <strong>{primary.assetName}</strong> ({primary.ip}). Edit the primary entry to manage the group.
+                  </p>
+                ) : null;
+              })()}
+
+              {/* Existing secondaries (only shown if this is/will be the primary) */}
+              {(item.isPrimary || !item.hostId) && (
+                <>
+                  {/* Already-saved secondaries */}
+                  {existingSecondaries.map(entry => (
+                    <div key={entry.ip} className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg bg-blue-50 border border-blue-100 mb-1.5">
+                      <span className="font-mono text-xs text-blue-700">{entry.ip}</span>
+                      <span className="text-xs text-slate-500 flex-1 truncate">{entry.assetName}</span>
+                      <button
+                        type="button"
+                        onClick={() => setPendingUnlinks(prev => [...prev, entry.ip])}
+                        className="text-slate-400 hover:text-red-500 text-sm leading-none px-1"
+                        title="Unlink this IP"
+                      >×</button>
+                    </div>
+                  ))}
+
+                  {/* Pending new links (not yet saved) */}
+                  {pendingLinks.map(ip => {
+                    const entry = (allNetworkEntries || []).find(e => e.ip === ip);
+                    return (
+                      <div key={ip} className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 border-dashed mb-1.5">
+                        <span className="font-mono text-xs text-emerald-700">{ip}</span>
+                        <span className="text-xs text-slate-500 flex-1 truncate">{entry?.assetName}</span>
+                        <button
+                          type="button"
+                          onClick={() => setPendingLinks(prev => prev.filter(p => p !== ip))}
+                          className="text-slate-400 hover:text-red-500 text-sm leading-none px-1"
+                          title="Remove"
+                        >×</button>
+                      </div>
+                    );
+                  })}
+
+                  {/* Dropdown to add a new secondary */}
+                  {linkableEntries.length > 0 && (
+                    <select
+                      defaultValue=""
+                      onChange={e => {
+                        if (e.target.value) {
+                          setPendingLinks(prev => [...prev, e.target.value]);
+                          e.target.value = '';
+                        }
+                      }}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white text-sm text-slate-600"
+                    >
+                      <option value="">Link another IP as secondary…</option>
+                      {linkableEntries.map(e => (
+                        <option key={e.ip} value={e.ip}>{e.ip} — {e.assetName}</option>
+                      ))}
+                    </select>
+                  )}
+                </>
+              )}
+            </div>
+          )}
 
           <div className="flex gap-3 pt-4">
             <button
@@ -3489,22 +3588,61 @@ export default function IPAddressManager() {
     clearSelection();
   };
 
-  const handleSaveItem = (updatedItem) => {
+  const handleSaveItem = (updatedItem, groupOps = {}) => {
     const now = new Date().toISOString();
     const stamped = { ...updatedItem, updatedAt: now };
     setIpData(prev => {
-      const existing = prev.find(item => item.ip === stamped.ip);
+      let data = [...prev];
+
+      // ── Update the main entry ──────────────────────────────────────────────
+      const existing = data.find(item => item.ip === stamped.ip);
       if (existing) {
         const changes = computeDiff(existing, stamped);
         const entry = changes.length
           ? { ts: now, changes }
           : { ts: now, changes: [{ label: 'Saved', old: '', new: '(no changes)' }] };
         const history = [...(existing.history || []), entry].slice(-20);
-        return prev.map(item => item.ip === stamped.ip ? { ...stamped, history } : item);
+        data = data.map(item => item.ip === stamped.ip ? { ...stamped, history } : item);
+      } else {
+        // New entry
+        const history = [{ ts: now, changes: [{ label: 'Created', old: '', new: stamped.ip }] }];
+        data = [...data, { ...stamped, history, networkId: activeNetworkId }];
       }
-      // New entry — record creation and stamp with active network
-      const history = [{ ts: now, changes: [{ label: 'Created', old: '', new: stamped.ip }] }];
-      return [...prev, { ...stamped, history, networkId: activeNetworkId }];
+
+      // ── Process host-group link operations ────────────────────────────────
+      const { link = [], unlink = [] } = groupOps;
+
+      if (link.length > 0) {
+        // Ensure the primary has a hostId; generate one if not
+        const hostId = stamped.hostId || generateHostId();
+        data = data.map(e => {
+          if (e.ip === stamped.ip)   return { ...e, hostId, isPrimary: true };
+          if (link.includes(e.ip))  return { ...e, hostId, isPrimary: false, updatedAt: now };
+          return e;
+        });
+      }
+
+      if (unlink.length > 0) {
+        data = data.map(e => {
+          if (!unlink.includes(e.ip)) return e;
+          const { hostId: _h, isPrimary: _p, ...rest } = e;
+          return { ...rest, updatedAt: now };
+        });
+        // If the primary now has no secondaries left, clear its hostId too
+        const primaryEntry = data.find(e => e.ip === stamped.ip);
+        if (primaryEntry?.hostId) {
+          const remainingSiblings = data.filter(e => e.hostId === primaryEntry.hostId && e.ip !== stamped.ip);
+          if (remainingSiblings.length === 0) {
+            data = data.map(e => {
+              if (e.ip !== stamped.ip) return e;
+              const { hostId: _h, isPrimary: _p, ...rest } = e;
+              return rest;
+            });
+          }
+        }
+      }
+
+      return data;
     });
     setHasChanges(true);
     setEditingItem(null);
@@ -3748,6 +3886,7 @@ export default function IPAddressManager() {
           types={types}
           onAddLocation={(name) => handleRenameLocation(null, name)}
           allTags={allTags}
+          allNetworkEntries={networkIpData}
         />
       )}
 
@@ -4317,6 +4456,34 @@ export default function IPAddressManager() {
                           </div>
                         )}
 
+                        {/* Secondary IPs — shown on the primary card */}
+                        {item.isPrimary && item.hostId && (() => {
+                          const secondaries = networkIpData.filter(e => e.hostId === item.hostId && !e.isPrimary);
+                          if (!secondaries.length) return null;
+                          return (
+                            <div className="flex flex-wrap gap-1 mb-2">
+                              {secondaries.map(s => (
+                                <span key={s.ip}
+                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-mono rounded bg-blue-50 text-blue-600 border border-blue-200"
+                                  title={`Secondary IP: ${s.assetName}`}>
+                                  {s.ip}
+                                </span>
+                              ))}
+                            </div>
+                          );
+                        })()}
+
+                        {/* "Part of primary" label — shown on secondary cards */}
+                        {!item.isPrimary && item.hostId && (() => {
+                          const primary = networkIpData.find(e => e.hostId === item.hostId && e.isPrimary);
+                          if (!primary) return null;
+                          return (
+                            <div className="text-xs text-blue-500 truncate mb-1.5" title={`Secondary IP of ${primary.assetName} (${primary.ip})`}>
+                              ↳ {primary.assetName}
+                            </div>
+                          );
+                        })()}
+
                         <div className="flex flex-wrap gap-2">
                           {item.location && (
                             <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full ${getLocationColor(item.location)}`}>
@@ -4565,6 +4732,25 @@ export default function IPAddressManager() {
                           isFree ? 'text-emerald-600 font-semibold' : isReserved ? 'text-slate-400 italic' : 'text-slate-700'
                         }`}>
                           {isFree ? '✓ Available' : item.assetName}
+                          {/* Secondary IPs listed under asset name in table */}
+                          {item.isPrimary && item.hostId && (() => {
+                            const secondaries = networkIpData.filter(e => e.hostId === item.hostId && !e.isPrimary);
+                            if (!secondaries.length) return null;
+                            return (
+                              <div className="flex flex-wrap gap-1 mt-0.5">
+                                {secondaries.map(s => (
+                                  <span key={s.ip} className="font-mono text-xs px-1 py-0 rounded bg-blue-50 text-blue-500 border border-blue-200" title={s.assetName}>{s.ip}</span>
+                                ))}
+                              </div>
+                            );
+                          })()}
+                          {/* "Part of" indicator for secondary rows */}
+                          {!item.isPrimary && item.hostId && (() => {
+                            const primary = networkIpData.find(e => e.hostId === item.hostId && e.isPrimary);
+                            return primary ? (
+                              <div className="text-xs text-blue-400 mt-0.5">↳ {primary.assetName}</div>
+                            ) : null;
+                          })()}
                         </td>
                         <td className="px-4 py-3 font-mono text-xs text-slate-500 max-w-xs truncate">
                           {item.hostname || '—'}

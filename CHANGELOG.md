@@ -6,6 +6,12 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v1.15
+
+**Proxmox scheduled sync** — Background sync that re-queries Proxmox on a configurable schedule (default hourly, minimum 15 min) and updates any entries tagged `proxmox` that have drifted — primarily for HA failover where a VM/LXC migrates to a different node. Changes recorded in each entry's change history. Configured in **Settings → Proxmox Scheduled Sync** with a Sync Now button for manual runs.
+
+---
+
 ## v1.14
 
 **DNS reverse lookup** — Click the violet **DNS** button in the header (API mode only) to run a reverse PTR lookup for every tracked IP address. Results are compared against the hostname stored in each entry: if they match, nothing extra is shown; if the entry has no stored hostname, the PTR record is displayed in grey as a useful fill-in; if the PTR differs from the stored hostname, it is shown in amber with a ⚠ prefix — useful for catching stale DNS records. The lookup runs automatically every 24 hours in the background. Configure a specific DNS server in **Settings → DNS Reverse Lookup**, or leave blank to use the system resolver. Uses Node's built-in `dns` module — no additional packages required.
