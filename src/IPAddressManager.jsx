@@ -97,6 +97,7 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
   });
   const [showSyncToken, setShowSyncToken] = useState(false);
   const [proxSyncSaved, setProxSyncSaved] = useState(false);
+  const [activeTab, setActiveTab] = useState('network');
 
   // Account / change-password state
   const [pwForm, setPwForm] = useState({ currentPassword: '', newUsername: '', newPassword: '', confirmPassword: '' });
@@ -239,558 +240,395 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
   const inputCls = "w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm";
   const labelCls = "block text-sm font-medium text-slate-700 mb-1";
 
+  const settingsTabs = [
+    { id: 'network',  label: 'Network' },
+    { id: 'dns',      label: 'DNS' },
+    { id: 'proxmox',  label: 'Proxmox Sync' },
+    { id: 'backup',   label: 'Backup' },
+    { id: 'manage',   label: 'Locations & Tags' },
+    { id: 'account',  label: 'Account' },
+  ];
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="p-6 border-b border-slate-200">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                <Settings className="w-5 h-5 text-slate-500" />
-                Network Settings
-              </h2>
-              <p className="text-sm text-slate-500 mt-1">Configure to match your network layout</p>
-            </div>
-            <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
-              <X className="w-5 h-5 text-slate-500" />
-            </button>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl h-[88vh] flex flex-col" onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
+        <div className="p-5 border-b border-slate-200 flex items-center justify-between flex-shrink-0">
+          <div>
+            <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+              <Settings className="w-5 h-5 text-slate-500" />
+              Settings
+            </h2>
+            <p className="text-sm text-slate-500 mt-0.5">Configure your network and app preferences</p>
           </div>
+          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
+            <X className="w-5 h-5 text-slate-500" />
+          </button>
         </div>
 
-        <form onSubmit={handleSave} className="p-6 space-y-5">
+        {/* Body: sidebar + content */}
+        <div className="flex flex-1 overflow-hidden">
 
-          {/* Network identity */}
-          <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-4">
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Network Identity</p>
-            <div>
-              <label className={labelCls}>Network Name</label>
-              <input type="text" className={inputCls} placeholder="e.g. Home Network" {...f('networkName')} />
-            </div>
-            <div>
-              <label className={labelCls}>Subnet Prefix</label>
-              <input type="text" className={inputCls} placeholder="e.g. 192.168.0.0 or 192.168.1 or 192.168" {...f('subnet')} />
-              <p className="text-xs text-slate-400 mt-1">Paste your network address (e.g. <span className="font-mono">192.168.0.0</span>) or just the prefix — <span className="font-mono">192.168.1</span> for /24, <span className="font-mono">192.168</span> for /16. Trailing zeros are stripped automatically.</p>
-            </div>
-          </div>
-
-          {/* DHCP range */}
-          <div className="p-4 bg-amber-50 rounded-xl border border-amber-200 space-y-4">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-semibold text-amber-700 uppercase tracking-wider">⚡ DHCP Pool</p>
-              <label className="flex items-center gap-2 cursor-pointer select-none">
-                <span className="text-xs text-amber-700 font-medium">{form.dhcpEnabled ? 'Enabled' : 'Disabled'}</span>
-                <button
-                  type="button"
-                  onClick={() => setForm(f => ({ ...f, dhcpEnabled: !f.dhcpEnabled }))}
-                  className={`relative inline-flex h-5 w-9 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${form.dhcpEnabled ? 'bg-amber-500' : 'bg-slate-300'}`}
-                >
-                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ${form.dhcpEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
-                </button>
-              </label>
-            </div>
-            {form.dhcpEnabled && (
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className={labelCls}>Start</label>
-                  <input type="text" className={inputCls} placeholder={subnetOctetCount(form.subnet) === 2 ? "e.g. 0.1" : "e.g. 1"} {...f('dhcpStart')} />
-                </div>
-                <div>
-                  <label className={labelCls}>End</label>
-                  <input type="text" className={inputCls} placeholder={subnetOctetCount(form.subnet) === 2 ? "e.g. 0.254" : "e.g. 170"} {...f('dhcpEnd')} />
-                </div>
-              </div>
-            )}
-            {!form.dhcpEnabled && (
-              <p className="text-xs text-amber-600">No DHCP pool — all IPs on this network are treated as static.</p>
-            )}
-          </div>
-
-          {/* DHCP Reservations — only shown when DHCP is enabled */}
-          {form.dhcpEnabled && (
-          <div className="p-4 bg-blue-50 rounded-xl border border-blue-200 space-y-4">
-            <p className="text-xs font-semibold text-blue-700 uppercase tracking-wider">🔒 DHCP Reservations</p>
-            <div>
-              <label className={labelCls}>Reserved IPs (host portions)</label>
-              <input type="text" className={inputCls} placeholder={subnetOctetCount(form.subnet) === 2 ? "e.g. 0.6, 0.50" : "e.g. 6, 50"} {...f('fixedInDHCP')} />
-              <p className="text-xs text-slate-400 mt-1">Comma-separated host portions of IPs that have DHCP reservations. These can be anywhere on the network — inside or outside the DHCP pool.</p>
-            </div>
-          </div>
-          )}
-
-          {/* Static range */}
-          <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-200 space-y-4">
-            <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wider">🖥 Static Range</p>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className={labelCls}>Start</label>
-                <input type="text" className={inputCls} placeholder={subnetOctetCount(form.subnet) === 2 ? "e.g. 1.1" : "e.g. 171"} {...f('staticStart')} />
-              </div>
-              <div>
-                <label className={labelCls}>End</label>
-                <input type="text" className={inputCls} placeholder={subnetOctetCount(form.subnet) === 2 ? "e.g. 254.254" : "e.g. 254"} {...f('staticEnd')} />
-              </div>
-            </div>
-          </div>
-
-          {error && (
-            <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              {error}
-            </div>
-          )}
-
-          {/* Preview — shows normalised subnet so user sees what will be saved */}
-          {(() => { const ps = normaliseSubnet(form.subnet); return (
-          <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs font-mono text-slate-500 space-y-1">
-            <p><span className="text-slate-400">Network:      </span>{subnetCIDR(ps)}</p>
-            {form.dhcpEnabled
-              ? <p><span className="text-slate-400">DHCP pool:    </span>{ps}.{form.dhcpStart} – {ps}.{form.dhcpEnd}</p>
-              : <p><span className="text-slate-400">DHCP pool:    </span><span className="text-slate-400 not-italic">disabled</span></p>}
-            <p><span className="text-slate-400">Static range: </span>{ps}.{form.staticStart} – {ps}.{form.staticEnd}</p>
-            {form.dhcpEnabled && form.fixedInDHCP && <p><span className="text-slate-400">Fixed IPs:    </span>{form.fixedInDHCP.split(',').map(s => `${ps}.${s.trim()}`).join(', ')}</p>}
-          </div>
-          ); })()}
-
-          <button
-            type="submit"
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-lg transition-colors"
-          >
-            <Save className="w-4 h-4" />
-            Save Settings
-          </button>
-
-          {/* Display Preferences */}
-          <div className="pt-2 border-t border-slate-200">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Display</p>
-            <label className="flex items-center justify-between gap-3 cursor-pointer select-none group">
-              <div>
-                <p className="text-sm font-medium text-slate-700">Show free IP cards in main list</p>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Turn off if you have a large subnet (/16) — hiding free cards prevents thousands of entries from slowing down the page.
-                </p>
-              </div>
+          {/* Sidebar nav */}
+          <div className="w-44 border-r border-slate-100 py-3 flex-shrink-0 bg-slate-50 overflow-y-auto rounded-bl-2xl">
+            {settingsTabs.map(tab => (
               <button
+                key={tab.id}
                 type="button"
-                onClick={onToggleShowFreeInList}
-                className={`relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${showFreeInList ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                onClick={() => setActiveTab(tab.id)}
+                className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${activeTab === tab.id ? 'bg-white text-slate-800 font-semibold shadow-sm border-r-2 border-emerald-500' : 'text-slate-500 hover:text-slate-700 hover:bg-white/60'}`}
               >
-                <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ${showFreeInList ? 'translate-x-5' : 'translate-x-0'}`} />
+                {tab.label}
               </button>
-            </label>
+            ))}
           </div>
 
-          {/* DNS Reverse Lookup */}
-          {onSaveDnsConfig && (
-            <div className="pt-2 border-t border-slate-200">
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">DNS Reverse Lookup</p>
-              <p className="text-xs text-slate-500 mb-3">
-                Resolves PTR records for all tracked IPs. Runs automatically every 24 hours. Leave server blank to use the system default resolver.
-              </p>
-              <div className="flex gap-2 mb-2">
-                <input
-                  type="text"
-                  placeholder="DNS server IP (e.g. 192.168.0.6 or 8.8.8.8) — blank = system default"
-                  value={dnsForm.server}
-                  onChange={e => setDnsForm(p => ({ ...p, server: e.target.value }))}
-                  className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent text-sm"
-                />
-                <button
-                  type="button"
-                  onClick={() => onSaveDnsConfig({ server: dnsForm.server, enabled: dnsForm.enabled })}
-                  className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-sm font-medium whitespace-nowrap transition-colors"
-                >
-                  Save
-                </button>
-              </div>
-              <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={dnsForm.enabled}
-                  onChange={e => setDnsForm(p => ({ ...p, enabled: e.target.checked }))}
-                  className="rounded border-slate-300 text-teal-600 focus:ring-teal-500"
-                />
-                Enable automatic DNS lookup (every 24 hours)
-              </label>
-              {dnsConfig?.lastRun && (
-                <p className="text-xs text-slate-400 mt-2">Last run: {new Date(dnsConfig.lastRun).toLocaleString()}</p>
-              )}
-            </div>
-          )}
+          {/* Content pane */}
+          <div className="flex-1 overflow-y-auto p-6">
 
-          {/* Proxmox Scheduled Sync */}
-          {onSaveProxmoxSyncConfig && (
-            <div className="pt-2 border-t border-slate-200">
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Proxmox Scheduled Sync</p>
-              <p className="text-xs text-slate-500 mb-3">
-                Automatically re-queries Proxmox on a schedule and updates any entries that have drifted — useful for catching HA failovers where a VM or LXC migrates to a different node. Only updates entries tagged <span className="font-mono bg-slate-100 px-1 rounded">proxmox</span>.
-              </p>
-
-              {/* Host */}
-              <div className="mb-2">
-                <label className="block text-xs font-medium text-slate-600 mb-1">Proxmox host</label>
-                <input
-                  type="text"
-                  placeholder="192.168.0.50 or pve.home.lab (port defaults to 8006)"
-                  value={proxSyncForm.host}
-                  onChange={e => setProxSyncForm(p => ({ ...p, host: e.target.value }))}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
-                />
-              </div>
-
-              {/* Token */}
-              <div className="mb-2">
-                <label className="block text-xs font-medium text-slate-600 mb-1">API token</label>
-                <div className="flex gap-2">
-                  <input
-                    type={showSyncToken ? 'text' : 'password'}
-                    placeholder="root@pam!tokenid=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                    value={proxSyncForm.token}
-                    onChange={e => setProxSyncForm(p => ({ ...p, token: e.target.value }))}
-                    className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm font-mono"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowSyncToken(v => !v)}
-                    className="px-3 py-2 border border-slate-300 rounded-lg text-xs text-slate-500 hover:bg-slate-50 transition-colors"
-                  >
-                    {showSyncToken ? 'Hide' : 'Show'}
-                  </button>
+            {/* ── NETWORK TAB ── */}
+            {activeTab === 'network' && (
+              <form onSubmit={handleSave} className="space-y-5">
+                <div>
+                  <h3 className="text-base font-semibold text-slate-800 mb-1">Network Configuration</h3>
+                  <p className="text-xs text-slate-500 mb-4">Define the IP layout for this network. Changes take effect when you click Save.</p>
                 </div>
-              </div>
 
-              {/* Interval + ignoreTLS row */}
-              <div className="flex gap-4 mb-2 flex-wrap">
+                {/* Network identity */}
+                <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-4">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Network Identity</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className={labelCls}>Network Name</label>
+                      <input type="text" className={inputCls} placeholder="e.g. Home Network" {...f('networkName')} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Subnet Prefix</label>
+                      <input type="text" className={inputCls} placeholder="e.g. 192.168.0 or 192.168" {...f('subnet')} />
+                      <p className="text-xs text-slate-400 mt-1">Paste the network address — trailing zeros stripped automatically.</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* DHCP + Static side by side */}
+                <div className="grid grid-cols-2 gap-4">
+                  {/* DHCP range */}
+                  <div className="p-4 bg-amber-50 rounded-xl border border-amber-200 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-semibold text-amber-700 uppercase tracking-wider">⚡ DHCP Pool</p>
+                      <label className="flex items-center gap-2 cursor-pointer select-none">
+                        <span className="text-xs text-amber-700 font-medium">{form.dhcpEnabled ? 'On' : 'Off'}</span>
+                        <button
+                          type="button"
+                          onClick={() => setForm(f => ({ ...f, dhcpEnabled: !f.dhcpEnabled }))}
+                          className={`relative inline-flex h-5 w-9 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${form.dhcpEnabled ? 'bg-amber-500' : 'bg-slate-300'}`}
+                        >
+                          <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ${form.dhcpEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
+                        </button>
+                      </label>
+                    </div>
+                    {form.dhcpEnabled ? (
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className={labelCls}>Start</label>
+                          <input type="text" className={inputCls} placeholder={subnetOctetCount(form.subnet) === 2 ? "0.1" : "1"} {...f('dhcpStart')} />
+                        </div>
+                        <div>
+                          <label className={labelCls}>End</label>
+                          <input type="text" className={inputCls} placeholder={subnetOctetCount(form.subnet) === 2 ? "0.254" : "170"} {...f('dhcpEnd')} />
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-amber-600">No DHCP pool — all IPs treated as static.</p>
+                    )}
+                  </div>
+
+                  {/* Static range */}
+                  <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-200 space-y-3">
+                    <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wider">🖥 Static Range</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className={labelCls}>Start</label>
+                        <input type="text" className={inputCls} placeholder={subnetOctetCount(form.subnet) === 2 ? "1.1" : "171"} {...f('staticStart')} />
+                      </div>
+                      <div>
+                        <label className={labelCls}>End</label>
+                        <input type="text" className={inputCls} placeholder={subnetOctetCount(form.subnet) === 2 ? "254.254" : "254"} {...f('staticEnd')} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* DHCP Reservations */}
+                {form.dhcpEnabled && (
+                  <div className="p-4 bg-blue-50 rounded-xl border border-blue-200 space-y-3">
+                    <p className="text-xs font-semibold text-blue-700 uppercase tracking-wider">🔒 DHCP Reservations</p>
+                    <div>
+                      <label className={labelCls}>Reserved IPs (host portions)</label>
+                      <input type="text" className={inputCls} placeholder={subnetOctetCount(form.subnet) === 2 ? "e.g. 0.6, 0.50" : "e.g. 6, 50"} {...f('fixedInDHCP')} />
+                      <p className="text-xs text-slate-400 mt-1">Comma-separated — inside or outside the DHCP pool.</p>
+                    </div>
+                  </div>
+                )}
+
+                {error && (
+                  <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                    {error}
+                  </div>
+                )}
+
+                {/* Preview */}
+                {(() => { const ps = normaliseSubnet(form.subnet); return (
+                  <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs font-mono text-slate-500 space-y-1">
+                    <p><span className="text-slate-400">Network:      </span>{subnetCIDR(ps)}</p>
+                    {form.dhcpEnabled
+                      ? <p><span className="text-slate-400">DHCP pool:    </span>{ps}.{form.dhcpStart} – {ps}.{form.dhcpEnd}</p>
+                      : <p><span className="text-slate-400">DHCP pool:    </span><span className="text-slate-400 not-italic">disabled</span></p>}
+                    <p><span className="text-slate-400">Static range: </span>{ps}.{form.staticStart} – {ps}.{form.staticEnd}</p>
+                    {form.dhcpEnabled && form.fixedInDHCP && <p><span className="text-slate-400">Fixed IPs:    </span>{form.fixedInDHCP.split(',').map(s => `${ps}.${s.trim()}`).join(', ')}</p>}
+                  </div>
+                ); })()}
+
+                <button
+                  type="submit"
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-lg transition-colors"
+                >
+                  <Save className="w-4 h-4" />
+                  Save Network Settings
+                </button>
+
+                {/* Display Preferences */}
+                <div className="pt-4 border-t border-slate-200">
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Display</p>
+                  <label className="flex items-center justify-between gap-3 cursor-pointer select-none group">
+                    <div>
+                      <p className="text-sm font-medium text-slate-700">Show free IP cards in main list</p>
+                      <p className="text-xs text-slate-400 mt-0.5">Turn off for large /16 subnets — hiding free cards keeps the page fast.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={onToggleShowFreeInList}
+                      className={`relative inline-flex h-6 w-11 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${showFreeInList ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                    >
+                      <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ${showFreeInList ? 'translate-x-5' : 'translate-x-0'}`} />
+                    </button>
+                  </label>
+                </div>
+              </form>
+            )}
+
+            {/* ── DNS TAB ── */}
+            {activeTab === 'dns' && onSaveDnsConfig && (
+              <div className="space-y-5">
+                <div>
+                  <h3 className="text-base font-semibold text-slate-800 mb-1">DNS Reverse Lookup</h3>
+                  <p className="text-xs text-slate-500 mb-4">Resolves PTR records for all tracked IPs. Runs automatically every 24 hours. Leave the server blank to use the system default resolver.</p>
+                </div>
+                <div>
+                  <label className={labelCls}>DNS Server</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="192.168.0.6 or 8.8.8.8 — blank = system default"
+                      value={dnsForm.server}
+                      onChange={e => setDnsForm(p => ({ ...p, server: e.target.value }))}
+                      className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => onSaveDnsConfig({ server: dnsForm.server, enabled: dnsForm.enabled })}
+                      className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-sm font-medium whitespace-nowrap transition-colors"
+                    >
+                      Save
+                    </button>
+                  </div>
+                </div>
                 <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none">
                   <input
                     type="checkbox"
-                    checked={proxSyncForm.ignoreTLS}
-                    onChange={e => setProxSyncForm(p => ({ ...p, ignoreTLS: e.target.checked }))}
-                    className="rounded border-slate-300 text-purple-600 focus:ring-purple-500"
+                    checked={dnsForm.enabled}
+                    onChange={e => setDnsForm(p => ({ ...p, enabled: e.target.checked }))}
+                    className="rounded border-slate-300 text-teal-600 focus:ring-teal-500"
                   />
-                  Ignore TLS certificate errors
+                  Enable automatic DNS lookup (every 24 hours)
                 </label>
-
-                <label className="flex items-center gap-2 text-sm text-slate-600">
-                  Sync every
-                  <select
-                    value={proxSyncForm.intervalMinutes}
-                    onChange={e => setProxSyncForm(p => ({ ...p, intervalMinutes: parseInt(e.target.value) }))}
-                    className="px-2 py-1 border border-slate-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  >
-                    <option value={15}>15 min</option>
-                    <option value={30}>30 min</option>
-                    <option value={60}>1 hour</option>
-                    <option value={120}>2 hours</option>
-                    <option value={360}>6 hours</option>
-                    <option value={1440}>24 hours</option>
-                  </select>
-                </label>
-              </div>
-
-              {/* Enable toggle + Save */}
-              <div className="flex items-center gap-3 mb-3">
-                <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none flex-1">
-                  <input
-                    type="checkbox"
-                    checked={proxSyncForm.enabled}
-                    onChange={e => setProxSyncForm(p => ({ ...p, enabled: e.target.checked }))}
-                    className="rounded border-slate-300 text-purple-600 focus:ring-purple-500"
-                  />
-                  Enable automatic sync
-                </label>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    await onSaveProxmoxSyncConfig(proxSyncForm);
-                    setProxSyncSaved(true);
-                    setTimeout(() => setProxSyncSaved(false), 2000);
-                  }}
-                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium whitespace-nowrap transition-colors"
-                >
-                  {proxSyncSaved ? '✓ Saved' : 'Save'}
-                </button>
-              </div>
-
-              {/* Sync Now + last run info */}
-              <div className="flex items-center gap-3 flex-wrap">
-                <button
-                  type="button"
-                  onClick={onRunProxmoxSync}
-                  disabled={proxmoxSyncLoading || proxmoxSyncStatus?.running || !proxmoxSyncConfig?.host || !proxmoxSyncConfig?.token}
-                  className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-purple-50 hover:text-purple-700 text-slate-600 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {(proxmoxSyncLoading || proxmoxSyncStatus?.running) ? (
-                    <><span className="animate-spin text-base">⟳</span> Syncing…</>
-                  ) : (
-                    'Sync Now'
-                  )}
-                </button>
-                <div className="text-xs text-slate-400">
-                  {proxmoxSyncConfig?.lastRun && (
-                    <span>Last sync: {new Date(proxmoxSyncConfig.lastRun).toLocaleString()}</span>
-                  )}
-                  {proxmoxSyncConfig?.lastRun && proxmoxSyncStatus?.changesFound > 0 && (
-                    <span className="ml-2 text-amber-500">· {proxmoxSyncStatus.changesFound} change{proxmoxSyncStatus.changesFound !== 1 ? 's' : ''} found</span>
-                  )}
-                  {proxmoxSyncConfig?.lastRun && (proxmoxSyncStatus?.changesFound === 0) && (
-                    <span className="ml-2 text-green-500">· No changes</span>
-                  )}
-                  {proxmoxSyncStatus?.lastError && (
-                    <span className="ml-2 text-red-500">· Error: {proxmoxSyncStatus.lastError}</span>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Backup & Restore */}
-          <div className="pt-2 border-t border-slate-200">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Backup & Restore</p>
-            <p className="text-xs text-slate-500 mb-3">
-              A full backup includes all IP entries, all network configs, tags, notes, and change history — everything needed to fully restore the app on a new machine.
-            </p>
-
-            {/* Download backup */}
-            <button
-              type="button"
-              onClick={handleDownloadBackup}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-700 hover:bg-slate-800 text-white font-medium rounded-lg transition-colors text-sm mb-2"
-            >
-              <Download className="w-4 h-4" />
-              Download Full Backup (.json)
-            </button>
-
-            {/* Restore from backup */}
-            <input
-              type="file"
-              accept=".json"
-              ref={restoreFileRef}
-              onChange={handleRestoreFileChange}
-              className="hidden"
-            />
-            <button
-              type="button"
-              onClick={() => { setRestoreError(''); setConfirmRestore(false); restoreFileRef.current?.click(); }}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-slate-300 text-slate-600 hover:bg-slate-50 font-medium rounded-lg transition-colors text-sm"
-            >
-              <Upload className="w-4 h-4" />
-              Restore from Backup…
-            </button>
-
-            {restoreError && (
-              <div className="mt-2 flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-                <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                {restoreError}
+                {dnsConfig?.lastRun && (
+                  <p className="text-xs text-slate-400">Last run: {new Date(dnsConfig.lastRun).toLocaleString()}</p>
+                )}
               </div>
             )}
 
-            {confirmRestore && restorePreview && (
-              <div className="mt-3 space-y-2">
-                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
-                  <p className="font-semibold mb-1">Ready to restore backup</p>
-                  <p className="text-xs text-amber-700">
-                    {restorePreview.exportedAt ? `Exported: ${new Date(restorePreview.exportedAt).toLocaleString()}` : ''}
-                    {' · '}{restorePreview.networks?.length || 0} network{restorePreview.networks?.length !== 1 ? 's' : ''}
-                    {' · '}{restorePreview.ipData?.length || 0} IP entries
-                  </p>
-                  <p className="text-xs text-amber-600 mt-1">This will replace ALL current data. This cannot be undone.</p>
+            {/* ── PROXMOX SYNC TAB ── */}
+            {activeTab === 'proxmox' && onSaveProxmoxSyncConfig && (
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-base font-semibold text-slate-800 mb-1">Proxmox Scheduled Sync</h3>
+                  <p className="text-xs text-slate-500 mb-4">Automatically re-queries Proxmox on a schedule and updates entries that have drifted — useful for HA failovers where a VM or LXC migrates to a different node. Only entries tagged <span className="font-mono bg-slate-100 px-1 rounded">proxmox</span> are updated.</p>
                 </div>
-                <div className="flex gap-2">
-                  <button type="button" onClick={() => { setConfirmRestore(false); setRestorePreview(null); }}
-                    className="flex-1 px-4 py-2 border border-slate-300 text-slate-600 hover:bg-slate-50 rounded-lg transition-colors text-sm font-medium">
-                    Cancel
-                  </button>
-                  <button type="button" onClick={handleConfirmRestore}
-                    className="flex-1 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors text-sm font-medium">
-                    Yes, Restore Now
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
 
-          {/* Manage Locations */}
-          <div className="pt-2 border-t border-slate-200">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Locations</p>
-            <div className="flex flex-wrap gap-2 mb-2">
-              {locations.filter(l => l).map(loc => (
-                <div key={loc} className="flex items-center gap-1 bg-slate-100 rounded-lg px-2 py-1">
-                  {editingLoc?.old === loc ? (
-                    <>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Proxmox host</label>
+                    <input
+                      type="text"
+                      placeholder="192.168.0.50 or pve.home.lab"
+                      value={proxSyncForm.host}
+                      onChange={e => setProxSyncForm(p => ({ ...p, host: e.target.value }))}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+                    />
+                    <p className="text-xs text-slate-400 mt-1">Port defaults to 8006.</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Sync interval</label>
+                    <select
+                      value={proxSyncForm.intervalMinutes}
+                      onChange={e => setProxSyncForm(p => ({ ...p, intervalMinutes: parseInt(e.target.value) }))}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    >
+                      <option value={15}>Every 15 minutes</option>
+                      <option value={30}>Every 30 minutes</option>
+                      <option value={60}>Every 1 hour</option>
+                      <option value={120}>Every 2 hours</option>
+                      <option value={360}>Every 6 hours</option>
+                      <option value={1440}>Every 24 hours</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">API token</label>
+                  <div className="flex gap-2">
+                    <input
+                      type={showSyncToken ? 'text' : 'password'}
+                      placeholder="root@pam!tokenid=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                      value={proxSyncForm.token}
+                      onChange={e => setProxSyncForm(p => ({ ...p, token: e.target.value }))}
+                      className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm font-mono"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowSyncToken(v => !v)}
+                      className="px-3 py-2 border border-slate-300 rounded-lg text-xs text-slate-500 hover:bg-slate-50 transition-colors"
+                    >
+                      {showSyncToken ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-1">
+                  <div className="flex items-center gap-4">
+                    <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none">
                       <input
-                        autoFocus
-                        className="text-xs border border-blue-300 rounded px-1 py-0.5 w-28 outline-none"
-                        value={editingLoc.draft}
-                        onChange={e => setEditingLoc(ev => ({ ...ev, draft: e.target.value }))}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter' && editingLoc.draft.trim()) { onRenameLocation(loc, editingLoc.draft.trim()); setEditingLoc(null); }
-                          if (e.key === 'Escape') setEditingLoc(null);
-                        }}
+                        type="checkbox"
+                        checked={proxSyncForm.ignoreTLS}
+                        onChange={e => setProxSyncForm(p => ({ ...p, ignoreTLS: e.target.checked }))}
+                        className="rounded border-slate-300 text-purple-600 focus:ring-purple-500"
                       />
-                      <button type="button" onClick={() => { if (editingLoc.draft.trim()) { onRenameLocation(loc, editingLoc.draft.trim()); setEditingLoc(null); }}} className="text-blue-500 hover:text-blue-700 text-xs font-bold">✓</button>
-                      <button type="button" onClick={() => setEditingLoc(null)} className="text-slate-400 hover:text-slate-600 text-xs">✕</button>
-                    </>
-                  ) : (
-                    <>
-                      <span className="text-xs text-slate-700">{loc}</span>
-                      <button type="button" onClick={() => setEditingLoc({ old: loc, draft: loc })} className="text-slate-400 hover:text-blue-500 text-xs ml-1" title="Rename">✎</button>
-                      <button type="button" onClick={() => onDeleteLocation(loc)} className="text-slate-400 hover:text-red-500 text-xs" title="Remove from all entries">✕</button>
-                    </>
-                  )}
-                </div>
-              ))}
-              {locations.filter(l => l).length === 0 && (
-                <p className="text-xs text-slate-400">No locations yet — add one below or import data.</p>
-              )}
-            </div>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                className="flex-1 text-sm border border-slate-300 rounded-lg px-3 py-1.5 outline-none focus:border-teal-400"
-                placeholder="Add a new location…"
-                value={newLocation}
-                onChange={e => setNewLocation(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && newLocation.trim()) { onRenameLocation(null, newLocation.trim()); setNewLocation(''); }
-                }}
-              />
-              <button
-                type="button"
-                disabled={!newLocation.trim()}
-                onClick={() => { onRenameLocation(null, newLocation.trim()); setNewLocation(''); }}
-                className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-40 text-white rounded-lg text-sm font-medium transition-colors"
-              >Add</button>
-            </div>
-          </div>
-
-          {/* Manage Tags */}
-          <div className="pt-2 border-t border-slate-200">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Tags</p>
-            <div className="flex flex-wrap gap-2 mb-2">
-              {tags.filter(t => t).map(tag => (
-                <div key={tag} className="flex items-center gap-1 bg-slate-100 rounded-lg px-2 py-1">
-                  {editingTag?.old === tag ? (
-                    <>
+                      Ignore TLS errors
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none">
                       <input
-                        autoFocus
-                        className="text-xs border border-blue-300 rounded px-1 py-0.5 w-28 outline-none"
-                        value={editingTag.draft}
-                        onChange={e => setEditingTag(ev => ({ ...ev, draft: e.target.value }))}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter' && editingTag.draft.trim()) { onRenameTag(tag, editingTag.draft.trim()); setEditingTag(null); }
-                          if (e.key === 'Escape') setEditingTag(null);
-                        }}
+                        type="checkbox"
+                        checked={proxSyncForm.enabled}
+                        onChange={e => setProxSyncForm(p => ({ ...p, enabled: e.target.checked }))}
+                        className="rounded border-slate-300 text-purple-600 focus:ring-purple-500"
                       />
-                      <button type="button" onClick={() => { if (editingTag.draft.trim()) { onRenameTag(tag, editingTag.draft.trim()); setEditingTag(null); }}} className="text-blue-500 hover:text-blue-700 text-xs font-bold">✓</button>
-                      <button type="button" onClick={() => setEditingTag(null)} className="text-slate-400 hover:text-slate-600 text-xs">✕</button>
-                    </>
-                  ) : (
-                    <>
-                      <span className="text-xs text-slate-700">{tag}</span>
-                      <button type="button" onClick={() => setEditingTag({ old: tag, draft: tag })} className="text-slate-400 hover:text-blue-500 text-xs ml-1" title="Rename tag">✎</button>
-                      <button type="button" onClick={() => onDeleteTag(tag)} className="text-slate-400 hover:text-red-500 text-xs" title="Remove tag from all entries">✕</button>
-                    </>
-                  )}
-                </div>
-              ))}
-              {tags.filter(t => t).length === 0 && (
-                <p className="text-xs text-slate-400">No tags yet — add tags to IP entries to see them here.</p>
-              )}
-            </div>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                className="flex-1 text-sm border border-slate-300 rounded-lg px-3 py-1.5 outline-none focus:border-teal-400"
-                placeholder="Add a new tag…"
-                value={newTag}
-                onChange={e => setNewTag(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && newTag.trim()) { onRenameTag(null, newTag.trim()); setNewTag(''); }
-                }}
-              />
-              <button
-                type="button"
-                disabled={!newTag.trim()}
-                onClick={() => { onRenameTag(null, newTag.trim()); setNewTag(''); }}
-                className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-40 text-white rounded-lg text-sm font-medium transition-colors"
-              >Add</button>
-            </div>
-          </div>
-
-          {/* Account */}
-          <div className="pt-2 border-t border-slate-200">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Account</p>
-            <div className="space-y-3">
-              <div>
-                <label className={labelCls}>Current Password</label>
-                <input type="password" autoComplete="current-password" value={pwForm.currentPassword}
-                  onChange={e => setPwForm(f => ({ ...f, currentPassword: e.target.value }))}
-                  className={inputCls} placeholder="Enter current password" />
-              </div>
-              <div>
-                <label className={labelCls}>New Username</label>
-                <input type="text" autoComplete="username" value={pwForm.newUsername}
-                  onChange={e => setPwForm(f => ({ ...f, newUsername: e.target.value }))}
-                  className={inputCls} placeholder="New username" />
-              </div>
-              <div>
-                <label className={labelCls}>New Password</label>
-                <input type="password" autoComplete="new-password" value={pwForm.newPassword}
-                  onChange={e => setPwForm(f => ({ ...f, newPassword: e.target.value }))}
-                  className={inputCls} placeholder="New password (min 4 chars)" />
-              </div>
-              <div>
-                <label className={labelCls}>Confirm New Password</label>
-                <input type="password" autoComplete="new-password" value={pwForm.confirmPassword}
-                  onChange={e => setPwForm(f => ({ ...f, confirmPassword: e.target.value }))}
-                  className={inputCls} placeholder="Repeat new password" />
-              </div>
-              {pwError && (
-                <p className="text-red-600 text-sm flex items-center gap-1">
-                  <AlertCircle className="w-4 h-4 flex-shrink-0" />{pwError}
-                </p>
-              )}
-              {pwSuccess && (
-                <p className="text-emerald-600 text-sm">✓ Credentials updated — signing you out…</p>
-              )}
-              <button type="button" disabled={pwLoading || pwSuccess}
-                onClick={handleChangePassword}
-                className="w-full bg-slate-700 hover:bg-slate-800 disabled:bg-slate-300 text-white text-sm font-semibold py-2 rounded-lg transition-colors">
-                {pwLoading ? 'Saving…' : 'Update Login Credentials'}
-              </button>
-            </div>
-          </div>
-
-          {/* Danger Zone */}
-          <div className="pt-2 border-t border-slate-200">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Danger Zone</p>
-
-            {/* Delete Network (only shown when >1 network exists) */}
-            {canDeleteNetwork && (
-              <div className="mb-3">
-                {!confirmDeleteNetwork ? (
+                      Enable automatic sync
+                    </label>
+                  </div>
                   <button
                     type="button"
-                    onClick={() => setConfirmDeleteNetwork(true)}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-orange-300 text-orange-600 hover:bg-orange-50 font-medium rounded-lg transition-colors text-sm"
+                    onClick={async () => {
+                      await onSaveProxmoxSyncConfig(proxSyncForm);
+                      setProxSyncSaved(true);
+                      setTimeout(() => setProxSyncSaved(false), 2000);
+                    }}
+                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium whitespace-nowrap transition-colors"
                   >
-                    <Trash2 className="w-4 h-4" />
-                    Delete This Network
+                    {proxSyncSaved ? '✓ Saved' : 'Save'}
                   </button>
-                ) : (
+                </div>
+
+                <div className="pt-3 border-t border-slate-200 flex items-center gap-3 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={onRunProxmoxSync}
+                    disabled={proxmoxSyncLoading || proxmoxSyncStatus?.running || !proxmoxSyncConfig?.host || !proxmoxSyncConfig?.token}
+                    className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-purple-50 hover:text-purple-700 text-slate-600 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {(proxmoxSyncLoading || proxmoxSyncStatus?.running) ? (
+                      <><span className="animate-spin text-base">⟳</span> Syncing…</>
+                    ) : (
+                      'Sync Now'
+                    )}
+                  </button>
+                  <div className="text-xs text-slate-400">
+                    {proxmoxSyncConfig?.lastRun && <span>Last sync: {new Date(proxmoxSyncConfig.lastRun).toLocaleString()}</span>}
+                    {proxmoxSyncConfig?.lastRun && proxmoxSyncStatus?.changesFound > 0 && <span className="ml-2 text-amber-500">· {proxmoxSyncStatus.changesFound} change{proxmoxSyncStatus.changesFound !== 1 ? 's' : ''} found</span>}
+                    {proxmoxSyncConfig?.lastRun && proxmoxSyncStatus?.changesFound === 0 && <span className="ml-2 text-green-500">· No changes</span>}
+                    {proxmoxSyncStatus?.lastError && <span className="ml-2 text-red-500">· Error: {proxmoxSyncStatus.lastError}</span>}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── BACKUP TAB ── */}
+            {activeTab === 'backup' && (
+              <div className="space-y-5">
+                <div>
+                  <h3 className="text-base font-semibold text-slate-800 mb-1">Backup & Restore</h3>
+                  <p className="text-xs text-slate-500 mb-4">A full backup includes all IP entries, network configs, tags, notes, and change history — everything needed to fully restore the app on a new machine.</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={handleDownloadBackup}
+                    className="flex items-center justify-center gap-2 px-4 py-3 bg-slate-700 hover:bg-slate-800 text-white font-medium rounded-lg transition-colors text-sm"
+                  >
+                    <Download className="w-4 h-4" />
+                    Download Backup (.json)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setRestoreError(''); setConfirmRestore(false); restoreFileRef.current?.click(); }}
+                    className="flex items-center justify-center gap-2 px-4 py-3 border border-slate-300 text-slate-600 hover:bg-slate-50 font-medium rounded-lg transition-colors text-sm"
+                  >
+                    <Upload className="w-4 h-4" />
+                    Restore from Backup…
+                  </button>
+                </div>
+
+                <input type="file" accept=".json" ref={restoreFileRef} onChange={handleRestoreFileChange} className="hidden" />
+
+                {restoreError && (
+                  <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                    {restoreError}
+                  </div>
+                )}
+
+                {confirmRestore && restorePreview && (
                   <div className="space-y-2">
-                    <div className="flex items-start gap-2 p-3 bg-orange-50 border border-orange-200 rounded-lg text-sm text-orange-700">
-                      <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                      <span>This will delete this network and all its IP entries. This cannot be undone.</span>
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+                      <p className="font-semibold mb-1">Ready to restore backup</p>
+                      <p className="text-xs text-amber-700">
+                        {restorePreview.exportedAt ? `Exported: ${new Date(restorePreview.exportedAt).toLocaleString()}` : ''}
+                        {' · '}{restorePreview.networks?.length || 0} network{restorePreview.networks?.length !== 1 ? 's' : ''}
+                        {' · '}{restorePreview.ipData?.length || 0} IP entries
+                      </p>
+                      <p className="text-xs text-amber-600 mt-1">This will replace ALL current data. This cannot be undone.</p>
                     </div>
                     <div className="flex gap-2">
-                      <button type="button" onClick={() => setConfirmDeleteNetwork(false)}
+                      <button type="button" onClick={() => { setConfirmRestore(false); setRestorePreview(null); }}
                         className="flex-1 px-4 py-2 border border-slate-300 text-slate-600 hover:bg-slate-50 rounded-lg transition-colors text-sm font-medium">
                         Cancel
                       </button>
-                      <button type="button" onClick={onDeleteNetwork}
-                        className="flex-1 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors text-sm font-medium">
-                        Yes, Delete Network
+                      <button type="button" onClick={handleConfirmRestore}
+                        className="flex-1 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors text-sm font-medium">
+                        Yes, Restore Now
                       </button>
                     </div>
                   </div>
@@ -798,45 +636,237 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
               </div>
             )}
 
-            {!confirmClear ? (
-              <button
-                type="button"
-                onClick={() => setConfirmClear(true)}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-red-300 text-red-600 hover:bg-red-50 font-medium rounded-lg transition-colors text-sm"
-              >
-                <Trash2 className="w-4 h-4" />
-                Clear All Network Data
-              </button>
-            ) : (
-              <div className="space-y-2">
-                <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-                  <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                  <span>This will permanently delete all IP entries. This cannot be undone.</span>
+            {/* ── LOCATIONS & TAGS TAB ── */}
+            {activeTab === 'manage' && (
+              <div className="grid grid-cols-2 gap-6">
+
+                {/* Locations column */}
+                <div>
+                  <h3 className="text-base font-semibold text-slate-800 mb-1">Locations</h3>
+                  <p className="text-xs text-slate-500 mb-3">Rename or remove location labels used across your entries.</p>
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {locations.filter(l => l).map(loc => (
+                      <div key={loc} className="flex items-center gap-1 bg-slate-100 rounded-lg px-2 py-1">
+                        {editingLoc?.old === loc ? (
+                          <>
+                            <input
+                              autoFocus
+                              className="text-xs border border-blue-300 rounded px-1 py-0.5 w-24 outline-none"
+                              value={editingLoc.draft}
+                              onChange={e => setEditingLoc(ev => ({ ...ev, draft: e.target.value }))}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter' && editingLoc.draft.trim()) { onRenameLocation(loc, editingLoc.draft.trim()); setEditingLoc(null); }
+                                if (e.key === 'Escape') setEditingLoc(null);
+                              }}
+                            />
+                            <button type="button" onClick={() => { if (editingLoc.draft.trim()) { onRenameLocation(loc, editingLoc.draft.trim()); setEditingLoc(null); }}} className="text-blue-500 hover:text-blue-700 text-xs font-bold">✓</button>
+                            <button type="button" onClick={() => setEditingLoc(null)} className="text-slate-400 hover:text-slate-600 text-xs">✕</button>
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-xs text-slate-700">{loc}</span>
+                            <button type="button" onClick={() => setEditingLoc({ old: loc, draft: loc })} className="text-slate-400 hover:text-blue-500 text-xs ml-1" title="Rename">✎</button>
+                            <button type="button" onClick={() => onDeleteLocation(loc)} className="text-slate-400 hover:text-red-500 text-xs" title="Remove from all entries">✕</button>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                    {locations.filter(l => l).length === 0 && (
+                      <p className="text-xs text-slate-400">No locations yet.</p>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      className="flex-1 text-sm border border-slate-300 rounded-lg px-3 py-1.5 outline-none focus:border-teal-400"
+                      placeholder="Add a new location…"
+                      value={newLocation}
+                      onChange={e => setNewLocation(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && newLocation.trim()) { onRenameLocation(null, newLocation.trim()); setNewLocation(''); }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      disabled={!newLocation.trim()}
+                      onClick={() => { onRenameLocation(null, newLocation.trim()); setNewLocation(''); }}
+                      className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-40 text-white rounded-lg text-sm font-medium transition-colors"
+                    >Add</button>
+                  </div>
                 </div>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setConfirmClear(false)}
-                    className="flex-1 px-4 py-2 border border-slate-300 text-slate-600 hover:bg-slate-50 rounded-lg transition-colors text-sm font-medium"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onClear}
-                    className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors text-sm font-medium"
-                  >
-                    Yes, Clear Everything
-                  </button>
+
+                {/* Tags column */}
+                <div>
+                  <h3 className="text-base font-semibold text-slate-800 mb-1">Tags</h3>
+                  <p className="text-xs text-slate-500 mb-3">Rename or remove tags applied to IP entries.</p>
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {tags.filter(t => t).map(tag => (
+                      <div key={tag} className="flex items-center gap-1 bg-slate-100 rounded-lg px-2 py-1">
+                        {editingTag?.old === tag ? (
+                          <>
+                            <input
+                              autoFocus
+                              className="text-xs border border-blue-300 rounded px-1 py-0.5 w-24 outline-none"
+                              value={editingTag.draft}
+                              onChange={e => setEditingTag(ev => ({ ...ev, draft: e.target.value }))}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter' && editingTag.draft.trim()) { onRenameTag(tag, editingTag.draft.trim()); setEditingTag(null); }
+                                if (e.key === 'Escape') setEditingTag(null);
+                              }}
+                            />
+                            <button type="button" onClick={() => { if (editingTag.draft.trim()) { onRenameTag(tag, editingTag.draft.trim()); setEditingTag(null); }}} className="text-blue-500 hover:text-blue-700 text-xs font-bold">✓</button>
+                            <button type="button" onClick={() => setEditingTag(null)} className="text-slate-400 hover:text-slate-600 text-xs">✕</button>
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-xs text-slate-700">{tag}</span>
+                            <button type="button" onClick={() => setEditingTag({ old: tag, draft: tag })} className="text-slate-400 hover:text-blue-500 text-xs ml-1" title="Rename tag">✎</button>
+                            <button type="button" onClick={() => onDeleteTag(tag)} className="text-slate-400 hover:text-red-500 text-xs" title="Remove tag from all entries">✕</button>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                    {tags.filter(t => t).length === 0 && (
+                      <p className="text-xs text-slate-400">No tags yet — add tags to IP entries to see them here.</p>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      className="flex-1 text-sm border border-slate-300 rounded-lg px-3 py-1.5 outline-none focus:border-teal-400"
+                      placeholder="Add a new tag…"
+                      value={newTag}
+                      onChange={e => setNewTag(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && newTag.trim()) { onRenameTag(null, newTag.trim()); setNewTag(''); }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      disabled={!newTag.trim()}
+                      onClick={() => { onRenameTag(null, newTag.trim()); setNewTag(''); }}
+                      className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 disabled:opacity-40 text-white rounded-lg text-sm font-medium transition-colors"
+                    >Add</button>
+                  </div>
                 </div>
               </div>
             )}
+
+            {/* ── ACCOUNT TAB ── */}
+            {activeTab === 'account' && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-base font-semibold text-slate-800 mb-1">Account</h3>
+                  <p className="text-xs text-slate-500 mb-4">Update your login credentials. You will be signed out after saving.</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className={labelCls}>Current Password</label>
+                    <input type="password" autoComplete="current-password" value={pwForm.currentPassword}
+                      onChange={e => setPwForm(f => ({ ...f, currentPassword: e.target.value }))}
+                      className={inputCls} placeholder="Enter current password" />
+                  </div>
+                  <div>
+                    <label className={labelCls}>New Username</label>
+                    <input type="text" autoComplete="username" value={pwForm.newUsername}
+                      onChange={e => setPwForm(f => ({ ...f, newUsername: e.target.value }))}
+                      className={inputCls} placeholder="New username" />
+                  </div>
+                  <div>
+                    <label className={labelCls}>New Password</label>
+                    <input type="password" autoComplete="new-password" value={pwForm.newPassword}
+                      onChange={e => setPwForm(f => ({ ...f, newPassword: e.target.value }))}
+                      className={inputCls} placeholder="New password (min 4 chars)" />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Confirm New Password</label>
+                    <input type="password" autoComplete="new-password" value={pwForm.confirmPassword}
+                      onChange={e => setPwForm(f => ({ ...f, confirmPassword: e.target.value }))}
+                      className={inputCls} placeholder="Repeat new password" />
+                  </div>
+                </div>
+
+                {pwError && (
+                  <p className="text-red-600 text-sm flex items-center gap-1">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0" />{pwError}
+                  </p>
+                )}
+                {pwSuccess && (
+                  <p className="text-emerald-600 text-sm">✓ Credentials updated — signing you out…</p>
+                )}
+                <button type="button" disabled={pwLoading || pwSuccess}
+                  onClick={handleChangePassword}
+                  className="w-full bg-slate-700 hover:bg-slate-800 disabled:bg-slate-300 text-white text-sm font-semibold py-2.5 rounded-lg transition-colors">
+                  {pwLoading ? 'Saving…' : 'Update Login Credentials'}
+                </button>
+
+                {/* Danger Zone */}
+                <div className="pt-4 border-t border-slate-200">
+                  <p className="text-xs font-semibold text-red-400 uppercase tracking-wider mb-3">Danger Zone</p>
+                  <div className="space-y-3">
+                    {canDeleteNetwork && (
+                      !confirmDeleteNetwork ? (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteNetwork(true)}
+                          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-orange-300 text-orange-600 hover:bg-orange-50 font-medium rounded-lg transition-colors text-sm"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          Delete This Network
+                        </button>
+                      ) : (
+                        <div className="space-y-2">
+                          <div className="flex items-start gap-2 p-3 bg-orange-50 border border-orange-200 rounded-lg text-sm text-orange-700">
+                            <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                            <span>This will delete this network and all its IP entries. This cannot be undone.</span>
+                          </div>
+                          <div className="flex gap-2">
+                            <button type="button" onClick={() => setConfirmDeleteNetwork(false)}
+                              className="flex-1 px-4 py-2 border border-slate-300 text-slate-600 hover:bg-slate-50 rounded-lg transition-colors text-sm font-medium">Cancel</button>
+                            <button type="button" onClick={onDeleteNetwork}
+                              className="flex-1 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors text-sm font-medium">Yes, Delete Network</button>
+                          </div>
+                        </div>
+                      )
+                    )}
+
+                    {!confirmClear ? (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmClear(true)}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-red-300 text-red-600 hover:bg-red-50 font-medium rounded-lg transition-colors text-sm"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Clear All Network Data
+                      </button>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                          <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                          <span>This will permanently delete all IP entries. This cannot be undone.</span>
+                        </div>
+                        <div className="flex gap-2">
+                          <button type="button" onClick={() => setConfirmClear(false)}
+                            className="flex-1 px-4 py-2 border border-slate-300 text-slate-600 hover:bg-slate-50 rounded-lg transition-colors text-sm font-medium">Cancel</button>
+                          <button type="button" onClick={onClear}
+                            className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors text-sm font-medium">Yes, Clear Everything</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
           </div>
-        </form>
+        </div>
       </div>
     </div>
   );
 }
+
+
 
 // Initial IP address data from the Excel spreadsheet
 // ── Example data — replace with your own via Import or by editing entries in the app ──
