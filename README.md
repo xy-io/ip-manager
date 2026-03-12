@@ -2,6 +2,7 @@
 
 A clean, fast web app for managing your home network's IP addresses — built to replace the Excel spreadsheet you've been using for years.
 
+[![Website](https://img.shields.io/badge/website-xy--io.github.io%2Fip--manager-10b981?style=flat-square&logo=githubpages)](https://xy-io.github.io/ip-manager/)
 ![React](https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react)
 ![Vite](https://img.shields.io/badge/Vite-5-646CFF?style=flat-square&logo=vite)
 ![Tailwind](https://img.shields.io/badge/Tailwind-3-38BDF8?style=flat-square&logo=tailwindcss)
@@ -51,7 +52,7 @@ You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and
 
 ## Screenshots
 
-> Cards view showing assigned and free IPs, with the Edit modal open.
+> Cards view — light mode, showing 91 IP entries with status dots, type badges, location chips, and tags.
 
 ![IP Address Manager Preview](./preview.png)
 
