@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Search, Server, Monitor, Wifi, HardDrive, Camera, Shield, Globe, Filter, X, MapPin, Cpu, Box, CircleDot, ChevronDown, ChevronUp, Copy, Check, Zap, Download, Edit3, Plus, Trash2, Save, AlertCircle, Settings, Upload, FileText, AlertTriangle, CheckCircle, ChevronRight, Tag, ArrowUpDown, ArrowUp, ArrowDown, HelpCircle, LogOut } from 'lucide-react';
+import { Search, Server, Monitor, Wifi, HardDrive, Camera, Shield, Globe, Filter, X, MapPin, Cpu, Box, CircleDot, ChevronDown, ChevronUp, Copy, Check, Zap, Download, Edit3, Plus, Trash2, Save, AlertCircle, Settings, Upload, FileText, AlertTriangle, CheckCircle, ChevronRight, Tag, ArrowUpDown, ArrowUp, ArrowDown, HelpCircle, LogOut, Moon, Sun } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 // Default network configuration (overridden by Settings modal / localStorage)
@@ -3092,6 +3092,17 @@ export default function IPAddressManager() {
   // UI display preferences (browser-local; not synced to server)
   const [uiPrefs, setUiPrefs] = useState(loadUiPrefs);
 
+  // Dark mode (browser-local; persisted to localStorage)
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('ip-manager-dark-mode') === 'true');
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    localStorage.setItem('ip-manager-dark-mode', darkMode ? 'true' : 'false');
+  }, [darkMode]);
+
   // UI state (declared here so all useEffect hooks below can safely reference them)
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedType, setSelectedType] = useState('');
@@ -4083,6 +4094,13 @@ export default function IPAddressManager() {
                     Add Network
                   </button>
                 )}
+                <button
+                  onClick={() => setDarkMode(d => !d)}
+                  className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-lg transition-colors"
+                  title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+                >
+                  {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+                </button>
                 <button
                   onClick={() => setShowHelp(true)}
                   className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-lg transition-colors"

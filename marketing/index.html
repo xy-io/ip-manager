@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IP Manager — Home Lab Network Control Centre</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --emerald:  #10b981;
+      --emerald-d:#059669;
+      --teal:     #0d9488;
+      --slate-900:#0f172a;
+      --slate-800:#1e293b;
+      --slate-700:#334155;
+      --slate-500:#64748b;
+      --slate-300:#cbd5e1;
+      --slate-100:#f1f5f9;
+      --amber:    #f59e0b;
+      --blue:     #3b82f6;
+      --purple:   #a855f7;
+      --red:      #ef4444;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--slate-900);
+      color: #e2e8f0;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* ── NAV ── */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 2rem; height: 60px;
+      background: rgba(15,23,42,.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(255,255,255,.06);
+    }
+    .nav-logo { display: flex; align-items: center; gap: .6rem; font-weight: 700; font-size: 1rem; color: #fff; text-decoration: none; }
+    .nav-logo-dot { width: 28px; height: 28px; border-radius: 8px; background: linear-gradient(135deg, var(--emerald), var(--teal)); display: flex; align-items: center; justify-content: center; font-size: .8rem; }
+    .nav-links { display: flex; gap: 2rem; }
+    .nav-links a { color: var(--slate-300); text-decoration: none; font-size: .875rem; transition: color .2s; }
+    .nav-links a:hover { color: #fff; }
+    .nav-cta { background: var(--emerald); color: #fff; padding: .45rem 1.1rem; border-radius: 8px; font-size: .875rem; font-weight: 600; text-decoration: none; transition: background .2s; }
+    .nav-cta:hover { background: var(--emerald-d); }
+
+    /* ── HERO ── */
+    .hero {
+      min-height: 100vh;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      text-align: center;
+      padding: 6rem 1.5rem 4rem;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute; inset: 0;
+      background:
+        radial-gradient(ellipse 70% 50% at 50% -10%, rgba(16,185,129,.18) 0%, transparent 65%),
+        radial-gradient(ellipse 40% 30% at 80% 80%, rgba(13,148,136,.12) 0%, transparent 60%);
+      pointer-events: none;
+    }
+    /* animated grid lines */
+    .hero-grid {
+      position: absolute; inset: 0; pointer-events: none;
+      background-image:
+        linear-gradient(rgba(255,255,255,.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.03) 1px, transparent 1px);
+      background-size: 48px 48px;
+      mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 30%, transparent 80%);
+    }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: .5rem;
+      background: rgba(16,185,129,.12); border: 1px solid rgba(16,185,129,.3);
+      color: var(--emerald); border-radius: 999px;
+      padding: .3rem .9rem; font-size: .8rem; font-weight: 600;
+      letter-spacing: .04em; text-transform: uppercase; margin-bottom: 1.5rem;
+    }
+    .hero-badge-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--emerald); animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(1.4)} }
+    h1 {
+      font-size: clamp(2.4rem, 6vw, 4.2rem);
+      font-weight: 800; line-height: 1.1; letter-spacing: -.03em;
+      color: #fff; margin-bottom: 1rem; position: relative;
+    }
+    h1 span { background: linear-gradient(135deg, var(--emerald), #34d399, var(--teal)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .hero-sub {
+      font-size: clamp(1rem, 2vw, 1.2rem); color: var(--slate-300);
+      max-width: 600px; margin: 0 auto 2.5rem; line-height: 1.7;
+    }
+    .hero-actions { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; margin-bottom: 4rem; }
+    .btn-primary {
+      background: var(--emerald); color: #fff; padding: .85rem 2rem;
+      border-radius: 12px; font-weight: 700; font-size: 1rem; text-decoration: none;
+      transition: all .2s; box-shadow: 0 0 24px rgba(16,185,129,.3);
+      display: flex; align-items: center; gap: .5rem;
+    }
+    .btn-primary:hover { background: var(--emerald-d); transform: translateY(-1px); box-shadow: 0 0 36px rgba(16,185,129,.45); }
+    .btn-secondary {
+      background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12);
+      color: #e2e8f0; padding: .85rem 2rem; border-radius: 12px;
+      font-weight: 600; font-size: 1rem; text-decoration: none;
+      transition: all .2s; display: flex; align-items: center; gap: .5rem;
+    }
+    .btn-secondary:hover { background: rgba(255,255,255,.1); }
+
+    /* ── DASHBOARD MOCK ── */
+    .dashboard-mock {
+      width: 100%; max-width: 880px; margin: 0 auto;
+      background: #f1f5f9; border-radius: 16px;
+      border: 1px solid rgba(0,0,0,.08);
+      overflow: hidden;
+      box-shadow: 0 40px 80px rgba(0,0,0,.35), 0 0 0 1px rgba(16,185,129,.15);
+      position: relative;
+    }
+    .mock-titlebar {
+      background: #1e293b; padding: .65rem 1rem;
+      display: flex; align-items: center; gap: .5rem;
+      border-bottom: 1px solid rgba(255,255,255,.06);
+    }
+    .mock-dot { width:12px;height:12px;border-radius:50%; }
+    .mock-url {
+      flex: 1; text-align: center;
+      background: rgba(255,255,255,.08); border-radius: 6px;
+      padding: .25rem .75rem; font-size: .72rem; color: #94a3b8;
+      margin: 0 .75rem;
+    }
+    .mock-header {
+      background: #ffffff;
+      padding: .75rem 1rem; display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .mock-header-left { display: flex; align-items: center; gap: .75rem; }
+    .mock-logo { width: 28px; height: 28px; border-radius: 7px; background: linear-gradient(135deg, var(--emerald), var(--teal)); display: flex; align-items: center; justify-content: center; font-size: .7rem; font-weight: 700; color: #fff; }
+    .mock-title { font-size: .8rem; font-weight: 700; color: #1e293b; }
+    .mock-network { font-size: .65rem; color: var(--emerald); background: rgba(16,185,129,.1); border: 1px solid rgba(16,185,129,.25); padding: .1rem .5rem; border-radius: 4px; }
+    .mock-header-btns { display: flex; gap: .4rem; }
+    .mock-btn { padding: .25rem .6rem; border-radius: 6px; font-size: .6rem; font-weight: 600; color: #fff; }
+    .mock-btn-teal   { background: #0d9488; }
+    .mock-btn-purple { background: #9333ea; }
+    .mock-btn-emerald{ background: #059669; }
+    /* legacy aliases */
+    .mock-btn-amber  { background: #9333ea; }
+    .mock-btn-green  { background: #059669; }
+    .mock-body { padding: .75rem 1rem; background: #f1f5f9; }
+    .mock-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; }
+    .mock-card {
+      background: #ffffff; border-radius: 10px;
+      padding: .65rem .75rem; border: 1px solid #e2e8f0;
+      font-size: .65rem; position: relative; overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,.06);
+    }
+    .mock-card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    }
+    .mock-card.green::before { background: var(--emerald); }
+    .mock-card.amber::before { background: var(--amber); }
+    .mock-card.blue::before  { background: var(--blue); }
+    .mock-card.purple::before{ background: var(--purple); }
+    .mock-card.red::before   { background: var(--red); }
+    .mock-card.free { opacity: .55; }
+    .mock-card-ip { font-size: .7rem; font-weight: 700; color: #1e293b; font-family: monospace; display: flex; align-items: center; gap: .3rem; }
+    .mock-ping { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .mock-ping.online { background: #22c55e; }
+    .mock-ping.offline { background: #ef4444; }
+    .mock-ping.unknown { background: #94a3b8; }
+    .mock-card-name { color: #334155; font-weight: 600; margin: .2rem 0 .1rem; font-size: .67rem; }
+    .mock-card-host { color: #94a3b8; font-family: monospace; font-size: .58rem; margin-bottom: .3rem; }
+    .mock-tags { display: flex; gap: .25rem; flex-wrap: wrap; }
+    .mock-tag { background: #dcfce7; color: #15803d; border-radius: 4px; padding: .05rem .3rem; font-size: .55rem; }
+    .mock-tag.amber { background: #fef3c7; color: #b45309; }
+    .mock-tag.blue  { background: #dbeafe; color: #1d4ed8; }
+    .mock-tag.purple{ background: #f3e8ff; color: #7e22ce; }
+    .mock-tag.green { background: #dcfce7; color: #15803d; }
+    .mock-type { font-size: .58rem; color: #94a3b8; margin-top: .15rem; }
+    .mock-dns  { font-size: .55rem; color: #6366f1; margin-top: .1rem; font-family: monospace; }
+    .mock-secondary-chips { display: flex; gap: .2rem; margin-top: .2rem; flex-wrap: wrap; }
+    .mock-chip { background: #eff6ff; color: #3b82f6; border-radius: 4px; padding: .05rem .3rem; font-size: .53rem; border: 1px solid #bfdbfe; font-family: monospace; }
+    .mock-statusbar {
+      display: flex; gap: .75rem; align-items: center;
+      padding: .45rem 1rem; background: #ffffff;
+      border-top: 1px solid #e2e8f0;
+      font-size: .6rem; color: #94a3b8;
+    }
+    .mock-stat { display: flex; align-items: center; gap: .25rem; }
+    .mock-stat span:first-child { color: #1e293b; font-weight: 700; }
+
+    /* ── SECTION COMMON ── */
+    section { padding: 5rem 1.5rem; }
+    .container { max-width: 1100px; margin: 0 auto; }
+    .section-label { color: var(--emerald); font-size: .75rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; margin-bottom: .75rem; }
+    .section-title { font-size: clamp(1.6rem, 3.5vw, 2.4rem); font-weight: 800; color: #fff; line-height: 1.2; letter-spacing: -.02em; margin-bottom: 1rem; }
+    .section-body  { color: var(--slate-300); font-size: 1rem; max-width: 560px; line-height: 1.75; }
+
+    /* ── STATS BAND ── */
+    .stats-band {
+      background: var(--slate-800);
+      border-top: 1px solid rgba(255,255,255,.06);
+      border-bottom: 1px solid rgba(255,255,255,.06);
+      padding: 2rem 1.5rem;
+    }
+    .stats-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 1rem; max-width: 900px; margin: 0 auto; text-align: center; }
+    .stat-item-num { font-size: 2rem; font-weight: 800; color: var(--emerald); line-height: 1; margin-bottom: .25rem; }
+    .stat-item-label { font-size: .8rem; color: var(--slate-300); }
+
+    /* ── FEATURES ── */
+    .features-bg { background: var(--slate-800); }
+    .features-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 1.25rem; margin-top: 3rem; }
+    .feat-card {
+      background: var(--slate-900); border-radius: 14px;
+      padding: 1.5rem; border: 1px solid rgba(255,255,255,.07);
+      transition: border-color .2s, transform .2s;
+    }
+    .feat-card:hover { border-color: rgba(16,185,129,.25); transform: translateY(-2px); }
+    .feat-icon {
+      width: 44px; height: 44px; border-radius: 12px; margin-bottom: 1rem;
+      display: flex; align-items: center; justify-content: center; font-size: 1.2rem;
+    }
+    .feat-icon.green  { background: rgba(16,185,129,.12); }
+    .feat-icon.teal   { background: rgba(13,148,136,.12); }
+    .feat-icon.amber  { background: rgba(245,158,11,.12); }
+    .feat-icon.blue   { background: rgba(59,130,246,.12); }
+    .feat-icon.purple { background: rgba(168,85,247,.12); }
+    .feat-icon.red    { background: rgba(239,68,68,.1); }
+    .feat-icon.indigo { background: rgba(99,102,241,.12); }
+    .feat-icon.cyan   { background: rgba(6,182,212,.12); }
+    .feat-icon.pink   { background: rgba(236,72,153,.1); }
+    .feat-card h3 { font-size: .95rem; font-weight: 700; color: #fff; margin-bottom: .4rem; }
+    .feat-card p  { font-size: .82rem; color: var(--slate-300); line-height: 1.6; }
+
+    /* ── HOW IT WORKS ── */
+    .steps { display: flex; flex-direction: column; gap: 3rem; margin-top: 3rem; max-width: 720px; }
+    .step { display: grid; grid-template-columns: 48px 1fr; gap: 1.25rem; align-items: start; }
+    .step-num {
+      width: 48px; height: 48px; border-radius: 12px;
+      background: linear-gradient(135deg, var(--emerald), var(--teal));
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 1.1rem; color: #fff; flex-shrink: 0;
+    }
+    .step h3 { font-size: 1.05rem; font-weight: 700; color: #fff; margin-bottom: .35rem; }
+    .step p  { font-size: .875rem; color: var(--slate-300); line-height: 1.7; }
+
+    /* ── TECH STACK ── */
+    .tech-bg { background: var(--slate-800); }
+    .tech-row { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 2rem; }
+    .tech-pill {
+      display: flex; align-items: center; gap: .4rem;
+      background: var(--slate-900); border: 1px solid rgba(255,255,255,.08);
+      border-radius: 999px; padding: .4rem 1rem; font-size: .8rem; color: #e2e8f0;
+      font-weight: 500;
+    }
+    .tech-pill-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+    /* ── INTEGRATION PANEL ── */
+    .integrations-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 1.25rem; margin-top: 3rem; }
+    .integ-card {
+      background: var(--slate-800); border: 1px solid rgba(255,255,255,.08);
+      border-radius: 14px; padding: 1.5rem;
+      display: flex; gap: 1rem; align-items: flex-start;
+      transition: border-color .2s;
+    }
+    .integ-card:hover { border-color: rgba(16,185,129,.25); }
+    .integ-icon { width: 42px; height: 42px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; flex-shrink: 0; }
+    .integ-card h3 { font-size: .9rem; font-weight: 700; color: #fff; margin-bottom: .3rem; }
+    .integ-card p  { font-size: .78rem; color: var(--slate-300); line-height: 1.6; }
+
+    /* ── CTA FOOTER ── */
+    .cta-section {
+      text-align: center; padding: 6rem 1.5rem 5rem;
+      background: radial-gradient(ellipse 70% 60% at 50% 100%, rgba(16,185,129,.1) 0%, transparent 70%);
+    }
+    .cta-section h2 { font-size: clamp(1.8rem,4vw,2.8rem); font-weight: 800; color: #fff; letter-spacing: -.02em; margin-bottom: 1rem; }
+    .cta-section p  { color: var(--slate-300); font-size: 1rem; margin-bottom: 2rem; }
+
+    footer {
+      background: var(--slate-900); border-top: 1px solid rgba(255,255,255,.06);
+      padding: 1.5rem; text-align: center; font-size: .75rem; color: var(--slate-500);
+    }
+    footer span { color: var(--emerald); }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 768px) {
+      .nav-links { display: none; }
+      .mock-cards { grid-template-columns: 1fr 1fr; }
+      .stats-grid { grid-template-columns: 1fr 1fr; }
+      .features-grid { grid-template-columns: 1fr; }
+      .integrations-grid { grid-template-columns: 1fr; }
+      .mock-btn-amber, .mock-btn-green { display: none; }
+    }
+    @media (max-width: 500px) {
+      .mock-cards { grid-template-columns: 1fr; }
+      .stats-grid { grid-template-columns: 1fr 1fr; }
+      h1 { font-size: 2rem; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <a href="#" class="nav-logo">
+    <div class="nav-logo-dot">⬡</div>
+    IP Manager
+  </a>
+  <div class="nav-links">
+    <a href="#features">Features</a>
+    <a href="#how">How it works</a>
+    <a href="#integrations">Integrations</a>
+    <a href="#stack">Tech stack</a>
+  </div>
+  <a href="https://github.com" class="nav-cta">View on GitHub →</a>
+</nav>
+
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-grid"></div>
+
+  <div class="hero-badge">
+    <span class="hero-badge-dot"></span>
+    Home Lab Network Control Centre
+  </div>
+
+  <h1>Know every IP<br/>on your <span>network</span></h1>
+
+  <p class="hero-sub">
+    A full-stack web app that replaces your sprawling IP spreadsheet with a beautiful, real-time dashboard — built for home labs, deployed as a lightweight LXC container.
+  </p>
+
+  <div class="hero-actions">
+    <a href="https://github.com" class="btn-primary">
+      <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+      Deploy to your lab
+    </a>
+    <a href="#features" class="btn-secondary">
+      Explore features ↓
+    </a>
+  </div>
+
+  <!-- Dashboard Mock -->
+  <div class="dashboard-mock">
+    <div class="mock-titlebar">
+      <div class="mock-dot" style="background:#ff5f57"></div>
+      <div class="mock-dot" style="background:#febc2e"></div>
+      <div class="mock-dot" style="background:#28c840"></div>
+      <div class="mock-url">192.168.0.100:3000 — IP Manager</div>
+    </div>
+    <div class="mock-header">
+      <div class="mock-header-left">
+        <div class="mock-logo">⬡</div>
+        <div>
+          <div class="mock-title">IP Manager</div>
+        </div>
+        <div class="mock-network">Home Lab · /24</div>
+      </div>
+      <div class="mock-header-btns">
+        <div class="mock-btn mock-btn-teal">🔍 ARP Scan</div>
+        <div class="mock-btn mock-btn-purple">⬡ Proxmox</div>
+        <div class="mock-btn mock-btn-emerald">↓ Export</div>
+      </div>
+    </div>
+    <div class="mock-body">
+      <div class="mock-cards">
+
+        <div class="mock-card green">
+          <div class="mock-card-ip"><span class="mock-ping online"></span> 192.168.0.6</div>
+          <div class="mock-card-name">DNS Server</div>
+          <div class="mock-card-host">dns.home.lab</div>
+          <div class="mock-dns">PTR: dns.home.lab ✓</div>
+          <div class="mock-tags"><span class="mock-tag">Virtual</span><span class="mock-tag amber">PiHole</span></div>
+        </div>
+
+        <div class="mock-card blue">
+          <div class="mock-card-ip"><span class="mock-ping online"></span> 192.168.0.50</div>
+          <div class="mock-card-name">NAS</div>
+          <div class="mock-card-host">nas.home.lab</div>
+          <div class="mock-dns">PTR: nas.home.lab ✓</div>
+          <div class="mock-tags"><span class="mock-tag blue">Physical</span><span class="mock-tag">Synology</span></div>
+          <div class="mock-secondary-chips">
+            <span class="mock-chip">10.0.10.50</span>
+          </div>
+        </div>
+
+        <div class="mock-card green">
+          <div class="mock-card-ip"><span class="mock-ping online"></span> 192.168.0.171</div>
+          <div class="mock-card-name">Home Server</div>
+          <div class="mock-card-host">server.home.lab</div>
+          <div class="mock-dns">PTR: server.home.lab ✓</div>
+          <div class="mock-tags"><span class="mock-tag blue">Physical</span><span class="mock-tag amber">Proxmox</span></div>
+        </div>
+
+        <div class="mock-card purple">
+          <div class="mock-card-ip"><span class="mock-ping online"></span> 192.168.0.172</div>
+          <div class="mock-card-name">Media Server</div>
+          <div class="mock-card-host">media.home.lab</div>
+          <div class="mock-tags"><span class="mock-tag">Virtual</span><span class="mock-tag purple">Plex</span></div>
+        </div>
+
+        <div class="mock-card green">
+          <div class="mock-card-ip"><span class="mock-ping online"></span> 192.168.0.173</div>
+          <div class="mock-card-name">Home Automation</div>
+          <div class="mock-card-host">ha.home.lab</div>
+          <div class="mock-tags"><span class="mock-tag">LXC</span><span class="mock-tag green">HA</span></div>
+        </div>
+
+        <div class="mock-card free">
+          <div class="mock-card-ip"><span class="mock-ping unknown"></span> 192.168.0.176</div>
+          <div class="mock-card-name" style="color:#64748b">Free</div>
+          <div class="mock-type" style="color:#475569">Available to assign</div>
+        </div>
+
+      </div>
+    </div>
+    <div class="mock-statusbar">
+      <div class="mock-stat"><span>5</span>&nbsp;assigned</div>
+      <div class="mock-stat"><span style="color:#16a34a">4</span>&nbsp;online</div>
+      <div class="mock-stat"><span style="color:#94a3b8">79</span>&nbsp;free</div>
+      <div style="margin-left:auto;color:#059669">Proxmox sync · 2 min ago</div>
+    </div>
+  </div>
+</section>
+
+
+<!-- STATS BAND -->
+<div class="stats-band">
+  <div class="stats-grid container">
+    <div>
+      <div class="stat-item-num">16+</div>
+      <div class="stat-item-label">Features shipped</div>
+    </div>
+    <div>
+      <div class="stat-item-num">/16</div>
+      <div class="stat-item-label">Max subnet support</div>
+    </div>
+    <div>
+      <div class="stat-item-num">~5MB</div>
+      <div class="stat-item-label">RAM footprint</div>
+    </div>
+    <div>
+      <div class="stat-item-num">∞</div>
+      <div class="stat-item-label">Networks & VLANs</div>
+    </div>
+  </div>
+</div>
+
+
+<!-- FEATURES -->
+<section id="features" class="features-bg">
+  <div class="container">
+    <div class="section-label">Everything you need</div>
+    <h2 class="section-title">A proper tool for a proper lab</h2>
+    <p class="section-body">No more hunting through spreadsheets. IP Manager gives your home network the visibility it deserves — live status, smart search, and Proxmox integration all in one place.</p>
+
+    <div class="features-grid">
+
+      <div class="feat-card">
+        <div class="feat-icon green">🟢</div>
+        <h3>Live Ping Monitoring</h3>
+        <p>Every card shows a real-time reachability dot. The server runs fping against all tracked IPs every 60 seconds — green means online, red means gone.</p>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon teal">🔍</div>
+        <h3>ARP Scan & Discovery</h3>
+        <p>One-click subnet sweep finds every device on your network — even the ones you forgot about. Cross-references against existing entries and pre-selects new ones for easy import.</p>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon amber">⬡</div>
+        <h3>Proxmox Integration</h3>
+        <p>Import all your VMs and LXC containers directly from the Proxmox API. Scheduled background sync catches HA failovers and updates node locations automatically.</p>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon blue">🌐</div>
+        <h3>DNS Reverse Lookup</h3>
+        <p>Resolves PTR records for every IP against your own DNS server (Pi-hole, Unbound, or any resolver). Flags mismatches so you can spot stale records fast.</p>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon purple">🔗</div>
+        <h3>Multiple IPs per Host</h3>
+        <p>Got a server on two VLANs? Link all its IPs together. Primary cards show secondary chips; secondary cards show a back-link. Proxmox multi-NIC VMs group automatically.</p>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon indigo">🗂</div>
+        <h3>Multi-Network & VLANs</h3>
+        <p>Manage every subnet independently — /24s, /16s, management VLANs, IoT segments. Switch between networks instantly from the top bar.</p>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon cyan">📤</div>
+        <h3>Import & Export</h3>
+        <p>Migrate from an existing spreadsheet in seconds. CSV and Excel import with merge or replace modes. Export to formatted .xlsx at any time.</p>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon green">💾</div>
+        <h3>Backup & Restore</h3>
+        <p>One click downloads a full JSON backup — all entries, all networks, all tags, change history, everything. Restore to a new machine instantly.</p>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon amber">🔒</div>
+        <h3>Login & Authentication</h3>
+        <p>Protect your data with username/password auth. Configurable credentials, session cookies, and safe to deploy on a shared subdomain or internal DNS name.</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- HOW IT WORKS -->
+<section id="how">
+  <div class="container">
+    <div class="section-label">Getting started</div>
+    <h2 class="section-title">Up and running in minutes</h2>
+    <p class="section-body">Deploy once to an LXC container and forget the setup. The app is self-contained — no cloud services, no external dependencies, everything local.</p>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div>
+          <h3>Deploy to an LXC container</h3>
+          <p>Create an Ubuntu 24.04 LXC on Proxmox, SSH in, and run the one-line install script. It sets up Node.js, Nginx, and the app automatically. A single LXC with 512 MB RAM is all you need — all data lives in a local SQLite database with no external services required.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div>
+          <h3>Configure your network</h3>
+          <p>Open Settings and tell the app your subnet prefix, DHCP pool range, and static range. The live preview shows the calculated CIDR before you save. Add as many networks and VLANs as you need.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div>
+          <h3>Import or discover your devices</h3>
+          <p>Run an ARP scan to discover everything currently on the network, import your existing spreadsheet via CSV/Excel, or pull all VMs and LXC containers straight from Proxmox. Mix and match all three.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div>
+          <h3>Keep it current</h3>
+          <p>Trigger ping checks and DNS lookups on demand from the header, or set up Proxmox sync on a schedule so new VMs and containers appear automatically. One-click export to Excel whenever you need a snapshot.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- INTEGRATIONS -->
+<section id="integrations" class="features-bg">
+  <div class="container">
+    <div class="section-label">Works with your stack</div>
+    <h2 class="section-title">Deep integrations for home labs</h2>
+    <p class="section-body">Built around the tools that serious home labbers actually run — not cloud services you don't need.</p>
+
+    <div class="integrations-grid">
+
+      <div class="integ-card">
+        <div class="integ-icon" style="background:rgba(245,158,11,.12)">⬡</div>
+        <div>
+          <h3>Proxmox VE</h3>
+          <p>One-shot import pulls every VM and LXC with their IPs, node location, and power state. Scheduled background sync detects HA failovers and updates your records automatically — no manual re-import ever needed.</p>
+        </div>
+      </div>
+
+      <div class="integ-card">
+        <div class="integ-icon" style="background:rgba(99,102,241,.12)">🌐</div>
+        <div>
+          <h3>Pi-hole / Unbound / Any DNS</h3>
+          <p>Point IP Manager at any resolver — your Pi-hole, an Unbound instance, or even 8.8.8.8. PTR lookups run against that server and mismatches show as amber warnings on every affected card.</p>
+        </div>
+      </div>
+
+      <div class="integ-card">
+        <div class="integ-icon" style="background:rgba(16,185,129,.12)">📡</div>
+        <div>
+          <h3>arp-scan</h3>
+          <p>Discovers every device broadcasting on your subnet using one lightweight ARP broadcast packet per IP. Completes a /24 in under a second. Automatically detects and surfaces new or untracked devices.</p>
+        </div>
+      </div>
+
+      <div class="integ-card">
+        <div class="integ-icon" style="background:rgba(6,182,212,.12)">📊</div>
+        <div>
+          <h3>Excel / CSV Import</h3>
+          <p>Already tracking IPs in a spreadsheet? Import it directly — IP Manager maps your columns intelligently. Choose merge mode to layer new data on top of existing entries, or replace to start fresh.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- TECH STACK -->
+<section id="stack">
+  <div class="container">
+    <div class="section-label">Under the hood</div>
+    <h2 class="section-title">Lightweight by design</h2>
+    <p class="section-body">No Docker, no Kubernetes, no cloud billing. A single Node.js process with a SQLite database — deployable anywhere that runs JavaScript.</p>
+
+    <div class="tech-row">
+      <div class="tech-pill"><span class="tech-pill-dot" style="background:#68a063"></span> Node.js</div>
+      <div class="tech-pill"><span class="tech-pill-dot" style="background:#61dafb"></span> React 18</div>
+      <div class="tech-pill"><span class="tech-pill-dot" style="background:#38bdf8"></span> Tailwind CSS</div>
+      <div class="tech-pill"><span class="tech-pill-dot" style="background:#f5a623"></span> SQLite</div>
+      <div class="tech-pill"><span class="tech-pill-dot" style="background:#646cff"></span> Vite</div>
+      <div class="tech-pill"><span class="tech-pill-dot" style="background:#10b981"></span> Express.js</div>
+      <div class="tech-pill"><span class="tech-pill-dot" style="background:#e5534b"></span> Lucide Icons</div>
+      <div class="tech-pill"><span class="tech-pill-dot" style="background:#f59e0b"></span> Proxmox API</div>
+      <div class="tech-pill"><span class="tech-pill-dot" style="background:#818cf8"></span> PolyForm License</div>
+    </div>
+
+    <!-- Architecture callout -->
+    <div style="margin-top:2.5rem;background:var(--slate-800);border-radius:14px;border:1px solid rgba(255,255,255,.07);padding:1.75rem;display:flex;gap:2.5rem;flex-wrap:wrap;">
+      <div style="flex:1;min-width:200px;">
+        <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--emerald);margin-bottom:.5rem">Deployment</div>
+        <div style="font-size:.875rem;color:#e2e8f0;line-height:1.7">Runs as a single LXC container or plain Node.js process. No reverse proxy required for internal use — point your browser at the IP and port.</div>
+      </div>
+      <div style="flex:1;min-width:200px;">
+        <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--teal);margin-bottom:.5rem">Storage</div>
+        <div style="font-size:.875rem;color:#e2e8f0;line-height:1.7">SQLite on disk — zero configuration, zero maintenance. Export a full JSON backup whenever you like. Restore in seconds on any new machine.</div>
+      </div>
+      <div style="flex:1;min-width:200px;">
+        <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--amber);margin-bottom:.5rem">License</div>
+        <div style="font-size:.875rem;color:#e2e8f0;line-height:1.7">PolyForm Noncommercial — free for personal and home lab use. Source available on GitHub.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- CTA -->
+<section class="cta-section">
+  <div class="container">
+    <h2>Ready to take control<br/>of your network?</h2>
+    <p>Deploy in under 5 minutes. No sign-ups, no cloud, no nonsense.</p>
+    <div class="hero-actions" style="justify-content:center">
+      <a href="https://github.com" class="btn-primary">
+        <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+        Get started on GitHub
+      </a>
+      <a href="#features" class="btn-secondary">View all features</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p>IP Manager · Built for home labs · <span>PolyForm Noncommercial License</span></p>
+</footer>
+
+</body>
+</html>

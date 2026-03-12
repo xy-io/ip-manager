@@ -1,3 +1,179 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ═══════════════════════════════════════════════════════════
+   DARK MODE OVERRIDES
+   Uses .dark class on <html> (darkMode: 'class' in tailwind.config.js).
+   Higher specificity (.dark .class) overrides plain Tailwind utilities.
+   Avoids touching hundreds of className strings in JSX.
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── Page Background ── */
+.dark body,
+.dark .min-h-screen { background-color: #0f172a; color: #e2e8f0; }
+.dark .bg-slate-50   { background-color: #1e293b !important; }
+.dark .bg-slate-100  { background-color: #334155 !important; }
+.dark .bg-slate-200  { background-color: #475569 !important; }
+.dark .bg-white      { background-color: #1e293b !important; }
+.dark .bg-slate-900  { background-color: #020617 !important; }
+.dark .bg-slate-800  { background-color: #0f172a !important; }
+.dark .bg-slate-700  { background-color: #1e293b !important; }
+
+/* ── Borders ── */
+.dark .border-slate-100 { border-color: #334155 !important; }
+.dark .border-slate-200 { border-color: #334155 !important; }
+.dark .border-slate-300 { border-color: #475569 !important; }
+.dark .divide-slate-200 > * + * { border-color: #334155 !important; }
+
+/* ── Text ── */
+.dark .text-slate-900  { color: #f8fafc !important; }
+.dark .text-slate-800  { color: #f1f5f9 !important; }
+.dark .text-slate-700  { color: #e2e8f0 !important; }
+.dark .text-slate-600  { color: #cbd5e1 !important; }
+.dark .text-slate-500  { color: #94a3b8 !important; }
+.dark .text-slate-400  { color: #64748b !important; }
+
+/* ── Shadows (soften for dark bg) ── */
+.dark .shadow-sm   { box-shadow: 0 1px 2px rgba(0,0,0,.4) !important; }
+.dark .shadow      { box-shadow: 0 1px 3px rgba(0,0,0,.5) !important; }
+.dark .shadow-md   { box-shadow: 0 4px 6px rgba(0,0,0,.5) !important; }
+.dark .shadow-lg   { box-shadow: 0 10px 15px rgba(0,0,0,.5) !important; }
+.dark .shadow-xl   { box-shadow: 0 20px 25px rgba(0,0,0,.5) !important; }
+.dark .shadow-2xl  { box-shadow: 0 25px 50px rgba(0,0,0,.6) !important; }
+
+/* ── Inputs & Textareas ── */
+.dark input,
+.dark textarea,
+.dark select {
+  background-color: #0f172a !important;
+  border-color: #475569 !important;
+  color: #f1f5f9 !important;
+}
+.dark input::placeholder,
+.dark textarea::placeholder { color: #64748b !important; }
+.dark input:focus,
+.dark textarea:focus,
+.dark select:focus {
+  background-color: #0f172a !important;
+  border-color: #10b981 !important;
+}
+
+/* ── Header ── */
+.dark .sticky.bg-white {
+  background-color: #1e293b !important;
+  border-bottom-color: #334155 !important;
+}
+
+/* ── Modals & Overlays ── */
+.dark .bg-black\/50 { background-color: rgba(0,0,0,.75) !important; }
+.dark .bg-black\/40 { background-color: rgba(0,0,0,.6) !important; }
+
+/* ── Status / Badge colours (adjust backgrounds, keep text readable) ── */
+.dark .bg-emerald-50   { background-color: rgba(16,185,129,.15) !important; }
+.dark .text-emerald-700 { color: #34d399 !important; }
+.dark .border-emerald-200 { border-color: rgba(16,185,129,.3) !important; }
+
+.dark .bg-amber-50   { background-color: rgba(245,158,11,.15) !important; }
+.dark .text-amber-700 { color: #fbbf24 !important; }
+.dark .border-amber-200 { border-color: rgba(245,158,11,.3) !important; }
+
+.dark .bg-red-50   { background-color: rgba(239,68,68,.15) !important; }
+.dark .text-red-700 { color: #f87171 !important; }
+.dark .border-red-200 { border-color: rgba(239,68,68,.3) !important; }
+
+.dark .bg-blue-50   { background-color: rgba(59,130,246,.15) !important; }
+.dark .text-blue-700 { color: #93c5fd !important; }
+.dark .border-blue-200 { border-color: rgba(59,130,246,.3) !important; }
+
+.dark .bg-violet-50   { background-color: rgba(139,92,246,.15) !important; }
+.dark .text-violet-700 { color: #c4b5fd !important; }
+.dark .border-violet-200 { border-color: rgba(139,92,246,.3) !important; }
+
+.dark .bg-teal-50   { background-color: rgba(13,148,136,.15) !important; }
+.dark .text-teal-700 { color: #5eead4 !important; }
+.dark .border-teal-200 { border-color: rgba(13,148,136,.3) !important; }
+
+.dark .bg-purple-50   { background-color: rgba(168,85,247,.15) !important; }
+.dark .text-purple-700 { color: #d8b4fe !important; }
+.dark .border-purple-200 { border-color: rgba(168,85,247,.3) !important; }
+
+.dark .bg-green-50   { background-color: rgba(34,197,94,.15) !important; }
+.dark .text-green-700 { color: #86efac !important; }
+
+/* Tag backgrounds (small pill badges) */
+.dark .bg-slate-100.text-slate-600 { background-color: #334155 !important; color: #cbd5e1 !important; }
+.dark .bg-emerald-100 { background-color: rgba(16,185,129,.2) !important; }
+.dark .text-emerald-800 { color: #6ee7b7 !important; }
+.dark .bg-amber-100  { background-color: rgba(245,158,11,.2) !important; }
+.dark .text-amber-800 { color: #fcd34d !important; }
+.dark .bg-blue-100   { background-color: rgba(59,130,246,.2) !important; }
+.dark .text-blue-800  { color: #93c5fd !important; }
+.dark .bg-purple-100  { background-color: rgba(168,85,247,.2) !important; }
+.dark .text-purple-800 { color: #d8b4fe !important; }
+.dark .bg-teal-100   { background-color: rgba(13,148,136,.2) !important; }
+.dark .text-teal-800  { color: #5eead4 !important; }
+.dark .bg-violet-100  { background-color: rgba(139,92,246,.2) !important; }
+.dark .text-violet-800 { color: #c4b5fd !important; }
+.dark .bg-rose-100   { background-color: rgba(244,63,94,.2) !important; }
+.dark .text-rose-800  { color: #fda4af !important; }
+.dark .bg-orange-100  { background-color: rgba(249,115,22,.2) !important; }
+.dark .text-orange-800 { color: #fdba74 !important; }
+.dark .bg-sky-100    { background-color: rgba(14,165,233,.2) !important; }
+.dark .text-sky-800   { color: #7dd3fc !important; }
+.dark .bg-indigo-100  { background-color: rgba(99,102,241,.2) !important; }
+.dark .text-indigo-800 { color: #a5b4fc !important; }
+.dark .bg-pink-100   { background-color: rgba(236,72,153,.2) !important; }
+.dark .text-pink-800  { color: #f9a8d4 !important; }
+.dark .bg-lime-100   { background-color: rgba(132,204,22,.2) !important; }
+.dark .text-lime-800  { color: #bef264 !important; }
+.dark .bg-cyan-100   { background-color: rgba(6,182,212,.2) !important; }
+.dark .text-cyan-800  { color: #67e8f9 !important; }
+.dark .bg-yellow-100  { background-color: rgba(234,179,8,.2) !important; }
+.dark .text-yellow-800 { color: #fde68a !important; }
+
+/* ── Hover states for slate buttons ── */
+.dark .hover\:bg-slate-50:hover  { background-color: #334155 !important; }
+.dark .hover\:bg-slate-100:hover { background-color: #334155 !important; }
+.dark .hover\:bg-slate-200:hover { background-color: #475569 !important; }
+.dark .hover\:bg-red-50:hover    { background-color: rgba(239,68,68,.2) !important; }
+.dark .hover\:text-red-500:hover { color: #f87171 !important; }
+.dark .hover\:text-slate-700:hover { color: #e2e8f0 !important; }
+
+/* ── View toggle (Cards/Table) ── */
+.dark .bg-slate-100.rounded-lg { background-color: #0f172a !important; }
+.dark .bg-white.text-slate-800.shadow-sm { background-color: #334155 !important; color: #f1f5f9 !important; }
+
+/* ── Table styles ── */
+.dark table { background-color: #1e293b !important; }
+.dark thead.bg-slate-50,
+.dark .bg-slate-50.text-slate-500 { background-color: #0f172a !important; }
+.dark tbody tr:hover { background-color: rgba(51,65,85,.4) !important; }
+.dark tr.bg-white { background-color: #1e293b !important; }
+.dark tr.bg-slate-50 { background-color: rgba(15,23,42,.6) !important; }
+.dark tr.bg-teal-50  { background-color: rgba(13,148,136,.15) !important; }
+.dark .border-b.border-slate-100 { border-color: #334155 !important; }
+.dark .border-b.border-slate-200 { border-color: #334155 !important; }
+
+/* ── Code / mono snippets ── */
+.dark code,
+.dark .font-mono.bg-slate-100 { background-color: #0f172a !important; color: #a5f3fc !important; }
+
+/* ── Login screen ── */
+.dark .min-h-screen.bg-slate-50.flex.items-center { background-color: #0f172a !important; }
+
+/* ── Sidebar active tab in Settings / Help modal ── */
+.dark .bg-white.text-slate-800.font-semibold.shadow-sm.border-r-2 {
+  background-color: #334155 !important;
+  color: #f1f5f9 !important;
+}
+
+/* ── Dashed border Add Network button ── */
+.dark .border-dashed.border-slate-300 { border-color: #475569 !important; }
+.dark .hover\:border-slate-400:hover  { border-color: #64748b !important; }
+
+/* ── Scrollbar styling for dark mode ── */
+.dark ::-webkit-scrollbar { width: 6px; height: 6px; }
+.dark ::-webkit-scrollbar-track { background: #0f172a; }
+.dark ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+.dark ::-webkit-scrollbar-thumb:hover { background: #475569; }
