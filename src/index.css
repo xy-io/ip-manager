@@ -17,6 +17,17 @@
      #020617  deep     — near-black for code/mono blocks
    ─────────────────────────────────────────────────────────── */
 .dark body                { background-color: #0f172a; color: #e2e8f0; }
+
+/* ── Kill the root gradient (from-slate-50 to-slate-100) ──── */
+/* CSS gradients are set via background-image which beats background-color. */
+/* Removing the image lets our background-color overrides take effect.      */
+.dark .bg-gradient-to-br.from-slate-50,
+.dark .bg-gradient-to-bl.from-slate-50,
+.dark .bg-gradient-to-br.from-slate-100,
+.dark .from-slate-50.to-slate-100 {
+  background-image: none !important;
+  background-color: #0f172a !important;
+}
 .dark .bg-white           { background-color: #1e293b !important; }
 .dark .bg-slate-50        { background-color: #0f172a !important; }
 .dark .bg-slate-100       { background-color: #334155 !important; }
