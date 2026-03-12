@@ -694,8 +694,20 @@ app.post('/api/dns-config', requireAuth, (req, res) => {
 
 // GET /api/dns-status — returns cached results; ?force=1 triggers an immediate refresh
 app.get('/api/dns-status', requireAuth, async (req, res) => {
-  const force = req.query.force === '1';
-  if (force || !dnsCache.timestamp) await refreshDnsCache();
+  const forceParam = req.query.force === '1';
+
+  // Always refresh if:
+  //  a) caller requested force, or
+  //  b) cache is empty (server just started), or
+  //  c) ip_data contains IPs that are not in the cache — i.e. a new network or
+  //     new entries were added since the last run.  Without this check the
+  //     second (and any subsequent) network would never appear in results.
+  const trackedIPs = (dbGet('ip_data') || [])
+    .filter(r => r.ip && r.status !== 'free')
+    .map(r => r.ip);
+  const hasUncachedIPs = trackedIPs.some(ip => !(ip in dnsCache.results));
+
+  if (forceParam || !dnsCache.timestamp || hasUncachedIPs) await refreshDnsCache();
   const config = getDnsConfig();
   res.json({
     results:  dnsCache.results,
