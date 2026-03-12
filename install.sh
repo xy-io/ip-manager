@@ -92,6 +92,9 @@ else
   ok "Repository cloned to $APP_DIR"
 fi
 
+# Remove marketing site — development-only, not needed on the server
+rm -rf "$APP_DIR/marketing"
+
 # ── 5. Install frontend npm packages & build ─────────────────
 log "Installing frontend npm packages..."
 cd "$APP_DIR"

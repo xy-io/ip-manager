@@ -16,6 +16,9 @@ echo "Pulling latest changes from GitHub..."
 git -C /opt/ip-manager pull
 ok "Repository up to date"
 
+# Remove marketing site — development-only, not needed on the server
+rm -rf /opt/ip-manager/marketing
+
 # ── 2. System dependencies ────────────────────────────────────────────────────
 echo ""
 echo "Ensuring system dependencies are installed..."
