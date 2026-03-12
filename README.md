@@ -226,7 +226,6 @@ See [`IP_Manager_Roadmap.docx`](./IP_Manager_Roadmap.docx) for the full three-ph
 - ✅ Tag management in Settings — add, rename, delete tags; suggestions dropdown on edit modal — shipped in v1.10
 - ✅ ARP network scan — one-shot subnet sweep, cross-references against manager, import untracked devices — shipped in v1.11
 - ✅ DHCP toggle — disable DHCP pool per network for fully static setups — shipped in v1.11
-- **PWA / Offline support** — install to home screen; works without network access
 
 **Phase 2 — mid-term (Q3–Q4 2026):**
 - ✅ **Ping / reachability** — live green/red status dots on every IP, auto-poll every 60 s, manual refresh button — shipped in v1.12
@@ -243,6 +242,7 @@ See [`IP_Manager_Roadmap.docx`](./IP_Manager_Roadmap.docx) for the full three-ph
 - **ARP scan — scheduled background** — rate-limited, subnet-scoped background scans with "last seen" timestamps
 - Network topology map, uptime alerts, REST API
 - **Multi-user auth** — per-user accounts with role-based access (read-only vs admin)
+- **iOS native app** — native iPhone/iPad app for at-a-glance network status and quick IP lookups on the go
 
 ---
 
