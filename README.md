@@ -41,6 +41,22 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
+### v1.14 Features
+
+**DNS reverse lookup** — Click the violet **DNS** button in the header (API mode only) to run a reverse PTR lookup for every tracked IP address. Results are compared against the hostname stored in each entry: if they match, nothing extra is shown (no duplication); if the entry has no stored hostname, the PTR record is displayed in grey as a useful fill-in; if the PTR differs from the stored hostname, it is shown in amber with a ⚠ prefix — useful for catching stale DNS records or copy-paste errors. The lookup runs automatically every 24 hours in the background. Configure a specific DNS server (e.g. your Pi-hole or router) in **Settings → DNS Reverse Lookup**, or leave blank to use the system resolver. The feature uses Node's built-in `dns` module — no additional system packages required.
+
+**Logout button** — The header sign-out button now shows a **Sign out** label alongside the LogOut icon, replacing the ambiguous ✕ that testers were finding confusing.
+
+**Help & Reference improvements** — The Help modal gained two new sections: **Backup & Restore** (covers what a backup contains vs an export, how to download and restore, and the "replaces everything" warning) and **DNS Lookup** (explains PTR records, the three-way display logic, DNS server configuration, and common reasons for empty results).
+
+---
+
+### v1.13 Features
+
+**Help & Reference modal** — Click the **?** icon in the header to open a full reference guide covering: Overview & header bar, Status Indicators (ping dots, type badges), Managing IPs, Networks & Settings, Proxmox Import, ARP Scan, Ping / Reachability, Backup & Restore, Import & Export, DNS Lookup, and Keyboard Shortcuts. Navigation sidebar on the left; scrollable content panel on the right. Closes with Esc.
+
+---
+
 ### v1.12 Features
 
 **Ping / reachability badges** — Every assigned IP card and table row now shows a coloured status dot inline with the IP address: 🟢 green = online, 🔴 red = offline, grey = status not yet known. The server runs `fping` against all tracked IPs, caches results for 20 seconds, and refreshes the cache automatically every 60 seconds in the background — no user action required. A sky-blue **Ping** button in the header forces an immediate refresh and shows a spinner while in-flight; hovering it shows the last-checked timestamp. If `fping` is missing or lacks the required `CAP_NET_RAW` capability, an amber warning banner explains exactly what to run to fix it. `fping` is now installed and granted raw-socket capability automatically by the install and update scripts.
@@ -268,16 +284,18 @@ See [`IP_Manager_Roadmap.docx`](./IP_Manager_Roadmap.docx) for the full three-ph
 
 **Phase 2 — mid-term (Q3–Q4 2026):**
 - ✅ **Ping / reachability** — live green/red status dots on every IP, auto-poll every 60 s, manual refresh button — shipped in v1.12
+- ✅ **Help & Reference modal** — full in-app reference guide with 11 sections — shipped in v1.13
+- ✅ **DNS reverse lookup** — PTR lookup for all tracked IPs, mismatch detection, configurable DNS server — shipped in v1.14
+- **Service health checks** — HTTP/HTTPS probes with UP/DOWN badges alongside ping
+- **ARP scan — background** — periodic scheduled sweeps that update a "last seen" timestamp and surface newly appeared or disappeared devices automatically
 - **Multiple IPs per host** — support servers/VMs with more than one NIC or VLAN leg
 - **Proxmox scheduled sync** — automatically re-discover and update Proxmox entries on a schedule
-- **Pi-hole import (v6)** — one-shot import of Pi-hole v6 local DNS records to populate or enrich existing entries
-- **Service health checks** — HTTP probes with UP/DOWN badges
 
 **Phase 3 — longer-term (2027+):**
 - **Proxmox live status** — real-time VM/LXC power state badges using the Proxmox API
-- **Pi-hole DNS validation** — flag entries where the hostname stored in the IP manager doesn't match what Pi-hole v6 resolves; amber warning badge on the card
-- **ARP scan — background** — periodic scheduled scans (rate-limited, subnet-scoped) that update a "last seen" timestamp on each card and surface newly appeared devices automatically
-- Network topology map, uptime alerts, REST API, network scanner
+- **Wake-on-LAN** — send a WoL magic packet to any device with a known MAC address directly from the UI
+- **ARP scan — scheduled background** — rate-limited, subnet-scoped background scans with "last seen" timestamps
+- Network topology map, uptime alerts, REST API
 - **Multi-user auth** — per-user accounts with role-based access (read-only vs admin)
 
 ---
