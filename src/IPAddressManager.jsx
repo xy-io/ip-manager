@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Search, Server, Monitor, Wifi, HardDrive, Camera, Shield, Globe, Filter, X, MapPin, Cpu, Box, CircleDot, ChevronDown, ChevronUp, Copy, Check, Zap, Download, Edit3, Plus, Trash2, Save, AlertCircle, Settings, Upload, FileText, AlertTriangle, CheckCircle, ChevronRight, Tag, ArrowUpDown, ArrowUp, ArrowDown, HelpCircle, LogOut, Moon, Sun } from 'lucide-react';
+import { Search, Server, Monitor, Wifi, HardDrive, Camera, Shield, Globe, Filter, X, MapPin, Cpu, Box, CircleDot, ChevronDown, ChevronUp, Copy, Check, Zap, Download, Edit3, Plus, Trash2, Save, AlertCircle, Settings, Upload, FileText, AlertTriangle, CheckCircle, ChevronRight, Tag, ArrowUpDown, ArrowUp, ArrowDown, HelpCircle, LogOut, Moon, Sun, MoreHorizontal } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 // Default network configuration (overridden by Settings modal / localStorage)
@@ -3261,6 +3261,7 @@ export default function IPAddressManager() {
   const [editingItem, setEditingItem] = useState(null);
   const [sortField, setSortField] = useState('ip');
   const [sortDir, setSortDir] = useState('asc');
+  const [showMobileTools, setShowMobileTools] = useState(false);
   const searchRef = useRef(null);
 
   // ── On mount: check auth status, then detect API and load data ───────────────
@@ -4139,9 +4140,11 @@ export default function IPAddressManager() {
               <h1 className="text-2xl font-bold text-slate-800">IP Address Manager</h1>
               <p className="text-sm text-slate-500">{networkConfig.networkName} · {subnetCIDR(networkConfig.subnet)}</p>
             </div>
-            <div className="flex gap-2 items-center flex-wrap">
 
-              {/* ── Status badge ── */}
+            {/* ── Desktop toolbar (md+) ── */}
+            <div className="hidden md:flex gap-2 items-center flex-wrap">
+
+              {/* Status badge */}
               {persistMode === 'api' && (
                 <div className="flex items-center gap-1.5 px-2.5 py-2 bg-emerald-50 text-emerald-700 rounded-lg text-xs font-medium border border-emerald-200 whitespace-nowrap" title="Data stored in SQLite on the server — shared across all users">
                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
@@ -4161,7 +4164,7 @@ export default function IPAddressManager() {
                 </div>
               )}
 
-              {/* ── Import tools (api-only) ── */}
+              {/* Import tools (api-only) */}
               {persistMode === 'api' && (
                 <div className="flex items-center gap-1.5">
                   <button
@@ -4209,7 +4212,7 @@ export default function IPAddressManager() {
                 </div>
               )}
 
-              {/* ── Data buttons ── */}
+              {/* Data buttons */}
               <div className="flex items-center gap-1.5">
                 <button
                   onClick={() => setShowImport(true)}
@@ -4227,7 +4230,7 @@ export default function IPAddressManager() {
                 </button>
               </div>
 
-              {/* ── Utility icon buttons ── */}
+              {/* Utility icon buttons */}
               <div className="flex items-center gap-1">
                 {networks.length === 1 && (
                   <button
@@ -4272,7 +4275,7 @@ export default function IPAddressManager() {
                 )}
               </div>
 
-              {/* ── View toggle ── */}
+              {/* View toggle */}
               <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
                 <button
                   onClick={() => setViewMode('cards')}
@@ -4293,7 +4296,156 @@ export default function IPAddressManager() {
               </div>
 
             </div>
+
+            {/* ── Mobile toolbar (< md): view toggle + tools menu button ── */}
+            <div className="flex md:hidden items-center gap-2">
+              {/* Status badges — keep visible on mobile */}
+              {persistMode === 'api' && (
+                <div className="flex items-center gap-1 px-2 py-1.5 bg-emerald-50 text-emerald-700 rounded-lg text-xs font-medium border border-emerald-200">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  SQLite
+                </div>
+              )}
+              {hasChanges && persistMode !== 'api' && (
+                <div className="flex items-center gap-1 px-2 py-1.5 bg-amber-50 text-amber-700 rounded-lg text-xs font-medium border border-amber-200">
+                  <AlertCircle className="w-3 h-3" />
+                  Unsaved
+                </div>
+              )}
+              {/* View toggle */}
+              <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
+                <button
+                  onClick={() => setViewMode('cards')}
+                  className={`px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                    viewMode === 'cards' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'
+                  }`}
+                >
+                  Cards
+                </button>
+                <button
+                  onClick={() => setViewMode('table')}
+                  className={`px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                    viewMode === 'table' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'
+                  }`}
+                >
+                  Table
+                </button>
+              </div>
+              {/* Tools dropdown toggle */}
+              <button
+                onClick={() => setShowMobileTools(t => !t)}
+                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
+                  showMobileTools
+                    ? 'bg-slate-800 text-white border-slate-800'
+                    : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
+                }`}
+                title="Tools"
+              >
+                <MoreHorizontal className="w-4 h-4" />
+                Tools
+                <ChevronDown className={`w-3 h-3 transition-transform ${showMobileTools ? 'rotate-180' : ''}`} />
+              </button>
+            </div>
           </div>
+
+          {/* ── Mobile tools panel ── */}
+          {showMobileTools && (
+            <div className="flex md:hidden flex-wrap gap-2 pb-3 mb-3 border-b border-slate-200">
+              {persistMode === 'api' && (<>
+                <button
+                  onClick={() => { setShowProxmoxImport(true); setShowMobileTools(false); }}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg transition-colors"
+                >
+                  <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="2" y="3" width="20" height="14" rx="2"/>
+                    <path d="M8 21h8M12 17v4"/>
+                    <path d="M7 8h.01M12 8h.01M17 8h.01"/>
+                  </svg>
+                  Proxmox
+                </button>
+                <button
+                  onClick={() => { setShowARPScan(true); setShowMobileTools(false); }}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg transition-colors"
+                >
+                  <Wifi className="w-4 h-4 flex-shrink-0" />
+                  ARP Scan
+                </button>
+                <button
+                  onClick={() => { fetchPingStatus(true); setShowMobileTools(false); }}
+                  disabled={pingLoading}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-sky-600 hover:bg-sky-700 disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors"
+                >
+                  {pingLoading
+                    ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin flex-shrink-0" />
+                    : <Zap className="w-4 h-4 flex-shrink-0" />}
+                  Ping
+                </button>
+                <button
+                  onClick={() => { fetchDnsStatus(true); setShowMobileTools(false); }}
+                  disabled={dnsLoading}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors"
+                >
+                  {dnsLoading
+                    ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin flex-shrink-0" />
+                    : <Globe className="w-4 h-4 flex-shrink-0" />}
+                  DNS
+                </button>
+              </>)}
+              <button
+                onClick={() => { setShowImport(true); setShowMobileTools(false); }}
+                className="flex items-center gap-1.5 px-3 py-2 bg-slate-700 hover:bg-slate-800 text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                <Upload className="w-4 h-4 flex-shrink-0" />
+                Import
+              </button>
+              <button
+                onClick={() => { handleExportExcel(); setShowMobileTools(false); }}
+                className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                <Download className="w-4 h-4 flex-shrink-0" />
+                Export
+              </button>
+              {networks.length === 1 && (
+                <button
+                  onClick={() => { handleAddNetwork(); setShowMobileTools(false); }}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-medium rounded-lg border border-dashed border-slate-300 transition-colors"
+                >
+                  <Plus className="w-4 h-4 flex-shrink-0" />
+                  Add Network
+                </button>
+              )}
+              <button
+                onClick={() => setDarkMode(d => !d)}
+                className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-medium rounded-lg transition-colors"
+              >
+                {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+                {darkMode ? 'Light mode' : 'Dark mode'}
+              </button>
+              <button
+                onClick={() => { setShowHelp(true); setShowMobileTools(false); }}
+                className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-medium rounded-lg transition-colors"
+              >
+                <HelpCircle className="w-4 h-4" />
+                Help
+              </button>
+              <button
+                onClick={() => { setShowSettings(true); setShowMobileTools(false); }}
+                className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-medium rounded-lg transition-colors"
+              >
+                <Settings className="w-4 h-4" />
+                Settings
+              </button>
+              {persistMode === 'api' && (
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-red-50 hover:text-red-500 text-slate-500 text-sm font-medium rounded-lg transition-colors"
+                >
+                  <LogOut className="w-4 h-4 flex-shrink-0" />
+                  Sign out
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Network Overview */}
           <div className="mb-4 p-3 bg-slate-50 rounded-lg border border-slate-200">
@@ -4546,7 +4698,7 @@ export default function IPAddressManager() {
       <div className="max-w-7xl mx-auto px-4 pb-8">
         {viewMode === 'cards' ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredData.map((item, index) => {
+            {sortedData.map((item, index) => {
               const isExpanded = expandedCard === index;
               const isReserved = item.assetName === 'Reserved';
               const isFree = item.assetName === 'Free';
