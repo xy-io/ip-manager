@@ -4137,8 +4137,8 @@ export default function IPAddressManager() {
 
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h1 className="text-2xl font-bold text-slate-800">IP Address Manager</h1>
-              <p className="text-sm text-slate-500">{networkConfig.networkName} · {subnetCIDR(networkConfig.subnet)}</p>
+              <h1 className="text-xl md:text-2xl font-bold text-slate-800">IP Address Manager</h1>
+              <p className="text-xs md:text-sm text-slate-500">{networkConfig.networkName} · {subnetCIDR(networkConfig.subnet)}</p>
             </div>
 
             {/* ── Desktop toolbar (md+) ── */}
@@ -4447,8 +4447,8 @@ export default function IPAddressManager() {
             </div>
           )}
 
-          {/* Network Overview */}
-          <div className="mb-4 p-3 bg-slate-50 rounded-lg border border-slate-200">
+          {/* Network Overview — hidden on mobile to save vertical space */}
+          <div className="hidden md:block mb-4 p-3 bg-slate-50 rounded-lg border border-slate-200">
             <div className="flex flex-wrap gap-6 text-sm">
               <div className="flex items-center gap-2">
                 <Zap className="w-4 h-4 text-amber-500" />
@@ -4654,14 +4654,14 @@ export default function IPAddressManager() {
             )}
           </div>
 
-          {/* Tag filter chips */}
+          {/* Tag filter chips — single scrollable row on mobile, wraps on desktop */}
           {allTags.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mt-2">
+            <div className="flex md:flex-wrap gap-1.5 mt-2 overflow-x-auto pb-1 md:pb-0 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
               {allTags.map(tag => (
                 <button
                   key={tag}
                   onClick={() => setSelectedTag(selectedTag === tag ? '' : tag)}
-                  className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-full border transition-colors ${
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-full border transition-colors flex-shrink-0 ${
                     selectedTag === tag
                       ? 'bg-violet-600 text-white border-violet-600'
                       : 'bg-violet-50 text-violet-700 border-violet-200 hover:bg-violet-100'
