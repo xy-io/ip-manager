@@ -1625,6 +1625,144 @@ const getServiceIcon = (apps, assetName) => {
   return Cpu;
 };
 
+// ── selfh.st/icons integration ────────────────────────────────────────────
+// Curated slug map: service keywords → selfh.st icon slug
+// More specific phrases listed before shorter keywords to match first
+const SH_SLUG_MAP = [
+  ['nginx proxy manager', 'nginx-proxy-manager'],
+  ['adguard home',        'adguard-home'],
+  ['uptime kuma',         'uptime-kuma'],
+  ['home assistant',      'home-assistant'],
+  ['truenas scale',       'truenas-scale'],
+  ['truenas core',        'truenas-core'],
+  ['paperless-ngx',       'paperless-ngx'],
+  ['paperless ngx',       'paperless-ngx'],
+  ['speedtest tracker',   'speedtest-tracker'],
+  ['technitium dns',      'technitium-dns'],
+  ['grafana loki',        'grafana-loki'],
+  ['node-red',            'node-red'],
+  ['nodered',             'node-red'],
+  ['wiki.js',             'wiki-js'],
+  ['wikijs',              'wiki-js'],
+  ['homeassistant',       'home-assistant'],
+  ['pihole',              'pi-hole'],
+  ['pi-hole',             'pi-hole'],
+  ['adguard',             'adguard-home'],
+  ['unifi',               'ubiquiti-unifi'],
+  ['truenas',             'truenas-scale'],
+  ['technitium',          'technitium-dns'],
+  ['speedtest',           'speedtest-tracker'],
+  ['synology',            'synology-dsm'],
+  ['proxmox',             'proxmox-ve'],
+  ['sonarr',              'sonarr'],
+  ['radarr',              'radarr'],
+  ['lidarr',              'lidarr'],
+  ['readarr',             'readarr'],
+  ['prowlarr',            'prowlarr'],
+  ['bazarr',              'bazarr'],
+  ['overseerr',           'overseerr'],
+  ['jellyseerr',          'jellyseerr'],
+  ['tautulli',            'tautulli'],
+  ['sabnzbd',             'sabnzbd'],
+  ['qbittorrent',         'qbittorrent'],
+  ['transmission',        'transmission'],
+  ['deluge',              'deluge'],
+  ['rutorrent',           'rutorrent'],
+  ['plex',                'plex'],
+  ['jellyfin',            'jellyfin'],
+  ['emby',                'emby'],
+  ['vaultwarden',         'vaultwarden'],
+  ['bitwarden',           'bitwarden'],
+  ['nextcloud',           'nextcloud'],
+  ['portainer',           'portainer'],
+  ['traefik',             'traefik'],
+  ['caddy',               'caddy'],
+  ['nginx',               'nginx'],
+  ['grafana',             'grafana'],
+  ['prometheus',          'prometheus'],
+  ['influxdb',            'influxdb'],
+  ['gitea',               'gitea'],
+  ['gitlab',              'gitlab'],
+  ['homer',               'homer'],
+  ['homarr',              'homarr'],
+  ['heimdall',            'heimdall'],
+  ['dashy',               'dashy'],
+  ['mosquitto',           'mosquitto'],
+  ['wireguard',           'wireguard'],
+  ['tailscale',           'tailscale'],
+  ['docker',              'docker'],
+  ['authentik',           'authentik'],
+  ['authelia',            'authelia'],
+  ['keycloak',            'keycloak'],
+  ['immich',              'immich'],
+  ['photoprism',          'photoprism'],
+  ['frigate',             'frigate'],
+  ['homebridge',          'homebridge'],
+  ['esphome',             'esphome'],
+  ['zigbee2mqtt',         'zigbee2mqtt'],
+  ['duplicati',           'duplicati'],
+  ['netdata',             'netdata'],
+  ['scrutiny',            'scrutiny'],
+  ['ntfy',                'ntfy'],
+  ['gotify',              'gotify'],
+  ['actual',              'actual-budget'],
+  ['bookstack',           'bookstack'],
+  ['freshrss',            'freshrss'],
+  ['miniflux',            'miniflux'],
+  ['minio',               'minio'],
+  ['redis',               'redis'],
+  ['postgresql',          'postgresql'],
+  ['postgres',            'postgresql'],
+  ['mariadb',             'mariadb'],
+  ['mysql',               'mysql'],
+  ['mongodb',             'mongodb'],
+  ['cockpit',             'cockpit'],
+  ['zabbix',              'zabbix'],
+  ['paperless',           'paperless-ngx'],
+];
+
+const getServiceSlug = (apps, assetName) => {
+  const combined = `${apps || ''} ${assetName || ''}`.toLowerCase();
+  for (const [keyword, slug] of SH_SLUG_MAP) {
+    if (combined.includes(keyword)) return slug;
+  }
+  // Auto-slug the service name as a last attempt
+  const svc = (apps || '').trim().toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-');
+  return svc || null;
+};
+
+// Tries selfh.st CDN icon first; in dark mode requests the -light variant
+// (white SVG on dark bg), retrying with the standard coloured icon if missing.
+// Falls back to the existing Lucide icon if the CDN has nothing for the slug.
+const ServiceIcon = ({ apps, assetName, darkMode, imgClass, lucideClass }) => {
+  const [failed, setFailed] = React.useState(false);
+  const slug = getServiceSlug(apps, assetName);
+  const FallbackIcon = getServiceIcon(apps, assetName);
+
+  if (slug && !failed) {
+    const base = `https://cdn.jsdelivr.net/gh/selfhst/icons/svg/${slug}`;
+    const src  = darkMode ? `${base}-light.svg` : `${base}.svg`;
+    return (
+      <img
+        src={src}
+        alt=""
+        className={imgClass}
+        onError={(e) => {
+          if (darkMode && !e.currentTarget.dataset.triedStd) {
+            // Dark mode: -light.svg missing → try standard coloured icon
+            e.currentTarget.dataset.triedStd = '1';
+            e.currentTarget.src = `${base}.svg`;
+          } else {
+            setFailed(true);
+          }
+        }}
+      />
+    );
+  }
+  return <FallbackIcon className={lucideClass} />;
+};
+
 const getTypeColor = (type) => {
   if (type === 'Virtual') return 'bg-purple-100 text-purple-800 border-purple-200';
   if (type === 'Physical') return 'bg-blue-100 text-blue-800 border-blue-200';
@@ -4402,7 +4540,6 @@ export default function IPAddressManager() {
         {viewMode === 'cards' ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredData.map((item, index) => {
-              const Icon = getServiceIcon(item.apps, item.assetName);
               const isExpanded = expandedCard === index;
               const isReserved = item.assetName === 'Reserved';
               const isFree = item.assetName === 'Free';
@@ -4443,7 +4580,13 @@ export default function IPAddressManager() {
                           {isFree ? (
                             <CircleDot className="w-5 h-5 text-emerald-600" />
                           ) : (
-                            <Icon className={`w-5 h-5 ${isReserved ? 'text-slate-300' : 'text-slate-600'}`} />
+                            <ServiceIcon
+                              apps={item.apps}
+                              assetName={item.assetName}
+                              darkMode={darkMode}
+                              imgClass="w-5 h-5 object-contain"
+                              lucideClass={`w-5 h-5 ${isReserved ? 'text-slate-300' : 'text-slate-600'}`}
+                            />
                           )}
                         </div>
                       </div>
@@ -4861,7 +5004,20 @@ export default function IPAddressManager() {
                             </span>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-sm text-slate-600">{item.apps || '—'}</td>
+                        <td className="px-4 py-3 text-sm text-slate-600">
+                          {item.apps ? (
+                            <span className="flex items-center gap-1.5">
+                              <ServiceIcon
+                                apps={item.apps}
+                                assetName={item.assetName}
+                                darkMode={darkMode}
+                                imgClass="w-4 h-4 object-contain flex-shrink-0"
+                                lucideClass="w-4 h-4 flex-shrink-0 text-slate-400"
+                              />
+                              {item.apps}
+                            </span>
+                          ) : '—'}
+                        </td>
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap gap-1">
                             {(item.tags || []).slice().sort().map(tag => (
