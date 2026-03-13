@@ -1719,15 +1719,22 @@ const SH_SLUG_MAP = [
   ['cockpit',             'cockpit'],
   ['zabbix',              'zabbix'],
   ['paperless',           'paperless-ngx'],
+  ['myspeed',             'myspeed'],
 ];
 
 const getServiceSlug = (apps, assetName) => {
-  const combined = `${apps || ''} ${assetName || ''}`.toLowerCase();
+  // Match against the service name first; only fall back to assetName when
+  // apps is blank (so a hostname like "speedtest-pi" can't hijack the icon
+  // for an unrelated service running on that device).
+  const primary   = (apps      || '').toLowerCase();
+  const secondary = (assetName || '').toLowerCase();
+  const haystack  = primary || secondary;
+
   for (const [keyword, slug] of SH_SLUG_MAP) {
-    if (combined.includes(keyword)) return slug;
+    if (haystack.includes(keyword)) return slug;
   }
-  // Auto-slug the service name as a last attempt
-  const svc = (apps || '').trim().toLowerCase()
+  // Auto-slug as a last attempt (works for simple single-word service names)
+  const svc = primary.trim()
     .replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-');
   return svc || null;
 };
