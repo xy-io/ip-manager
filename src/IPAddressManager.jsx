@@ -61,7 +61,7 @@ function generateHostId() {
 }
 
 // Settings Modal Component
-function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLocation, onDeleteLocation, tags, onRenameTag, onDeleteTag, canDeleteNetwork, onDeleteNetwork, showFreeInList, onToggleShowFreeInList, ipData, networks, onRestore, dnsConfig, onSaveDnsConfig, proxmoxSyncConfig, proxmoxSyncStatus, proxmoxSyncLoading, onSaveProxmoxSyncConfig, onRunProxmoxSync }) {
+function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLocation, onDeleteLocation, tags, onRenameTag, onDeleteTag, canDeleteNetwork, onDeleteNetwork, showFreeInList, onToggleShowFreeInList, ipData, networks, onRestore, dnsConfig, dnsStatus, dnsLoading, onSaveDnsConfig, onRunDns, proxmoxSyncConfig, proxmoxSyncStatus, proxmoxSyncLoading, onSaveProxmoxSyncConfig, onRunProxmoxSync }) {
   const [form, setForm] = useState({
     networkName: config.networkName,
     subnet: config.subnet,
@@ -454,9 +454,82 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
                   />
                   Enable automatic DNS lookup (every 24 hours)
                 </label>
-                {dnsConfig?.lastRun && (
-                  <p className="text-xs text-slate-400">Last run: {new Date(dnsConfig.lastRun).toLocaleString()}</p>
-                )}
+
+                <div className="pt-3 border-t border-slate-200">
+                  {/* Run Now row */}
+                  <div className="flex items-center gap-3 mb-3">
+                    <button
+                      type="button"
+                      onClick={onRunDns}
+                      disabled={dnsLoading}
+                      className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-teal-50 hover:text-teal-700 text-slate-600 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {dnsLoading ? (
+                        <><span className="animate-spin text-base">⟳</span> Looking up…</>
+                      ) : (
+                        'Run Now'
+                      )}
+                    </button>
+                    {dnsConfig?.lastRun && (
+                      <span className="text-xs text-slate-400">
+                        Last run: {new Date(dnsConfig.lastRun).toLocaleString()}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* DNS result log */}
+                  {dnsLoading && (
+                    <div className="flex items-center gap-2 px-3 py-2.5 bg-teal-50 border border-teal-200 rounded-lg text-xs text-teal-700">
+                      <span className="animate-spin text-sm">⟳</span>
+                      Resolving PTR records…
+                    </div>
+                  )}
+
+                  {!dnsLoading && dnsConfig?.lastRun && (() => {
+                    const entries = Object.entries(dnsStatus || {});
+                    if (!entries.length) return null;
+                    const resolved   = entries.filter(([, v]) => v?.ptr);
+                    const unresolved = entries.filter(([, v]) => !v?.ptr);
+                    const allOk = unresolved.length === 0;
+                    return (
+                      <div className="border border-slate-200 rounded-lg overflow-hidden">
+                        {/* Summary header */}
+                        <div className={`flex items-center justify-between px-3 py-2 border-b ${allOk ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
+                          <span className={`text-xs font-semibold ${allOk ? 'text-emerald-800' : 'text-amber-800'}`}>
+                            {entries.length} IPs checked — {resolved.length} resolved
+                            {unresolved.length > 0 && <span className="text-amber-600"> · {unresolved.length} unresolved</span>}
+                          </span>
+                          <span className="text-xs text-slate-400">Last run</span>
+                        </div>
+                        {/* Resolved PTR records */}
+                        {resolved.length > 0 && (
+                          <div className="max-h-48 overflow-y-auto divide-y divide-slate-100">
+                            {resolved.map(([ip, v]) => (
+                              <div key={ip} className="flex items-center gap-3 px-3 py-1.5 bg-white text-xs">
+                                <span className="font-mono text-slate-400 w-28 flex-shrink-0">{ip}</span>
+                                <span className="text-slate-700 truncate">{v.ptr}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {/* Unresolved IPs (shown only if there are any) */}
+                        {unresolved.length > 0 && (
+                          <div className="border-t border-slate-100">
+                            <div className="px-3 py-1.5 bg-slate-50 text-xs text-slate-400 font-medium">No PTR record</div>
+                            <div className="max-h-24 overflow-y-auto divide-y divide-slate-100">
+                              {unresolved.map(([ip]) => (
+                                <div key={ip} className="flex items-center gap-3 px-3 py-1.5 bg-white text-xs">
+                                  <span className="font-mono text-slate-400 w-28 flex-shrink-0">{ip}</span>
+                                  <span className="text-slate-400 italic">—</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
               </div>
             )}
 
@@ -4117,7 +4190,10 @@ export default function IPAddressManager() {
             setShowSettings(false);
           }}
           dnsConfig={dnsConfig}
+          dnsStatus={dnsStatus}
+          dnsLoading={dnsLoading}
           onSaveDnsConfig={handleSaveDnsConfig}
+          onRunDns={() => fetchDnsStatus(true)}
           proxmoxSyncConfig={proxmoxSyncConfig}
           proxmoxSyncStatus={proxmoxSyncStatus}
           proxmoxSyncLoading={proxmoxSyncLoading}
