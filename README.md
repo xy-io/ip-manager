@@ -24,8 +24,10 @@ Managing a home lab network across servers, VMs, containers, cameras, switches, 
 - **Full backup & restore** — download a single JSON file containing all networks, all IP entries, tags, notes, and change history; restore it on any machine in one click
 - **Import from CSV / Excel** — 3-step modal with column mapping, validation, and merge or replace modes
 - **Export to Excel** — downloads a fully formatted `.xlsx` preserving all your data
-- **Switch views** between Cards (visual) and Table (dense, sortable) layouts
+- **Service icons** — cards and table rows automatically display the real logo for 100+ common self-hosted services (Home Assistant, Proxmox, Sonarr, Pi-hole, Vaultwarden, Nextcloud, and many more) using the selfh.st icon library, with dark-mode variants and a Lucide fallback
+- **Switch views** between Cards (visual) and Table (dense, sortable) layouts with IPs always sorted numerically
 - **Keyboard shortcuts** — `/` to search, `Esc` to clear/close, `t`/`c` to switch views
+- **Mobile-friendly** — toolbar collapses to a compact Tools dropdown on narrow screens; tag chips scroll horizontally
 - **Configure your network** — subnet, DHCP range, static range, and DHCP reservations via the Settings panel — no code editing required
 - **Ping / reachability** — live green/red status dots on every IP; auto-refreshes every 60 seconds in the background
 
@@ -42,9 +44,17 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
-### v1.16 Features
+### v1.17 Features
 
-**Multiple IPs per host (Option A — host grouping)** — A server or VM with multiple network interfaces can now have all its IPs linked together in the manager. Open the Edit modal for the primary IP, scroll to the new **Secondary IPs** section, and pick any other entry from the dropdown to link it. The primary card shows the secondary IP addresses as small blue chips; secondary cards show a "↳ Primary name" label so you always know which host they belong to. The same display appears in table view. Unlinking removes the association instantly. The data model uses a lightweight `hostId` field on each entry — existing data is unaffected, and the grouping can be upgraded to a richer model later without any migration risk. Proxmox import now automatically groups entries when a single VM or LXC reports multiple IP addresses (multi-NIC or multi-VLAN setups).
+**selfh.st service icons** — IP cards and table rows now display the real logo for the service running on each host, pulled from the [selfh.st/icons](https://selfh.st/icons) library. A curated map covers 100+ common self-hosted services. Multi-word phrases (e.g. "Nginx Proxy Manager") resolve before shorter keywords to avoid false matches. Dark mode requests the `-light` variant automatically, with a two-level CDN fallback to the coloured icon then the Lucide icon.
+
+**IP sort order** — Cards view now always renders entries in numerical IP order regardless of when they were added or imported. Claiming a free IP no longer places its card at the end of the list.
+
+**Mobile toolbar** — On screens narrower than 768 px the toolbar collapses to a status badge, Cards / Table toggle, and a **Tools ▾** dropdown. All action buttons are accessible in the dropdown; tapping one auto-closes the panel.
+
+**Mobile header improvements** — Title stays on one line at all screen widths; Network Overview box is hidden on mobile; tag chips scroll horizontally instead of wrapping across multiple rows.
+
+**Sync result logs** — Settings → Proxmox Scheduled Sync and Settings → DNS Reverse Lookup both now show a result panel below their Run Now button: spinner while running, green "no changes" confirmation, red error block on failure, and (for Proxmox) a per-entry diff list showing exactly what changed on the last run; (for DNS) resolved PTR record counts and a scrollable list of results.
 
 → Full version history: [CHANGELOG.md](./CHANGELOG.md)
 
@@ -230,6 +240,9 @@ See [`IP_Manager_Roadmap.docx`](./IP_Manager_Roadmap.docx) for the full three-ph
 - ✅ **DNS reverse lookup** — PTR lookup for all tracked IPs, mismatch detection, configurable DNS server — shipped in v1.14
 - ✅ **Proxmox scheduled sync** — background sync with HA failover detection, configurable interval, change history — shipped in v1.15
 - ✅ **Multiple IPs per host** — link secondary IPs to a primary entry; chips on cards and table rows; Proxmox auto-groups multi-NIC VMs — shipped in v1.16
+- ✅ **selfh.st service icons** — auto-matched logos for 100+ self-hosted services; dark-mode variants; Lucide fallback — shipped in v1.17
+- ✅ **Mobile responsive UI** — collapsible Tools dropdown, scaled header, horizontal tag chips — shipped in v1.17
+- ✅ **Sync result logs** — last-run result panels in Proxmox and DNS settings with per-entry diffs — shipped in v1.17
 - **Service health checks** — HTTP/HTTPS probes with UP/DOWN badges alongside ping
 - **ARP scan — background** — periodic scheduled sweeps that update a "last seen" timestamp and surface newly appeared or disappeared devices automatically
 

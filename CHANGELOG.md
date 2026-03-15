@@ -6,6 +6,26 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v1.17
+
+**selfh.st service icons** — IP cards and the table view now attempt to display the real logo for the service running on each host, pulled from the [selfh.st/icons](https://selfh.st/icons) library (1,000+ self-hosted app icons served via jsDelivr CDN). A curated map of 100+ common services (Home Assistant, Proxmox, Sonarr, Pi-hole, Vaultwarden, Nextcloud, Gitea, Immich, and many more) maps service names to CDN slugs. Multi-word phrases are matched before shorter keywords so "Nginx Proxy Manager" resolves to the correct icon rather than the generic Nginx one. Dark mode automatically requests the `-light` variant of each icon. Two-level fallback: if the light variant is missing the coloured icon is tried; if neither exists the existing Lucide icon is shown. Icon matching is scoped to the service name field only — a hostname that happens to contain a keyword can no longer hijack the icon for an unrelated service.
+
+**IP sort order** — The cards view now always renders entries in numerical IP order (e.g. .1, .2, .10 … .254) regardless of when they were added or imported. Previously, claiming a free IP placed its card at the end of the list. Both cards and table views now use the same sorted pipeline.
+
+**Mobile responsive toolbar** — On screens narrower than 768 px the full toolbar collapses to three compact items: status badge, Cards / Table toggle, and a **Tools ▾** dropdown button. Tapping Tools expands an inline panel with all action buttons (Proxmox, ARP Scan, Ping, DNS, Import, Export, Add Network, Dark mode, Help, Settings, Sign out). Tapping any button in the panel auto-closes it.
+
+**Mobile header improvements** — Title font scales down to stay on one line; the Network Overview box (DHCP / Static / Reservations info) is hidden on mobile to save vertical space; tag filter chips scroll horizontally in a single row rather than wrapping across multiple lines.
+
+**Sync result logs** — Both **Settings → Proxmox Scheduled Sync** and **Settings → DNS Reverse Lookup** now have a Run Now / Sync Now button with a result panel below it. The Proxmox panel shows: a spinner while running, a green "no drift" state, a red error block on failure, or an amber per-entry diff list (IP, name, and field-level from → to for node, asset name, and notes). The DNS panel shows: a spinner while resolving, a summary header (N resolved · M unresolved), a scrollable list of resolved PTR records, and a separate section for IPs with no PTR record.
+
+---
+
+## v1.16
+
+**Multiple IPs per host (host grouping)** — A server or VM with multiple network interfaces can now have all its IPs linked together. Open the Edit modal for the primary IP, scroll to the new **Secondary IPs** section, and pick any other entry from the dropdown to link it. The primary card shows secondary IP addresses as small blue chips; secondary cards show a "↳ Primary name" label. The same display appears in table view. Unlinking removes the association instantly. The data model uses a lightweight `hostId` field — existing data is unaffected. Proxmox import automatically groups entries when a single VM or LXC reports multiple IP addresses (multi-NIC or multi-VLAN setups).
+
+---
+
 ## v1.15
 
 **Proxmox scheduled sync** — Background sync that re-queries Proxmox on a configurable schedule (default hourly, minimum 15 min) and updates any entries tagged `proxmox` that have drifted — primarily for HA failover where a VM/LXC migrates to a different node. Changes recorded in each entry's change history. Configured in **Settings → Proxmox Scheduled Sync** with a Sync Now button for manual runs.
