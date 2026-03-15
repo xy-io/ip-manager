@@ -661,7 +661,7 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
                     </div>
                   )}
 
-                  {!proxmoxSyncStatus?.running && !proxmoxSyncStatus?.lastError && proxmoxSyncConfig?.lastRun && proxmoxSyncStatus?.changesFound === 0 && (
+                  {!proxmoxSyncStatus?.running && !proxmoxSyncStatus?.lastError && proxmoxSyncConfig?.lastRun && (proxmoxSyncStatus?.changesFound ?? 0) === 0 && (proxmoxSyncStatus?.changeLog ?? []).length === 0 && (
                     <div className="flex items-center gap-2 px-3 py-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-700">
                       <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" />
                       All entries up to date — no drift detected
@@ -3649,10 +3649,11 @@ export default function IPAddressManager() {
     }
   };
 
-  // Load Proxmox sync config on mount
+  // Load Proxmox sync config + last-run status on mount
   useEffect(() => {
     if (persistMode !== 'api') return;
     fetchProxmoxSyncConfig();
+    fetchProxmoxSyncStatus(); // populates changesFound/changeLog so the log panel renders immediately
   }, [persistMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Derived network state ────────────────────────────────────────────────────
