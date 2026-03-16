@@ -6,6 +6,12 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v1.19
+
+**Proxmox VM live status** — Every entry tagged `proxmox` now shows a small power-state badge alongside its type badge (LXC / Virtual), both on cards and in the table Type column. Badges: **▶ running** (emerald), **■ stopped** (slate), **⏸ paused** (amber). Hovering the badge shows the VMID and node name. The server polls Proxmox every 60 seconds using the existing API credentials stored for scheduled sync — no extra configuration required. Status is fetched via a targeted lightweight API call per entry using the VMID and node parsed from the notes field written by the importer (`VMID: X | Node: Y`); no full node scan is needed. Results are cached for 30 seconds. Entirely read-only: no commands are ever sent to Proxmox. A new **Proxmox VM Status** section has been added to the in-app Help & Reference guide.
+
+---
+
 ## v1.18
 
 **Service health checks** — Opt-in HTTP/HTTPS probe per entry. Open the Edit modal for any assigned IP and scroll to the new **Service Health Check** section. Set the scheme (http/https), port, and path; a sky-blue **Auto** button pre-fills sensible defaults for 60+ known applications (Home Assistant, Proxmox, Sonarr, Grafana, Pi-hole, Gitea, and many more). The server runs a lightweight GET request against every configured endpoint every 60 seconds using Node's built-in `http`/`https` modules — no extra packages required. TLS certificate errors are always ignored (self-signed certs are the norm in home-lab setups). Results appear as a second coloured dot alongside the ping dot: **sky blue** = service up (HTTP < 500), **orange** = service down (timeout, connection refused, or HTTP 5×). Hovering the dot shows the probe URL and last status code. Clearing the port field disables the check for that entry.

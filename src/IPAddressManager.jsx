@@ -2119,6 +2119,7 @@ function HelpModal({ onClose }) {
     { id: 'networks',   label: 'Networks & Settings' },
     { id: 'proxmox',    label: 'Proxmox Import' },
     { id: 'proxmoxsync', label: 'Proxmox Sync' },
+    { id: 'proxmoxstatus', label: 'Proxmox VM Status' },
     { id: 'hostgroup',  label: 'Multiple IPs per Host' },
     { id: 'arp',        label: 'ARP Scan' },
     { id: 'ping',       label: 'Ping / Reachability' },
@@ -2219,6 +2220,10 @@ function HelpModal({ onClose }) {
           <div className="flex items-center gap-3"><Badge color="blue">Fixed</Badge><span className="text-sm text-slate-600">DHCP reservation — the router always gives this device the same IP.</span></div>
           <div className="flex items-center gap-3"><Badge color="slate">LXC / VM / Physical…</Badge><span className="text-sm text-slate-600">Device type — shown when the IP is in the static range and has no other badge.</span></div>
           <div className="flex items-center gap-3"><Badge color="violet">tag name</Badge><span className="text-sm text-slate-600">Tags assigned to the entry — searchable and filterable.</span></div>
+          <div className="flex items-center gap-3">
+            <span className="px-2 py-0.5 text-xs font-medium rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200 whitespace-nowrap">▶ running</span>
+            <span className="text-sm text-slate-600">Proxmox VM/LXC power state — shown on proxmox-tagged entries. See <strong>Proxmox VM Status</strong> for details.</span>
+          </div>
         </div>
       </div>
     ),
@@ -2336,6 +2341,39 @@ function HelpModal({ onClose }) {
 
         <H3>Things it won't do</H3>
         <P>The sync never adds new entries — if a new VM appears in Proxmox, you still import it manually via the Proxmox button. It also won't overwrite fields you've customised (like tags, service, or location) on entries that aren't tagged <code className="font-mono bg-slate-100 px-1 rounded text-xs">proxmox</code>.</P>
+      </div>
+    ),
+
+    proxmoxstatus: (
+      <div>
+        <H2>Proxmox VM Status</H2>
+        <P>For every entry tagged <code className="font-mono bg-slate-100 px-1 rounded text-xs">proxmox</code>, the app polls Proxmox every 60 seconds and shows the current power state of the VM or LXC directly on the card and table row.</P>
+
+        <H3>State badges</H3>
+        <div className="space-y-2 mb-4">
+          <div className="flex items-center gap-3 text-sm text-slate-600">
+            <span className="px-2 py-0.5 text-xs font-medium rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200">▶ running</span>
+            <span>VM or LXC is powered on and running.</span>
+          </div>
+          <div className="flex items-center gap-3 text-sm text-slate-600">
+            <span className="px-2 py-0.5 text-xs font-medium rounded-full border bg-slate-100 text-slate-500 border-slate-200">■ stopped</span>
+            <span>VM or LXC is shut down.</span>
+          </div>
+          <div className="flex items-center gap-3 text-sm text-slate-600">
+            <span className="px-2 py-0.5 text-xs font-medium rounded-full border bg-amber-50 text-amber-700 border-amber-200">⏸ paused</span>
+            <span>VM is suspended (QEMU pause state).</span>
+          </div>
+        </div>
+        <P>The badge appears alongside the type badge (LXC / Virtual) in the top-right of the card and in the Type column of the table. Hovering it shows the VMID and node name. No badge is shown if the state can't be determined or Proxmox is not configured.</P>
+
+        <H3>How it works</H3>
+        <P>The VMID and node name are read from the notes field written by the Proxmox importer (<code className="font-mono bg-slate-100 px-1 rounded text-xs">VMID: 101 | Node: pve1</code>). The server makes a targeted lightweight API call to Proxmox for each entry — no full node scan is needed. Results are cached for 30 seconds and auto-refreshed every 60 seconds in the background. This is entirely read-only; no commands are ever sent to Proxmox.</P>
+
+        <H3>Requirements</H3>
+        <P>Proxmox sync credentials must be configured in <strong>Settings → Proxmox Scheduled Sync</strong>. The same API token is reused — no extra configuration needed. If credentials are not set, the status badges are simply not shown.</P>
+
+        <H3>Notes manually edited</H3>
+        <P>If you have manually edited the notes field for a Proxmox entry and removed the <code className="font-mono bg-slate-100 px-1 rounded text-xs">VMID: X | Node: Y</code> portion, the status badge won't appear for that entry. The sync will re-write the notes on its next run, restoring the badge.</P>
       </div>
     ),
 
@@ -3562,6 +3600,9 @@ export default function IPAddressManager() {
   const [healthStatus, setHealthStatus] = useState({});
   const [healthLoading, setHealthLoading] = useState(false);
 
+  // Proxmox VM live status — { [ip]: { status: 'running'|'stopped'|'paused'|'unknown' } }
+  const [proxmoxVmStatus, setProxmoxVmStatus] = useState({});
+
   // DNS reverse lookup — { [ip]: { ptr: string | null } }
   const [dnsStatus,  setDnsStatus]  = useState({});
   const [dnsLoading, setDnsLoading] = useState(false);
@@ -3775,6 +3816,25 @@ export default function IPAddressManager() {
     if (persistMode !== 'api') return;
     fetchHealthStatus();
     const timer = setInterval(() => fetchHealthStatus(), 60_000);
+    return () => clearInterval(timer);
+  }, [persistMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Proxmox VM live status ───────────────────────────────────────────────────
+  const fetchProxmoxVmStatus = async (force = false) => {
+    if (persistMode !== 'api') return;
+    try {
+      const res = await fetch(`/api/proxmox-vm-status${force ? '?force=1' : ''}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setProxmoxVmStatus(data.results || {});
+    } catch { /* silently ignore — Proxmox may not be configured */ }
+  };
+
+  // Initial fetch + 60-second auto-poll
+  useEffect(() => {
+    if (persistMode !== 'api') return;
+    fetchProxmoxVmStatus();
+    const timer = setInterval(() => fetchProxmoxVmStatus(), 60_000);
     return () => clearInterval(timer);
   }, [persistMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -5135,6 +5195,24 @@ export default function IPAddressManager() {
                             {item.type}
                           </span>
                         )}
+                        {!isFree && !isReserved && (() => {
+                          const vmState = proxmoxVmStatus[item.ip];
+                          if (!vmState || vmState.status === 'unknown') return null;
+                          const cfg = {
+                            running: { cls: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: '▶', label: 'running' },
+                            stopped: { cls: 'bg-slate-100 text-slate-500 border-slate-200',    icon: '■', label: 'stopped' },
+                            paused:  { cls: 'bg-amber-50  text-amber-700  border-amber-200',   icon: '⏸', label: 'paused'  },
+                          }[vmState.status];
+                          if (!cfg) return null;
+                          return (
+                            <span
+                              title={`Proxmox VM ${vmState.status} — VMID ${vmState.vmid} on ${vmState.node}`}
+                              className={`px-2 py-0.5 text-xs font-medium rounded-full border ${cfg.cls}`}
+                            >
+                              {cfg.icon} {cfg.label}
+                            </span>
+                          );
+                        })()}
                       </div>
                     </div>
 
@@ -5527,11 +5605,31 @@ export default function IPAddressManager() {
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          {item.type && (
-                            <span className={`px-2 py-0.5 text-xs font-medium rounded-full border ${getTypeColor(item.type)}`}>
-                              {item.type}
-                            </span>
-                          )}
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {item.type && (
+                              <span className={`px-2 py-0.5 text-xs font-medium rounded-full border ${getTypeColor(item.type)}`}>
+                                {item.type}
+                              </span>
+                            )}
+                            {!isFree && !isReserved && (() => {
+                              const vmState = proxmoxVmStatus[item.ip];
+                              if (!vmState || vmState.status === 'unknown') return null;
+                              const cfg = {
+                                running: { cls: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: '▶', label: 'running' },
+                                stopped: { cls: 'bg-slate-100 text-slate-500 border-slate-200',    icon: '■', label: 'stopped' },
+                                paused:  { cls: 'bg-amber-50  text-amber-700  border-amber-200',   icon: '⏸', label: 'paused'  },
+                              }[vmState.status];
+                              if (!cfg) return null;
+                              return (
+                                <span
+                                  title={`Proxmox VM ${vmState.status} — VMID ${vmState.vmid} on ${vmState.node}`}
+                                  className={`px-2 py-0.5 text-xs font-medium rounded-full border ${cfg.cls}`}
+                                >
+                                  {cfg.icon} {cfg.label}
+                                </span>
+                              );
+                            })()}
+                          </div>
                         </td>
                         <td className="px-4 py-3">
                           {item.location && (

@@ -674,6 +674,86 @@ app.get('/api/service-health', requireAuth, async (req, res) => {
   });
 });
 
+// ── Proxmox VM live status ────────────────────────────────────────────────────
+// Polls the running/stopped/paused state of every Proxmox-tagged entry.
+// Matches entries via the "VMID: X | Node: Y" pattern written into the notes
+// field by the importer and sync — no schema changes required.
+// Read-only: we query state only, never send commands to Proxmox.
+
+let proxmoxVmStatusCache = { results: {}, timestamp: 0 };
+const PROXMOX_STATUS_TTL      = 30 * 1000; // 30 s — serve cached within this window
+const PROXMOX_STATUS_INTERVAL = 60 * 1000; // 60 s — background re-scan cadence
+
+// Parse "VMID: 101 | Node: pve1" from the notes field written by importer/sync.
+function parseProxmoxNotes(notes) {
+  if (!notes) return null;
+  const vmidMatch = notes.match(/VMID:\s*(\d+)/i);
+  const nodeMatch = notes.match(/Node:\s*([^\s|]+)/i);
+  if (!vmidMatch || !nodeMatch) return null;
+  return { vmid: vmidMatch[1], node: nodeMatch[1].trim() };
+}
+
+async function runProxmoxVmStatusCheck() {
+  const config = getProxmoxSyncConfig();
+  if (!config.host || !config.token) return; // not configured — skip silently
+
+  // Normalise host / port (same logic as sync and discover endpoints)
+  let host = config.host.replace(/^https?:\/\//i, '').trim().replace(/\/+$/, '');
+  let port = 8006;
+  const colonIdx = host.lastIndexOf(':');
+  if (colonIdx > 0 && !host.includes(']')) {
+    const maybePort = parseInt(host.slice(colonIdx + 1));
+    if (!isNaN(maybePort)) { port = maybePort; host = host.slice(0, colonIdx); }
+  }
+
+  const ipData = dbGet('ip_data') || [];
+  const targets = ipData.filter(e =>
+    e.ip && (e.tags || []).includes('proxmox') && parseProxmoxNotes(e.notes)
+  );
+  if (!targets.length) return;
+
+  const probes = targets.map(async (entry) => {
+    const parsed = parseProxmoxNotes(entry.notes);
+    if (!parsed) return null;
+    const { vmid, node } = parsed;
+    // Determine API path: LXC entries have type 'LXC'; everything else is qemu
+    const kind = entry.type === 'LXC' ? 'lxc' : 'qemu';
+    try {
+      const data = await proxmoxFetch(
+        host, port,
+        `/nodes/${node}/${kind}/${vmid}/status/current`,
+        config.token, !!config.ignoreTLS
+      );
+      return { ip: entry.ip, status: data.status || 'unknown', vmid, node, kind };
+    } catch {
+      return { ip: entry.ip, status: 'unknown', vmid, node, kind };
+    }
+  });
+
+  const settled = (await Promise.all(probes)).filter(Boolean);
+  const results = {};
+  for (const { ip, status, vmid, node, kind } of settled) {
+    results[ip] = { status, vmid, node, kind };
+  }
+  proxmoxVmStatusCache = { results, timestamp: Date.now() };
+}
+
+// Background poller — only fires if Proxmox is configured
+runProxmoxVmStatusCheck();
+setInterval(runProxmoxVmStatusCheck, PROXMOX_STATUS_INTERVAL);
+
+// GET /api/proxmox-vm-status — returns cached VM state; forces refresh if stale or ?force=1
+app.get('/api/proxmox-vm-status', requireAuth, async (req, res) => {
+  const force = req.query.force === '1';
+  const stale = (Date.now() - proxmoxVmStatusCache.timestamp) > PROXMOX_STATUS_TTL;
+  if (force || stale) await runProxmoxVmStatusCheck();
+  res.json({
+    results:  proxmoxVmStatusCache.results,
+    cachedAt: proxmoxVmStatusCache.timestamp,
+    nextIn:   Math.max(0, PROXMOX_STATUS_INTERVAL - (Date.now() - proxmoxVmStatusCache.timestamp)),
+  });
+});
+
 // ── Proxmox scheduled sync ────────────────────────────────────────────────────
 // Periodically re-queries Proxmox and updates any entries that have drifted
 // (e.g. a VM or LXC migrated to a different node after an HA failover).

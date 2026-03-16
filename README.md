@@ -45,9 +45,9 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
-### v1.18 Features
+### v1.19 Features
 
-**Service health checks** — Opt-in HTTP/HTTPS probe per entry that runs every 60 seconds in the background. Open the Edit modal for any assigned IP and scroll to the new **Service Health Check** section. Set scheme, port, and path; click **Auto** to pre-fill sensible defaults for 60+ known services (Home Assistant, Proxmox, Sonarr, Grafana, Pi-hole, Gitea, and many more). Results appear as a second coloured dot alongside the ping dot: sky blue = service responding, orange = down or unreachable. Hover the dot to see the full probe URL and HTTP status code. TLS certificate errors are always ignored. Uses Node's built-in `http`/`https` modules — no extra packages needed.
+**Proxmox VM live status** — Every entry tagged `proxmox` now shows a power-state badge alongside its type badge on cards and in the table Type column. **▶ running** (emerald), **■ stopped** (slate), **⏸ paused** (amber). Hovering shows the VMID and node name. The server polls Proxmox every 60 seconds using the credentials already stored for scheduled sync — no extra configuration needed. Entirely read-only: no commands are ever sent to Proxmox. A new **Proxmox VM Status** section has been added to the Help & Reference guide.
 
 → Full version history: [CHANGELOG.md](./CHANGELOG.md)
 
@@ -235,7 +235,7 @@ ip-manager/
 - ✅ **Mobile responsive UI** — collapsible Tools dropdown, scaled header, horizontal tag chips — shipped in v1.17
 - ✅ **Sync result logs** — last-run result panels in Proxmox and DNS settings with per-entry diffs — shipped in v1.17
 - ✅ **Service health checks** — opt-in HTTP/HTTPS probe per entry; sky-blue/orange dot alongside ping dot; 60+ service auto-suggest; TLS errors ignored — shipped in v1.18
-- **Proxmox live status** (v1.19) — third dot or badge on Proxmox-tagged entries showing running/stopped/paused state via the Proxmox API; credentials already stored
+- ✅ **Proxmox live status** (v1.19) — power-state badge (▶ running / ■ stopped / ⏸ paused) on Proxmox-tagged entries; reuses existing sync credentials; read-only — shipped in v1.19
 - **ARP background scan** (v1.20) — periodic scheduled sweeps that stamp each entry with a "last seen" timestamp; surfaces newly appeared or silently disappeared devices
 
 **Phase 3 — inventory depth & planning tools:**
