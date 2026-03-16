@@ -2,6 +2,9 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Search, Server, Monitor, Wifi, HardDrive, Camera, Shield, Globe, Filter, X, MapPin, Cpu, Box, CircleDot, ChevronDown, ChevronUp, Copy, Check, Zap, Download, Edit3, Plus, Trash2, Save, AlertCircle, Settings, Upload, FileText, AlertTriangle, CheckCircle, ChevronRight, Tag, ArrowUpDown, ArrowUp, ArrowDown, HelpCircle, LogOut, Moon, Sun, MoreHorizontal } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
+// ── App version ───────────────────────────────────────────────────────────────
+const APP_VERSION = 'v1.19';
+
 // Default network configuration (overridden by Settings modal / localStorage)
 const DEFAULT_NETWORK_CONFIG = {
   id: 'net-1',
@@ -260,7 +263,7 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
               <Settings className="w-5 h-5 text-slate-500" />
               Settings
             </h2>
-            <p className="text-sm text-slate-500 mt-0.5">Configure your network and app preferences</p>
+            <p className="text-sm text-slate-500 mt-0.5">Configure your network and app preferences · <span className="font-mono">{APP_VERSION}</span></p>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
             <X className="w-5 h-5 text-slate-500" />
@@ -271,17 +274,22 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
         <div className="flex flex-1 overflow-hidden">
 
           {/* Sidebar nav */}
-          <div className="w-44 border-r border-slate-100 py-3 flex-shrink-0 bg-slate-50 overflow-y-auto rounded-bl-2xl">
-            {settingsTabs.map(tab => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTab(tab.id)}
-                className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${activeTab === tab.id ? 'bg-white text-slate-800 font-semibold shadow-sm border-r-2 border-emerald-500' : 'text-slate-500 hover:text-slate-700 hover:bg-white/60'}`}
-              >
-                {tab.label}
-              </button>
-            ))}
+          <div className="w-44 border-r border-slate-100 py-3 flex-shrink-0 bg-slate-50 overflow-y-auto rounded-bl-2xl flex flex-col">
+            <div className="flex-1">
+              {settingsTabs.map(tab => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${activeTab === tab.id ? 'bg-white text-slate-800 font-semibold shadow-sm border-r-2 border-emerald-500' : 'text-slate-500 hover:text-slate-700 hover:bg-white/60'}`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            <div className="px-4 py-3 border-t border-slate-200 flex-shrink-0">
+              <p className="text-xs text-slate-400 font-mono">IP Manager {APP_VERSION}</p>
+            </div>
           </div>
 
           {/* Content pane */}
@@ -2608,6 +2616,7 @@ function HelpModal({ onClose }) {
           <div className="flex items-center gap-2">
             <HelpCircle className="w-5 h-5 text-slate-600" />
             <h2 className="text-lg font-bold text-slate-800">Help & Reference</h2>
+            <span className="px-1.5 py-0.5 text-xs font-mono font-medium bg-slate-100 text-slate-500 rounded border border-slate-200">{APP_VERSION}</span>
           </div>
           <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors">
             <X className="w-5 h-5 text-slate-400" />
@@ -2618,20 +2627,25 @@ function HelpModal({ onClose }) {
         <div className="flex flex-1 overflow-hidden">
 
           {/* Sidebar */}
-          <div className="w-48 border-r border-slate-100 py-3 flex-shrink-0 overflow-y-auto bg-slate-50 rounded-bl-2xl">
-            {sections.map(s => (
-              <button
-                key={s.id}
-                onClick={() => setActiveSection(s.id)}
-                className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${
-                  activeSection === s.id
-                    ? 'bg-white text-slate-800 font-semibold border-r-2 border-slate-800'
-                    : 'text-slate-500 hover:text-slate-700 hover:bg-white/60'
-                }`}
-              >
-                {s.label}
-              </button>
-            ))}
+          <div className="w-48 border-r border-slate-100 py-3 flex-shrink-0 overflow-y-auto bg-slate-50 rounded-bl-2xl flex flex-col">
+            <div className="flex-1">
+              {sections.map(s => (
+                <button
+                  key={s.id}
+                  onClick={() => setActiveSection(s.id)}
+                  className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${
+                    activeSection === s.id
+                      ? 'bg-white text-slate-800 font-semibold border-r-2 border-slate-800'
+                      : 'text-slate-500 hover:text-slate-700 hover:bg-white/60'
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+            <div className="px-4 py-3 border-t border-slate-200 flex-shrink-0">
+              <p className="text-xs text-slate-400 font-mono">IP Manager {APP_VERSION}</p>
+            </div>
           </div>
 
           {/* Content */}
