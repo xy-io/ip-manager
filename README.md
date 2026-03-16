@@ -214,9 +214,7 @@ ip-manager/
 
 ## Roadmap
 
-See [`IP_Manager_Roadmap.docx`](./IP_Manager_Roadmap.docx) for the full three-phase roadmap.
-
-**Phase 1 — near-term (Q1–Q2 2026):**
+**Phase 1 — foundation (shipped):**
 - ✅ Tag support, sort controls, last modified date, keyboard shortcuts — shipped
 - ✅ Bulk selection & bulk edit, Location management, Free IPs in main list — shipped in v1.7
 - ✅ Change history / audit log — shipped in v1.7
@@ -227,7 +225,7 @@ See [`IP_Manager_Roadmap.docx`](./IP_Manager_Roadmap.docx) for the full three-ph
 - ✅ ARP network scan — one-shot subnet sweep, cross-references against manager, import untracked devices — shipped in v1.11
 - ✅ DHCP toggle — disable DHCP pool per network for fully static setups — shipped in v1.11
 
-**Phase 2 — mid-term (Q3–Q4 2026):**
+**Phase 2 — live data & integrations (shipped / near-term):**
 - ✅ **Ping / reachability** — live green/red status dots on every IP, auto-poll every 60 s, manual refresh button — shipped in v1.12
 - ✅ **Help & Reference modal** — full in-app reference guide with 11 sections — shipped in v1.13
 - ✅ **DNS reverse lookup** — PTR lookup for all tracked IPs, mismatch detection, configurable DNS server — shipped in v1.14
@@ -237,15 +235,26 @@ See [`IP_Manager_Roadmap.docx`](./IP_Manager_Roadmap.docx) for the full three-ph
 - ✅ **Mobile responsive UI** — collapsible Tools dropdown, scaled header, horizontal tag chips — shipped in v1.17
 - ✅ **Sync result logs** — last-run result panels in Proxmox and DNS settings with per-entry diffs — shipped in v1.17
 - ✅ **Service health checks** — opt-in HTTP/HTTPS probe per entry; sky-blue/orange dot alongside ping dot; 60+ service auto-suggest; TLS errors ignored — shipped in v1.18
-- **ARP scan — background** — periodic scheduled sweeps that update a "last seen" timestamp and surface newly appeared or disappeared devices automatically
+- **Proxmox live status** (v1.19) — third dot or badge on Proxmox-tagged entries showing running/stopped/paused state via the Proxmox API; credentials already stored
+- **ARP background scan** (v1.20) — periodic scheduled sweeps that stamp each entry with a "last seen" timestamp; surfaces newly appeared or silently disappeared devices
 
-**Phase 3 — longer-term (2027+):**
-- **Proxmox live status** — real-time VM/LXC power state badges using the Proxmox API
-- **Wake-on-LAN** — send a WoL magic packet to any device with a known MAC address directly from the UI
-- **ARP scan — scheduled background** — rate-limited, subnet-scoped background scans with "last seen" timestamps
-- Network topology map, uptime alerts, REST API
+**Phase 3 — inventory depth & planning tools:**
+- **CIDR calculator** (v1.21) — built-in utility panel: enter any CIDR block, get back usable range, broadcast address, host count, and wildcard mask; no need to leave the app when planning a new VLAN
+- **QR codes** (v1.21) — generate a QR code for any entry's management URL or IP; useful for physically labelling rack equipment so you can scan and jump straight to the device
+- **Subnet visualiser + Planned blocks** (v1.22) — heat-map grid of all addresses in a subnet showing free/used/DHCP/static at a glance; overlay named colour-coded planned blocks (e.g. "Camera VLAN expansion") on the grid for deliberate network planning
+- **MAC address + vendor lookup** (v1.23) — store MAC address per entry; auto-resolve manufacturer from a bundled OUI table (no external API); shown as a small label on cards
+- **SSH / HTTP quick-launch** (v1.23) — clickable link icons on each card derived from the stored health check URL or IP; opens management interface or SSH session in one click
+- **Dependency mapping** (v1.24) — link entries as dependencies (e.g. media server depends on NAS); when a dependency's ping or health dot is red/orange, the dependent card shows a small "⚠ dependency down" indicator
+- **Per-entry audit log** (v1.25) — drill down from any card into the full change history for that specific entry; filters the existing global audit log by IP
+- **Bulk add from Proxmox sync** (v1.25) — opt-in toggle to auto-add newly discovered Proxmox VMs/LXCs rather than only updating existing entries
+- **Custom fields** (v1.26) — user-definable key/value pairs per entry (e.g. "Serial number", "VLAN ID", "Purchase date"); searchable and importable via CSV
+- **Entry templates** (v1.26) — pre-define common entry configurations (type, location, tags, health port) in Settings; apply a template when claiming a new IP to skip repetitive form filling
+- **Topology view** (v1.27) — interactive graph derived from existing relationships (Proxmox host → VMs/LXCs, primary → secondary IPs, dependency links); no manual wiring required
+
+**Phase 4 — longer-term:**
 - **Multi-user auth** — per-user accounts with role-based access (read-only vs admin)
 - **iOS native app** — native iPhone/iPad app for at-a-glance network status and quick IP lookups on the go
+- REST API for external integrations
 
 ---
 
