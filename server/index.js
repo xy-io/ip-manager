@@ -8,6 +8,7 @@ const Database = require('better-sqlite3');
 const cookieParser = require('cookie-parser');
 const crypto = require('crypto');
 const https = require('https');
+const http  = require('http');
 const path = require('path');
 const fs = require('fs');
 const { exec, execFile } = require('child_process');
@@ -608,6 +609,68 @@ app.get('/api/ping-status', requireAuth, async (req, res) => {
     warning:   pingCache.warning,
     cachedAt:  pingCache.timestamp,
     nextIn:    Math.max(0, PING_INTERVAL - (Date.now() - pingCache.timestamp)),
+  });
+});
+
+// ── Service health checks ─────────────────────────────────────────────────────
+// Opt-in HTTP/HTTPS probe per entry.  Entries with a non-empty `healthPort`
+// field are included in the background scan.  TLS cert errors are always
+// ignored (self-signed certs are the norm in home-lab environments).
+
+let serviceHealthCache = { results: {}, timestamp: 0 };
+const HEALTH_CACHE_TTL = 20 * 1000; // 20 s — serve cached within this window
+const HEALTH_INTERVAL  = 60 * 1000; // 60 s — background re-scan cadence
+
+function probeService(scheme, ip, port, path, timeoutMs = 4000) {
+  return new Promise((resolve) => {
+    const mod = scheme === 'https' ? https : http;
+    const options = {
+      hostname: ip,
+      port:     parseInt(port, 10),
+      path:     path || '/',
+      method:   'GET',
+      timeout:  timeoutMs,
+      rejectUnauthorized: false,
+      headers: { 'User-Agent': 'IPManager-HealthCheck/1.0', 'Connection': 'close' },
+    };
+    const req = mod.request(options, (res) => {
+      res.resume(); // drain body so socket is released
+      resolve({ status: res.statusCode < 500 ? 'up' : 'down', code: res.statusCode });
+    });
+    req.on('timeout', () => { req.destroy(); resolve({ status: 'down', code: null }); });
+    req.on('error',   () =>                  resolve({ status: 'down', code: null }));
+    req.end();
+  });
+}
+
+async function runServiceHealthChecks() {
+  const rows = dbGet('ip_data') || [];
+  const targets = rows.filter(r => r.ip && r.status !== 'free' && r.healthPort);
+  if (!targets.length) return;
+
+  const probes = targets.map(r =>
+    probeService(r.healthScheme || 'http', r.ip, r.healthPort, r.healthPath || '/')
+      .then(result => ({ ip: r.ip, ...result }))
+  );
+  const settled = await Promise.all(probes);
+  const results = {};
+  for (const { ip, status, code } of settled) results[ip] = { status, code };
+  serviceHealthCache = { results, timestamp: Date.now() };
+}
+
+// Background poller — runs immediately on startup, then every HEALTH_INTERVAL
+runServiceHealthChecks();
+setInterval(runServiceHealthChecks, HEALTH_INTERVAL);
+
+// GET /api/service-health — returns cached results; forces refresh if stale or ?force=1
+app.get('/api/service-health', requireAuth, async (req, res) => {
+  const force = req.query.force === '1';
+  const stale = (Date.now() - serviceHealthCache.timestamp) > HEALTH_CACHE_TTL;
+  if (force || stale) await runServiceHealthChecks();
+  res.json({
+    results:  serviceHealthCache.results,
+    cachedAt: serviceHealthCache.timestamp,
+    nextIn:   Math.max(0, HEALTH_INTERVAL - (Date.now() - serviceHealthCache.timestamp)),
   });
 });
 

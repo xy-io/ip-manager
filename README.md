@@ -30,6 +30,7 @@ Managing a home lab network across servers, VMs, containers, cameras, switches, 
 - **Mobile-friendly** — toolbar collapses to a compact Tools dropdown on narrow screens; tag chips scroll horizontally
 - **Configure your network** — subnet, DHCP range, static range, and DHCP reservations via the Settings panel — no code editing required
 - **Ping / reachability** — live green/red status dots on every IP; auto-refreshes every 60 seconds in the background
+- **Service health checks** — opt-in HTTP/HTTPS probe per entry; sky-blue dot (up) or orange dot (down) alongside the ping dot; port auto-suggest for 60+ known services; TLS errors ignored for self-signed certs
 
 ### Network-Aware
 
@@ -44,17 +45,9 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
-### v1.17 Features
+### v1.18 Features
 
-**selfh.st service icons** — IP cards and table rows now display the real logo for the service running on each host, pulled from the [selfh.st/icons](https://selfh.st/icons) library. A curated map covers 100+ common self-hosted services. Multi-word phrases (e.g. "Nginx Proxy Manager") resolve before shorter keywords to avoid false matches. Dark mode requests the `-light` variant automatically, with a two-level CDN fallback to the coloured icon then the Lucide icon.
-
-**IP sort order** — Cards view now always renders entries in numerical IP order regardless of when they were added or imported. Claiming a free IP no longer places its card at the end of the list.
-
-**Mobile toolbar** — On screens narrower than 768 px the toolbar collapses to a status badge, Cards / Table toggle, and a **Tools ▾** dropdown. All action buttons are accessible in the dropdown; tapping one auto-closes the panel.
-
-**Mobile header improvements** — Title stays on one line at all screen widths; Network Overview box is hidden on mobile; tag chips scroll horizontally instead of wrapping across multiple rows.
-
-**Sync result logs** — Settings → Proxmox Scheduled Sync and Settings → DNS Reverse Lookup both now show a result panel below their Run Now button: spinner while running, green "no changes" confirmation, red error block on failure, and (for Proxmox) a per-entry diff list showing exactly what changed on the last run; (for DNS) resolved PTR record counts and a scrollable list of results.
+**Service health checks** — Opt-in HTTP/HTTPS probe per entry that runs every 60 seconds in the background. Open the Edit modal for any assigned IP and scroll to the new **Service Health Check** section. Set scheme, port, and path; click **Auto** to pre-fill sensible defaults for 60+ known services (Home Assistant, Proxmox, Sonarr, Grafana, Pi-hole, Gitea, and many more). Results appear as a second coloured dot alongside the ping dot: sky blue = service responding, orange = down or unreachable. Hover the dot to see the full probe URL and HTTP status code. TLS certificate errors are always ignored. Uses Node's built-in `http`/`https` modules — no extra packages needed.
 
 → Full version history: [CHANGELOG.md](./CHANGELOG.md)
 
@@ -243,7 +236,7 @@ See [`IP_Manager_Roadmap.docx`](./IP_Manager_Roadmap.docx) for the full three-ph
 - ✅ **selfh.st service icons** — auto-matched logos for 100+ self-hosted services; dark-mode variants; Lucide fallback — shipped in v1.17
 - ✅ **Mobile responsive UI** — collapsible Tools dropdown, scaled header, horizontal tag chips — shipped in v1.17
 - ✅ **Sync result logs** — last-run result panels in Proxmox and DNS settings with per-entry diffs — shipped in v1.17
-- **Service health checks** — HTTP/HTTPS probes with UP/DOWN badges alongside ping
+- ✅ **Service health checks** — opt-in HTTP/HTTPS probe per entry; sky-blue/orange dot alongside ping dot; 60+ service auto-suggest; TLS errors ignored — shipped in v1.18
 - **ARP scan — background** — periodic scheduled sweeps that update a "last seen" timestamp and surface newly appeared or disappeared devices automatically
 
 **Phase 3 — longer-term (2027+):**

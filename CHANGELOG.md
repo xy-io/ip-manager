@@ -6,6 +6,12 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v1.18
+
+**Service health checks** — Opt-in HTTP/HTTPS probe per entry. Open the Edit modal for any assigned IP and scroll to the new **Service Health Check** section. Set the scheme (http/https), port, and path; a sky-blue **Auto** button pre-fills sensible defaults for 60+ known applications (Home Assistant, Proxmox, Sonarr, Grafana, Pi-hole, Gitea, and many more). The server runs a lightweight GET request against every configured endpoint every 60 seconds using Node's built-in `http`/`https` modules — no extra packages required. TLS certificate errors are always ignored (self-signed certs are the norm in home-lab setups). Results appear as a second coloured dot alongside the ping dot: **sky blue** = service up (HTTP < 500), **orange** = service down (timeout, connection refused, or HTTP 5×). Hovering the dot shows the probe URL and last status code. Clearing the port field disables the check for that entry.
+
+---
+
 ## v1.17
 
 **selfh.st service icons** — IP cards and the table view now attempt to display the real logo for the service running on each host, pulled from the [selfh.st/icons](https://selfh.st/icons) library (1,000+ self-hosted app icons served via jsDelivr CDN). A curated map of 100+ common services (Home Assistant, Proxmox, Sonarr, Pi-hole, Vaultwarden, Nextcloud, Gitea, Immich, and many more) maps service names to CDN slugs. Multi-word phrases are matched before shorter keywords so "Nginx Proxy Manager" resolves to the correct icon rather than the generic Nginx one. Dark mode automatically requests the `-light` variant of each icon. Two-level fallback: if the light variant is missing the coloured icon is tried; if neither exists the existing Lucide icon is shown. Icon matching is scoped to the service name field only — a hostname that happens to contain a keyword can no longer hijack the icon for an unrelated service.

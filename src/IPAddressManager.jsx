@@ -1881,6 +1881,83 @@ const getServiceSlug = (apps, assetName) => {
   return svc || null;
 };
 
+// ── Service health check auto-suggest ─────────────────────────────────────────
+// Ordered: longer / more-specific phrases first to prevent prefix shadowing.
+const PORT_SUGGEST = [
+  ['home assistant',       { scheme: 'http',  port: 8123 }],
+  ['proxmox',              { scheme: 'https', port: 8006 }],
+  ['nginx proxy manager',  { scheme: 'http',  port: 81   }],
+  ['portainer',            { scheme: 'https', port: 9443 }],
+  ['vaultwarden',          { scheme: 'http',  port: 80   }],
+  ['nextcloud',            { scheme: 'https', port: 443  }],
+  ['gitea',                { scheme: 'http',  port: 3000 }],
+  ['immich',               { scheme: 'http',  port: 2283 }],
+  ['sonarr',               { scheme: 'http',  port: 8989 }],
+  ['radarr',               { scheme: 'http',  port: 7878 }],
+  ['lidarr',               { scheme: 'http',  port: 8686 }],
+  ['readarr',              { scheme: 'http',  port: 8787 }],
+  ['bazarr',               { scheme: 'http',  port: 6767 }],
+  ['prowlarr',             { scheme: 'http',  port: 9696 }],
+  ['overseerr',            { scheme: 'http',  port: 5055 }],
+  ['jellyseerr',           { scheme: 'http',  port: 5055 }],
+  ['jellyfin',             { scheme: 'http',  port: 8096 }],
+  ['plex',                 { scheme: 'http',  port: 32400 }],
+  ['emby',                 { scheme: 'http',  port: 8096 }],
+  ['audiobookshelf',       { scheme: 'http',  port: 13378 }],
+  ['kavita',               { scheme: 'http',  port: 5000 }],
+  ['pi-hole',              { scheme: 'http',  port: 80   }],
+  ['pihole',               { scheme: 'http',  port: 80   }],
+  ['adguard',              { scheme: 'http',  port: 3000 }],
+  ['unifi',                { scheme: 'https', port: 8443 }],
+  ['grafana',              { scheme: 'http',  port: 3000 }],
+  ['prometheus',           { scheme: 'http',  port: 9090 }],
+  ['influxdb',             { scheme: 'http',  port: 8086 }],
+  ['uptime kuma',          { scheme: 'http',  port: 3001 }],
+  ['netdata',              { scheme: 'http',  port: 19999 }],
+  ['myspeed',              { scheme: 'http',  port: 5216 }],
+  ['speedtest',            { scheme: 'http',  port: 80   }],
+  ['syncthing',            { scheme: 'http',  port: 8384 }],
+  ['qbittorrent',          { scheme: 'http',  port: 8080 }],
+  ['transmission',         { scheme: 'http',  port: 9091 }],
+  ['deluge',               { scheme: 'http',  port: 8112 }],
+  ['sabnzbd',              { scheme: 'http',  port: 8080 }],
+  ['nzbget',               { scheme: 'http',  port: 6789 }],
+  ['paperless',            { scheme: 'http',  port: 8000 }],
+  ['wikijs',               { scheme: 'http',  port: 3000 }],
+  ['bookstack',            { scheme: 'http',  port: 80   }],
+  ['freshrss',             { scheme: 'http',  port: 80   }],
+  ['miniflux',             { scheme: 'http',  port: 8080 }],
+  ['bitwarden',            { scheme: 'http',  port: 80   }],
+  ['gitlab',               { scheme: 'http',  port: 80   }],
+  ['forgejo',              { scheme: 'http',  port: 3000 }],
+  ['drone',                { scheme: 'http',  port: 80   }],
+  ['woodpecker',           { scheme: 'http',  port: 8000 }],
+  ['minio',                { scheme: 'http',  port: 9001 }],
+  ['seafile',              { scheme: 'http',  port: 80   }],
+  ['filebrowser',          { scheme: 'http',  port: 80   }],
+  ['mealie',               { scheme: 'http',  port: 9000 }],
+  ['tandoor',              { scheme: 'http',  port: 80   }],
+  ['recipes',              { scheme: 'http',  port: 80   }],
+  ['nginx',                { scheme: 'http',  port: 80   }],
+  ['apache',               { scheme: 'http',  port: 80   }],
+  ['traefik',              { scheme: 'http',  port: 8080 }],
+  ['caddy',                { scheme: 'http',  port: 80   }],
+  ['haproxy',              { scheme: 'http',  port: 80   }],
+  ['opnsense',             { scheme: 'https', port: 443  }],
+  ['pfsense',              { scheme: 'https', port: 443  }],
+  ['truenas',              { scheme: 'http',  port: 80   }],
+  ['cockpit',              { scheme: 'https', port: 9090 }],
+  ['zabbix',               { scheme: 'http',  port: 80   }],
+];
+
+const getHealthSuggest = (apps) => {
+  const hay = (apps || '').toLowerCase();
+  for (const [keyword, suggestion] of PORT_SUGGEST) {
+    if (hay.includes(keyword)) return suggestion;
+  }
+  return null;
+};
+
 // Tries selfh.st CDN icon first; in dark mode requests the -light variant
 // (white SVG on dark bg), retrying with the standard coloured icon if missing.
 // Falls back to the existing Lucide icon if the CDN has nothing for the slug.
@@ -2045,6 +2122,7 @@ function HelpModal({ onClose }) {
     { id: 'hostgroup',  label: 'Multiple IPs per Host' },
     { id: 'arp',        label: 'ARP Scan' },
     { id: 'ping',       label: 'Ping / Reachability' },
+    { id: 'health',     label: 'Service Health' },
     { id: 'backup',     label: 'Backup & Restore' },
     { id: 'importexp',  label: 'Import & Export' },
     { id: 'dns',        label: 'DNS Lookup' },
@@ -2119,6 +2197,19 @@ function HelpModal({ onClose }) {
             <span><strong>Grey</strong> — status not yet known. Ping hasn't run yet, or the server is starting up.</span>
           </div>
           <P>Free (available) and Reserved IPs are not pinged — dots only appear on assigned entries.</P>
+        </div>
+
+        <H3>Service health dots (opt-in, shown alongside ping dot)</H3>
+        <div className="space-y-2 mb-4">
+          <div className="flex items-center gap-3 text-sm text-slate-600">
+            <span className="inline-block w-2.5 h-2.5 rounded-full bg-sky-400 flex-shrink-0" />
+            <span><strong>Sky blue</strong> — HTTP/HTTPS probe received a response (status &lt; 500). Service up.</span>
+          </div>
+          <div className="flex items-center gap-3 text-sm text-slate-600">
+            <span className="inline-block w-2.5 h-2.5 rounded-full bg-orange-400 flex-shrink-0" />
+            <span><strong>Orange</strong> — connection failed, timed out, or HTTP 5xx. Service down.</span>
+          </div>
+          <P>The health dot only appears when a port has been configured in the entry's Edit modal. Hover the dot to see the probe URL and last status code.</P>
         </div>
 
         <H3>Card / row badges</H3>
@@ -2325,6 +2416,35 @@ function HelpModal({ onClose }) {
 
         <H3>Troubleshooting</H3>
         <P>If you see an amber "Ping unavailable" banner, <code className="font-mono bg-slate-100 px-1 rounded text-xs">fping</code> is either not installed or lacks raw socket permission. Run the update script (<code className="font-mono bg-slate-100 px-1 rounded text-xs">ip-manager-update</code>) on the server to install and configure it automatically.</P>
+      </div>
+    ),
+
+    health: (
+      <div>
+        <H2>Service Health</H2>
+        <P>Service health checks let you verify that an application is actually responding on its HTTP/HTTPS port — useful for detecting a service that is running but has crashed, or a port that has changed.</P>
+
+        <H3>How it works</H3>
+        <P>When a port is configured for an entry, the server makes a lightweight HTTP GET request to that URL every 60 seconds. Any response with a status code below 500 is counted as <strong>up</strong> (this includes redirects and auth pages). Connection failures, timeouts, and 5xx responses are counted as <strong>down</strong>. TLS certificate errors are always ignored — self-signed certificates are common in home-lab environments.</P>
+
+        <H3>Dot colours</H3>
+        <div className="space-y-2 mb-4">
+          <div className="flex items-center gap-3 text-sm text-slate-600">
+            <span className="inline-block w-2.5 h-2.5 rounded-full bg-sky-400 flex-shrink-0" />
+            <span><strong>Sky blue</strong> — service responded (HTTP &lt; 500). Up.</span>
+          </div>
+          <div className="flex items-center gap-3 text-sm text-slate-600">
+            <span className="inline-block w-2.5 h-2.5 rounded-full bg-orange-400 flex-shrink-0" />
+            <span><strong>Orange</strong> — no response, timeout, or HTTP 5xx. Down.</span>
+          </div>
+        </div>
+        <P>The health dot appears <em>alongside</em> the ping dot. An entry can be green (ping up) and orange (service down) if the host is alive but the app has crashed.</P>
+
+        <H3>Configuring a health check</H3>
+        <P>Open the Edit modal for any assigned entry. Scroll to the <strong>Service Health Check</strong> section. Set the scheme (http/https), port, and path. If the service name field matches a known application, an <strong>Auto</strong> button pre-fills suggested values. Leave the port blank to disable the health check for that entry.</P>
+
+        <H3>Hovering the dot</H3>
+        <P>Hovering the dot shows the full probe URL and the last HTTP status code received, so you can quickly verify it is pointing at the right endpoint.</P>
       </div>
     ),
 
@@ -2993,6 +3113,9 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
     apps: item.apps,
     notes: item.notes || '',
     tags: item.tags || [],
+    healthScheme: item.healthScheme || 'http',
+    healthPort:   item.healthPort   || '',
+    healthPath:   item.healthPath   || '/',
   });
   const [tagInput, setTagInput] = useState('');
   const [showTagSuggestions, setShowTagSuggestions] = useState(false);
@@ -3225,6 +3348,76 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
             />
           </div>
 
+          {/* Service Health Check — only shown for assigned, non-reserved entries */}
+          {!isFree && !isReserved && (
+            <div className="pt-2 border-t border-slate-200">
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Service Health Check</label>
+              <p className="text-xs text-slate-400 mb-2">
+                Optional. When a port is set, the server probes this URL every 60 s and shows a coloured dot on the card.
+              </p>
+              <div className="flex items-center gap-2">
+                {/* Scheme selector */}
+                <select
+                  value={formData.healthScheme}
+                  onChange={(e) => setFormData({ ...formData, healthScheme: e.target.value })}
+                  className="px-2 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm bg-white"
+                >
+                  <option value="http">http</option>
+                  <option value="https">https</option>
+                </select>
+                {/* Port */}
+                <input
+                  type="number"
+                  min="1"
+                  max="65535"
+                  value={formData.healthPort}
+                  onChange={(e) => setFormData({ ...formData, healthPort: e.target.value })}
+                  placeholder="Port"
+                  className="w-24 px-2 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
+                />
+                {/* Path */}
+                <input
+                  type="text"
+                  value={formData.healthPath}
+                  onChange={(e) => setFormData({ ...formData, healthPath: e.target.value })}
+                  placeholder="/"
+                  className="flex-1 px-2 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm font-mono"
+                />
+                {/* Auto-suggest button */}
+                {(() => {
+                  const suggest = getHealthSuggest(formData.apps);
+                  if (!suggest) return null;
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, healthScheme: suggest.scheme, healthPort: String(suggest.port), healthPath: formData.healthPath || '/' })}
+                      title={`Suggest: ${suggest.scheme}:${suggest.port}`}
+                      className="px-2 py-1.5 text-xs bg-sky-50 border border-sky-200 text-sky-700 rounded-lg hover:bg-sky-100 whitespace-nowrap"
+                    >
+                      Auto
+                    </button>
+                  );
+                })()}
+                {/* Clear button */}
+                {formData.healthPort && (
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, healthPort: '', healthPath: '/', healthScheme: 'http' })}
+                    title="Disable health check"
+                    className="px-2 py-1.5 text-xs bg-slate-50 border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-100"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              {formData.healthPort && (
+                <p className="text-xs text-slate-400 mt-1 font-mono">
+                  → {formData.healthScheme}://{item.ip}:{formData.healthPort}{formData.healthPath || '/'}
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Host Group — only shown for assigned, non-reserved entries */}
           {!isFree && !isReserved && (
             <div className="pt-2 border-t border-slate-200">
@@ -3364,6 +3557,10 @@ export default function IPAddressManager() {
   const [pingLoading, setPingLoading] = useState(false);
   const [pingWarning, setPingWarning] = useState(null);
   const [pingLastAt, setPingLastAt] = useState(null); // Date
+
+  // Service health checks — { [ip]: { status: 'up'|'down', code: number|null } }
+  const [healthStatus, setHealthStatus] = useState({});
+  const [healthLoading, setHealthLoading] = useState(false);
 
   // DNS reverse lookup — { [ip]: { ptr: string | null } }
   const [dnsStatus,  setDnsStatus]  = useState({});
@@ -3556,6 +3753,28 @@ export default function IPAddressManager() {
     if (persistMode !== 'api') return;
     fetchPingStatus();
     const timer = setInterval(() => fetchPingStatus(), 60_000);
+    return () => clearInterval(timer);
+  }, [persistMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Service health checks ────────────────────────────────────────────────────
+  const fetchHealthStatus = async (force = false) => {
+    if (persistMode !== 'api') return;
+    setHealthLoading(true);
+    try {
+      const res = await fetch(`/api/service-health${force ? '?force=1' : ''}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setHealthStatus(data.results || {});
+    } catch { /* silently ignore network errors */ } finally {
+      setHealthLoading(false);
+    }
+  };
+
+  // Initial fetch + 60-second auto-poll
+  useEffect(() => {
+    if (persistMode !== 'api') return;
+    fetchHealthStatus();
+    const timer = setInterval(() => fetchHealthStatus(), 60_000);
     return () => clearInterval(timer);
   }, [persistMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -4929,6 +5148,12 @@ export default function IPAddressManager() {
                         {!isFree && !isReserved && pingStatus[item.ip] == null && pingLastAt && (
                           <span title="Status unknown" className="inline-block w-2 h-2 rounded-full flex-shrink-0 bg-slate-300" />
                         )}
+                        {!isFree && !isReserved && item.healthPort && healthStatus[item.ip] != null && (
+                          <span
+                            title={`Service ${healthStatus[item.ip].status === 'up' ? 'up' : 'down'}${healthStatus[item.ip].code ? ` (HTTP ${healthStatus[item.ip].code})` : ''} — ${item.healthScheme || 'http'}://${item.ip}:${item.healthPort}${item.healthPath || '/'}`}
+                            className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${healthStatus[item.ip].status === 'up' ? 'bg-sky-400' : 'bg-orange-400'}`}
+                          />
+                        )}
                       </div>
                       {(() => {
                         if (isFree || isReserved) return null;
@@ -5227,6 +5452,12 @@ export default function IPAddressManager() {
                             )}
                             {!isFree && !isReserved && pingStatus[item.ip] == null && pingLastAt && (
                               <span title="Status unknown" className="inline-block w-2 h-2 rounded-full flex-shrink-0 bg-slate-300" />
+                            )}
+                            {!isFree && !isReserved && item.healthPort && healthStatus[item.ip] != null && (
+                              <span
+                                title={`Service ${healthStatus[item.ip].status === 'up' ? 'up' : 'down'}${healthStatus[item.ip].code ? ` (HTTP ${healthStatus[item.ip].code})` : ''} — ${item.healthScheme || 'http'}://${item.ip}:${item.healthPort}${item.healthPath || '/'}`}
+                                className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${healthStatus[item.ip].status === 'up' ? 'bg-sky-400' : 'bg-orange-400'}`}
+                              />
                             )}
                           </div>
                           {(() => {
