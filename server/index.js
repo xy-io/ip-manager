@@ -203,14 +203,17 @@ async function discoverProxmox(host, port, token, ignoreTls) {
       } catch { /* container may be stopped */ }
 
       const base = {
-        assetName: lxc.name || `CT-${lxc.vmid}`,
-        hostname:  lxc.name || '',
-        type:      'LXC',
-        location:  node,
-        apps:      '',
-        notes:     `VMID: ${lxc.vmid} | Node: ${node} | Status: ${lxc.status}`,
-        tags:      ['proxmox'],
-        updatedAt: new Date().toISOString(),
+        assetName:    lxc.name || `CT-${lxc.vmid}`,
+        hostname:     lxc.name || '',
+        type:         'LXC',
+        location:     node,
+        apps:         '',
+        tags:         ['proxmox'],
+        updatedAt:    new Date().toISOString(),
+        // Dedicated Proxmox metadata — kept separate from user-editable notes
+        proxmoxVmid: String(lxc.vmid),
+        proxmoxNode:  node,
+        proxmoxKind:  'lxc',
       };
       if (ips.length) {
         // Auto-group multi-IP containers with a shared hostId (Option A)
@@ -244,14 +247,17 @@ async function discoverProxmox(host, port, token, ignoreTls) {
       } catch { /* no guest agent installed */ }
 
       const base = {
-        assetName: vm.name || `VM-${vm.vmid}`,
-        hostname:  vm.name || '',
-        type:      'Virtual',
-        location:  node,
-        apps:      '',
-        notes:     `VMID: ${vm.vmid} | Node: ${node} | Status: ${vm.status}`,
-        tags:      ['proxmox'],
-        updatedAt: new Date().toISOString(),
+        assetName:   vm.name || `VM-${vm.vmid}`,
+        hostname:    vm.name || '',
+        type:        'Virtual',
+        location:    node,
+        apps:        '',
+        tags:        ['proxmox'],
+        updatedAt:   new Date().toISOString(),
+        // Dedicated Proxmox metadata — kept separate from user-editable notes
+        proxmoxVmid: String(vm.vmid),
+        proxmoxNode:  node,
+        proxmoxKind:  'qemu',
       };
       if (ips.length) {
         const hostId = ips.length > 1 ? `host-${vm.vmid}-${node}` : undefined;
@@ -311,6 +317,44 @@ const dbGet = (key) => {
 const dbSet = (key, value) => {
   db.prepare('INSERT OR REPLACE INTO store (key, value) VALUES (?, ?)').run(key, JSON.stringify(value));
 };
+
+// ── One-time data migration ───────────────────────────────────────────────────
+// Extracts the "VMID: X | Node: Y | Status: Z" system metadata that was
+// previously embedded in the user-editable notes field into dedicated
+// proxmoxVmid / proxmoxNode / proxmoxKind fields.  Runs once on startup;
+// safe to repeat (already-migrated entries are skipped).
+(function migrateProxmoxNotes() {
+  const ipData = dbGet('ip_data');
+  if (!Array.isArray(ipData)) return;
+
+  let changed = 0;
+  for (const entry of ipData) {
+    // Already migrated
+    if (entry.proxmoxVmid) continue;
+    // Only applies to proxmox-tagged entries with the known notes pattern
+    if (!(entry.tags || []).includes('proxmox')) continue;
+    const parsed = parseProxmoxNotes(entry.notes);
+    if (!parsed) continue;
+
+    entry.proxmoxVmid = String(parsed.vmid);
+    entry.proxmoxNode = parsed.node;
+    // Determine kind from type field set at import time
+    entry.proxmoxKind = entry.type === 'LXC' ? 'lxc' : 'qemu';
+
+    // Strip the system metadata line from notes, leaving any real user notes
+    // The full pattern is the entire string "VMID: X | Node: Y | Status: Z"
+    const cleaned = (entry.notes || '')
+      .replace(/VMID:\s*\d+\s*\|\s*Node:\s*[^\|]+\s*\|\s*Status:\s*\S+/gi, '')
+      .trim();
+    entry.notes = cleaned;
+    changed++;
+  }
+
+  if (changed > 0) {
+    dbSet('ip_data', ipData);
+    console.log(`[migration] Extracted Proxmox metadata from notes for ${changed} entr${changed === 1 ? 'y' : 'ies'}`);
+  }
+})();
 
 // ── Protected routes ──────────────────────────────────────────────────────────
 // All /api/* routes below this point require a valid session.
@@ -707,17 +751,27 @@ async function runProxmoxVmStatusCheck() {
   }
 
   const ipData = dbGet('ip_data') || [];
-  const targets = ipData.filter(e =>
-    e.ip && (e.tags || []).includes('proxmox') && parseProxmoxNotes(e.notes)
-  );
+  // Use dedicated fields first; fall back to parsing notes for entries imported
+  // before this change was made (migration may not have run yet on first boot)
+  const targets = ipData.filter(e => {
+    if (!e.ip) return false;
+    if (e.proxmoxVmid && e.proxmoxNode) return true;
+    // Legacy fallback: proxmox-tagged entry with parseable notes
+    return (e.tags || []).includes('proxmox') && parseProxmoxNotes(e.notes);
+  });
   if (!targets.length) return;
 
   const probes = targets.map(async (entry) => {
-    const parsed = parseProxmoxNotes(entry.notes);
-    if (!parsed) return null;
-    const { vmid, node } = parsed;
-    // Determine API path: LXC entries have type 'LXC'; everything else is qemu
-    const kind = entry.type === 'LXC' ? 'lxc' : 'qemu';
+    // Prefer dedicated fields; fall back to parsed notes for legacy entries
+    let vmid = entry.proxmoxVmid;
+    let node  = entry.proxmoxNode;
+    let kind  = entry.proxmoxKind || (entry.type === 'LXC' ? 'lxc' : 'qemu');
+    if (!vmid || !node) {
+      const parsed = parseProxmoxNotes(entry.notes);
+      if (!parsed) return null;
+      vmid = parsed.vmid;
+      node = parsed.node;
+    }
     try {
       const data = await proxmoxFetch(
         host, port,
@@ -824,10 +878,15 @@ async function runProxmoxSync() {
         changes.assetName = { from: existing.assetName, to: proxEntry.assetName };
         existing.assetName = proxEntry.assetName;
       }
-      // Notes carry VMID, node, and current status — always refresh
-      if (proxEntry.notes && proxEntry.notes !== existing.notes) {
-        changes.notes = { from: existing.notes, to: proxEntry.notes };
-        existing.notes = proxEntry.notes;
+      // Keep dedicated Proxmox fields in sync (VMID shouldn't change, node may on HA failover)
+      if (proxEntry.proxmoxNode && proxEntry.proxmoxNode !== existing.proxmoxNode) {
+        existing.proxmoxNode = proxEntry.proxmoxNode;
+      }
+      if (proxEntry.proxmoxKind && !existing.proxmoxKind) {
+        existing.proxmoxKind = proxEntry.proxmoxKind;
+      }
+      if (proxEntry.proxmoxVmid && !existing.proxmoxVmid) {
+        existing.proxmoxVmid = proxEntry.proxmoxVmid;
       }
 
       if (Object.keys(changes).length > 0) {

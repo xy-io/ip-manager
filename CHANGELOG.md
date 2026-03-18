@@ -6,6 +6,14 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v1.20
+
+**Proxmox metadata — dedicated fields** — The VMID, node, and kind that were previously embedded in the user-editable Notes field (`VMID: 139 | Node: proxmox2 | Status: running`) are now stored as dedicated `proxmoxVmid`, `proxmoxNode`, and `proxmoxKind` fields. A one-time startup migration runs automatically — no action required. The Notes field is now entirely user-owned; editing it can no longer break Proxmox sync or VM status polling. A read-only **Proxmox** panel (VMID · Node · Kind) appears in the Edit modal for Proxmox entries, clearly labelled as managed automatically. The VM status badge now gates on `proxmoxVmid` being set. Proxmox sync updates `proxmoxNode` directly on HA failover rather than rewriting notes.
+
+Also in this release: **version number** now visible in both the Settings and Help & Reference modals — in the header subtitle and pinned at the bottom of each sidebar.
+
+---
+
 ## v1.19
 
 **Proxmox VM live status** — Every entry tagged `proxmox` now shows a small power-state badge alongside its type badge (LXC / Virtual), both on cards and in the table Type column. Badges: **▶ running** (emerald), **■ stopped** (slate), **⏸ paused** (amber). Hovering the badge shows the VMID and node name. The server polls Proxmox every 60 seconds using the existing API credentials stored for scheduled sync — no extra configuration required. Status is fetched via a targeted lightweight API call per entry using the VMID and node parsed from the notes field written by the importer (`VMID: X | Node: Y`); no full node scan is needed. Results are cached for 30 seconds. Entirely read-only: no commands are ever sent to Proxmox. A new **Proxmox VM Status** section has been added to the in-app Help & Reference guide.

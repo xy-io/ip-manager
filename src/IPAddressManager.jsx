@@ -3,7 +3,7 @@ import { Search, Server, Monitor, Wifi, HardDrive, Camera, Shield, Globe, Filter
 import * as XLSX from 'xlsx';
 
 // ── App version ───────────────────────────────────────────────────────────────
-const APP_VERSION = 'v1.19';
+const APP_VERSION = 'v1.20';
 
 // Default network configuration (overridden by Settings modal / localStorage)
 const DEFAULT_NETWORK_CONFIG = {
@@ -2331,13 +2331,13 @@ function HelpModal({ onClose }) {
         <P>Once you've imported entries via the Proxmox button, the scheduled sync keeps them up to date automatically — no manual re-import needed. Its main purpose is detecting <strong>HA failovers</strong>: when Proxmox High Availability migrates a VM or LXC to a different node, the stored node name in your manager goes stale. The sync catches this and corrects it.</P>
 
         <H3>What it updates</H3>
-        <P>Only entries already tagged <code className="font-mono bg-slate-100 px-1 rounded text-xs">proxmox</code> are ever touched — user-managed entries are ignored even if their IP matches something in Proxmox. For each matching entry, the sync checks three fields:</P>
+        <P>Only entries already tagged <code className="font-mono bg-slate-100 px-1 rounded text-xs">proxmox</code> are ever touched — user-managed entries are ignored even if their IP matches something in Proxmox. For each matching entry, the sync checks:</P>
         <div className="space-y-2 mb-3">
           <Row label="Location (node)">The Proxmox node the VM or LXC is currently running on. This is the primary HA failover signal.</Row>
           <div className="mb-1" />
           <Row label="Asset name">Updated if Proxmox reports a different name for the VMID.</Row>
           <div className="mb-1" />
-          <Row label="Notes">Refreshed to reflect the current VMID, node, and power status.</Row>
+          <Row label="Proxmox fields">The internal VMID, node, and kind fields are kept in sync. These appear in the read-only Proxmox panel in the Edit modal — separate from the user-editable Notes field.</Row>
         </div>
         <P>Every change is written into the entry's change history, visible in the expanded card view — so you can see exactly what moved and when.</P>
 
@@ -2375,13 +2375,13 @@ function HelpModal({ onClose }) {
         <P>The badge appears alongside the type badge (LXC / Virtual) in the top-right of the card and in the Type column of the table. Hovering it shows the VMID and node name. No badge is shown if the state can't be determined or Proxmox is not configured.</P>
 
         <H3>How it works</H3>
-        <P>The VMID and node name are read from the notes field written by the Proxmox importer (<code className="font-mono bg-slate-100 px-1 rounded text-xs">VMID: 101 | Node: pve1</code>). The server makes a targeted lightweight API call to Proxmox for each entry — no full node scan is needed. Results are cached for 30 seconds and auto-refreshed every 60 seconds in the background. This is entirely read-only; no commands are ever sent to Proxmox.</P>
+        <P>The VMID, node, and kind are stored as dedicated fields on each entry — separate from the user-editable Notes field. The server makes a targeted lightweight API call to Proxmox for each entry — no full node scan is needed. Results are cached for 30 seconds and auto-refreshed every 60 seconds in the background. This is entirely read-only; no commands are ever sent to Proxmox.</P>
 
         <H3>Requirements</H3>
         <P>Proxmox sync credentials must be configured in <strong>Settings → Proxmox Scheduled Sync</strong>. The same API token is reused — no extra configuration needed. If credentials are not set, the status badges are simply not shown.</P>
 
-        <H3>Notes manually edited</H3>
-        <P>If you have manually edited the notes field for a Proxmox entry and removed the <code className="font-mono bg-slate-100 px-1 rounded text-xs">VMID: X | Node: Y</code> portion, the status badge won't appear for that entry. The sync will re-write the notes on its next run, restoring the badge.</P>
+        <H3>Proxmox panel in Edit modal</H3>
+        <P>Open the Edit modal for any Proxmox-tagged entry and you'll see a read-only <strong>Proxmox</strong> panel showing the VMID, node, and kind. This information is managed automatically and cannot be edited — it updates via the scheduled sync. The Notes field below it is entirely yours to use freely.</P>
       </div>
     ),
 
@@ -3399,6 +3399,30 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm resize-none"
             />
           </div>
+
+          {/* Proxmox info panel — read-only, shown only when dedicated fields are present */}
+          {item.proxmoxVmid && (
+            <div className="pt-2 border-t border-slate-200">
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Proxmox</label>
+              <div className="flex flex-wrap gap-3 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg">
+                <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                  <span className="text-slate-400 font-medium">VMID</span>
+                  <span className="font-mono font-semibold text-slate-700">{item.proxmoxVmid}</span>
+                </div>
+                <div className="w-px bg-slate-200 self-stretch" />
+                <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                  <span className="text-slate-400 font-medium">Node</span>
+                  <span className="font-mono font-semibold text-slate-700">{item.proxmoxNode || '—'}</span>
+                </div>
+                <div className="w-px bg-slate-200 self-stretch" />
+                <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                  <span className="text-slate-400 font-medium">Kind</span>
+                  <span className="font-mono font-semibold text-slate-700 uppercase">{item.proxmoxKind || '—'}</span>
+                </div>
+              </div>
+              <p className="text-xs text-slate-400 mt-1">Managed by Proxmox — these fields update automatically via sync.</p>
+            </div>
+          )}
 
           {/* Service Health Check — only shown for assigned, non-reserved entries */}
           {!isFree && !isReserved && (
@@ -5209,7 +5233,7 @@ export default function IPAddressManager() {
                             {item.type}
                           </span>
                         )}
-                        {!isFree && !isReserved && (() => {
+                        {!isFree && !isReserved && (item.proxmoxVmid || (item.tags || []).includes('proxmox')) && (() => {
                           const vmState = proxmoxVmStatus[item.ip];
                           if (!vmState || vmState.status === 'unknown') return null;
                           const cfg = {

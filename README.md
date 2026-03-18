@@ -45,9 +45,11 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
-### v1.19 Features
+### v1.20 Features
 
-**Proxmox VM live status** — Every entry tagged `proxmox` now shows a power-state badge alongside its type badge on cards and in the table Type column. **▶ running** (emerald), **■ stopped** (slate), **⏸ paused** (amber). Hovering shows the VMID and node name. The server polls Proxmox every 60 seconds using the credentials already stored for scheduled sync — no extra configuration needed. Entirely read-only: no commands are ever sent to Proxmox. A new **Proxmox VM Status** section has been added to the Help & Reference guide.
+**Proxmox metadata — dedicated fields** — The VMID, node, and kind previously embedded in the Notes field are now stored as dedicated internal fields. A one-time migration runs automatically on startup. The Notes field is now entirely user-owned — editing it can no longer break Proxmox sync or VM status polling. A read-only **Proxmox** panel appears in the Edit modal for Proxmox entries showing VMID, node, and kind, clearly labelled as managed automatically.
+
+**Version number** — now shown in the Settings and Help & Reference modals (header and sidebar footer).
 
 → Full version history: [CHANGELOG.md](./CHANGELOG.md)
 
@@ -235,13 +237,14 @@ ip-manager/
 - ✅ **Mobile responsive UI** — collapsible Tools dropdown, scaled header, horizontal tag chips — shipped in v1.17
 - ✅ **Sync result logs** — last-run result panels in Proxmox and DNS settings with per-entry diffs — shipped in v1.17
 - ✅ **Service health checks** — opt-in HTTP/HTTPS probe per entry; sky-blue/orange dot alongside ping dot; 60+ service auto-suggest; TLS errors ignored — shipped in v1.18
-- ✅ **Proxmox live status** (v1.19) — power-state badge (▶ running / ■ stopped / ⏸ paused) on Proxmox-tagged entries; reuses existing sync credentials; read-only — shipped in v1.19
-- **ARP background scan** (v1.20) — periodic scheduled sweeps that stamp each entry with a "last seen" timestamp; surfaces newly appeared or silently disappeared devices
+- ✅ **Proxmox live status** — power-state badge (▶ running / ■ stopped / ⏸ paused) on Proxmox-tagged entries; reuses existing sync credentials; read-only — shipped in v1.19
+- ✅ **Proxmox dedicated metadata fields** — VMID, node, kind stored separately from user notes; auto-migration on startup; read-only info panel in Edit modal; version number in Settings and Help modals — shipped in v1.20
+- **ARP background scan** (v1.21) — periodic scheduled sweeps that stamp each entry with a "last seen" timestamp; surfaces newly appeared or silently disappeared devices
 
 **Phase 3 — inventory depth & planning tools:**
-- **CIDR calculator** (v1.21) — built-in utility panel: enter any CIDR block, get back usable range, broadcast address, host count, and wildcard mask; no need to leave the app when planning a new VLAN
-- **QR codes** (v1.21) — generate a QR code for any entry's management URL or IP; useful for physically labelling rack equipment so you can scan and jump straight to the device
-- **Subnet visualiser + Planned blocks** (v1.22) — heat-map grid of all addresses in a subnet showing free/used/DHCP/static at a glance; overlay named colour-coded planned blocks (e.g. "Camera VLAN expansion") on the grid for deliberate network planning
+- **CIDR calculator** (v1.22) — built-in utility panel: enter any CIDR block, get back usable range, broadcast address, host count, and wildcard mask; no need to leave the app when planning a new VLAN
+- **QR codes** (v1.22) — generate a QR code for any entry's management URL or IP; useful for physically labelling rack equipment so you can scan and jump straight to the device
+- **Subnet visualiser + Planned blocks** (v1.23) — heat-map grid of all addresses in a subnet showing free/used/DHCP/static at a glance; overlay named colour-coded planned blocks (e.g. "Camera VLAN expansion") on the grid for deliberate network planning
 - **MAC address + vendor lookup** (v1.23) — store MAC address per entry; auto-resolve manufacturer from a bundled OUI table (no external API); shown as a small label on cards
 - **SSH / HTTP quick-launch** (v1.23) — clickable link icons on each card derived from the stored health check URL or IP; opens management interface or SSH session in one click
 - **Dependency mapping** (v1.24) — link entries as dependencies (e.g. media server depends on NAS); when a dependency's ping or health dot is red/orange, the dependent card shows a small "⚠ dependency down" indicator
