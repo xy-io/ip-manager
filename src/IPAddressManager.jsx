@@ -5433,7 +5433,14 @@ export default function IPAddressManager() {
                                   <span className="text-slate-400">{new Date(entry.ts).toLocaleString()}</span>
                                   {entry.bulk && <span className="ml-1 px-1 py-0.5 bg-violet-100 text-violet-600 rounded text-[10px] font-medium">bulk</span>}
                                   <div className="mt-0.5 space-y-0.5">
-                                    {entry.changes.map((c, j) => (
+                                    {(Array.isArray(entry.changes)
+                                      ? entry.changes
+                                      : Object.entries(entry.changes || {}).map(([key, val]) => ({
+                                          label: key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase()),
+                                          old: val?.from ?? null,
+                                          new: val?.to ?? val,
+                                        }))
+                                    ).map((c, j) => (
                                       <div key={j} className="flex items-start gap-1 text-slate-600">
                                         <span className="font-medium text-slate-500 min-w-[52px]">{c.label}:</span>
                                         {c.old
