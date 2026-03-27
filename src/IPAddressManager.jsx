@@ -2465,6 +2465,7 @@ function HelpModal({ onClose }) {
     { id: 'backup',     label: 'Backup & Restore' },
     { id: 'importexp',  label: 'Import & Export' },
     { id: 'dns',        label: 'DNS Lookup' },
+    { id: 'updates',    label: 'Updates' },
     { id: 'shortcuts',  label: 'Keyboard Shortcuts' },
   ];
 
@@ -2913,6 +2914,37 @@ function HelpModal({ onClose }) {
           <Row label="Wrong DNS server">The configured DNS server doesn't hold your LAN's reverse zone. Try setting it to your local DNS (e.g. Pi-hole or router IP).</Row>
           <Row label="Disabled">DNS lookup is disabled in Settings. Toggle it on to resume background lookups.</Row>
         </div>
+      </div>
+    ),
+
+    updates: (
+      <div>
+        <H2>Updates</H2>
+        <P>IP Address Manager can check for new versions and update itself directly from the browser — no terminal access to the LXC required.</P>
+
+        <H3>Checking for updates</H3>
+        <P>Open <strong>Settings → Updates</strong>. The app checks GitHub for the latest release and compares it against the installed version. If you're up to date, a green <Badge color="green">Up to date</Badge> badge is shown alongside the installed version number. If a newer release is available, an amber <Badge color="amber">Update available</Badge> badge appears — and an amber dot shows on the Settings gear icon in the toolbar so you can see it without opening Settings.</P>
+
+        <H3>Installing an update</H3>
+        <P>When an update is available, click <strong>Update now</strong> in the Settings → Updates panel. The update runs in five steps and streams live progress to the screen:</P>
+        <div className="space-y-1 mb-3 ml-2">
+          <Row label="1. Fetch code">Pulls the latest version from GitHub using <code className="font-mono bg-slate-100 px-1 rounded text-xs">git pull</code>.</Row>
+          <Row label="2. Dependencies">Installs any new or updated frontend packages.</Row>
+          <Row label="3. Build">Compiles the React app into optimised static files.</Row>
+          <Row label="4. Server pkgs">Updates server-side packages if needed.</Row>
+          <Row label="5. Restart">Restarts the API service — the browser reconnects automatically within a few seconds.</Row>
+        </div>
+        <P>Total time is typically 30–60 seconds. The page reconnects on its own once the service is back up — no manual refresh needed.</P>
+
+        <H3>Automatic rollback on failure</H3>
+        <P>If any step fails, the app automatically reverts to the previous working version: it resets the code to the last good commit, rebuilds, and restarts. A red error banner explains what went wrong, and a <strong>Show error log</strong> toggle reveals the full output so you can investigate or share with the developer.</P>
+        <P>A rollback means your instance stays running on the old version — nothing is left in a broken state.</P>
+
+        <H3>Manual updates (terminal)</H3>
+        <P>The terminal command <code className="font-mono bg-slate-100 px-1 rounded text-xs">ip-manager-update</code> on the LXC continues to work exactly as before. Both methods run the same underlying script — in-browser updates are not a replacement, just a convenience layer on top.</P>
+
+        <H3>Release notes</H3>
+        <P>The <strong>Release Log</strong> section at the bottom of the Updates tab shows every version with its full release notes, parsed directly from the app's changelog. Click any version row to expand it.</P>
       </div>
     ),
 
