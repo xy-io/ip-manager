@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IP Manager — Toolbar UI Mockups</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif; background: #f1f5f9; color: #1e293b; padding: 40px 24px; }
+
+  .page-title { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: #94a3b8; margin-bottom: 6px; }
+  .section { margin-bottom: 48px; }
+  .section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #94a3b8; margin-bottom: 10px; }
+  .concept-title { font-size: 18px; font-weight: 700; color: #0f172a; margin-bottom-4px; }
+  .concept-desc { font-size: 13.5px; color: #64748b; margin-bottom: 18px; line-height: 1.6; max-width: 680px; }
+
+  /* ── MOCK SHELL ── */
+  .mock { background: white; border-radius: 14px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+  .mock-body { background: #f8fafc; padding: 20px; height: 120px; display: flex; align-items: center; justify-content: center; color: #94a3b8; font-size: 13px; letter-spacing: 0.02em; }
+
+  /* ── BUTTON STYLES ── */
+  .btn { display: inline-flex; align-items: center; gap: 5px; padding: 7px 13px; border-radius: 8px; font-size: 12.5px; font-weight: 500; cursor: pointer; border: none; white-space: nowrap; transition: filter 0.12s; }
+  .btn:hover { filter: brightness(0.93); }
+  .btn svg { width: 13px; height: 13px; flex-shrink: 0; }
+
+  .btn-teal    { background: #0d9488; color: white; }
+  .btn-blue    { background: #3b82f6; color: white; }
+  .btn-indigo  { background: #4f46e5; color: white; }
+  .btn-slate   { background: #334155; color: white; }
+  .btn-dark    { background: #1e293b; color: white; }
+  .btn-green   { background: #059669; color: white; }
+  .btn-ghost   { background: transparent; color: #475569; border: 1px solid #e2e8f0; }
+  .btn-ghost:hover { background: #f1f5f9; filter: none; }
+  .btn-white   { background: white; color: #334155; border: 1px solid #e2e8f0; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+
+  .badge { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border-radius: 8px; font-size: 12px; font-weight: 500; }
+  .badge-green { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
+
+  .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 8px; cursor: pointer; color: #64748b; border: 1px solid #e2e8f0; background: white; transition: background 0.12s; flex-shrink: 0; }
+  .icon-btn:hover { background: #f1f5f9; }
+  .icon-btn svg { width: 15px; height: 15px; }
+
+  .seg { display: inline-flex; border-radius: 8px; overflow: hidden; border: 1px solid #e2e8f0; background: white; }
+  .seg-item { padding: 6px 13px; font-size: 12.5px; font-weight: 500; cursor: pointer; color: #64748b; transition: background 0.12s; }
+  .seg-item.active { background: #1e293b; color: white; }
+  .seg-item:hover:not(.active) { background: #f1f5f9; }
+
+  /* ── DIVIDER ── */
+  .vdiv { width: 1px; height: 20px; background: #e2e8f0; flex-shrink: 0; }
+
+  /* ── NETWORK PILL ── */
+  .net-pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 8px; font-size: 12.5px; font-weight: 500; color: #475569; background: #f1f5f9; border: 1px solid #e2e8f0; cursor: pointer; }
+  .net-pill:hover { background: #e2e8f0; }
+  .net-dot { width: 7px; height: 7px; border-radius: 50%; background: #10b981; flex-shrink: 0; }
+
+  /* ── STATUS CHIP ── */
+  .status-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; color: #065f46; background: #d1fae5; border: 1px solid #a7f3d0; }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; background: #10b981; }
+
+  /* ── TOOLBAR LAYOUTS ── */
+  .toolbar { padding: 10px 16px; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; gap: 6px; background: white; flex-wrap: wrap; }
+  .toolbar-row { padding: 8px 16px; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; gap: 6px; background: white; }
+  .toolbar-row:last-child { border-bottom: none; }
+
+  /* App title block */
+  .app-title { display: flex; flex-direction: column; }
+  .app-title-main { font-size: 14px; font-weight: 800; color: #0f172a; }
+  .app-title-sub { font-size: 11px; color: #94a3b8; margin-top: 1px; }
+
+  .spacer { flex: 1; }
+
+  /* ── ANNOTATION ── */
+  .annotation { font-size: 11.5px; color: #94a3b8; font-style: italic; margin-top: 8px; padding: 0 4px; }
+  .annotation strong { color: #64748b; font-style: normal; }
+
+  /* ── PROGRESSIVE DISCLOSURE TOGGLE ── */
+  .admin-toggle { display: inline-flex; align-items: center; gap: 7px; padding: 5px 10px; border-radius: 8px; font-size: 12px; font-weight: 500; color: #7c3aed; background: #f5f3ff; border: 1px solid #ddd6fe; cursor: pointer; }
+  .admin-toggle-dot { width: 28px; height: 16px; border-radius: 8px; background: #7c3aed; position: relative; flex-shrink: 0; }
+  .admin-toggle-dot::after { content: ''; position: absolute; width: 12px; height: 12px; border-radius: 50%; background: white; top: 2px; right: 2px; }
+  .admin-toggle-off { background: #e2e8f0; }
+  .admin-toggle-off::after { right: auto; left: 2px; }
+
+  .label-pill { display: inline-flex; align-items: center; padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+  .label-absorbed { background: #fee2e2; color: #991b1b; }
+  .label-new { background: #dcfce7; color: #166534; }
+  .label-moved { background: #fef3c7; color: #92400e; }
+
+  .callout { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 16px; margin-top: 14px; font-size: 12.5px; color: #475569; line-height: 1.7; }
+  .callout strong { color: #1e293b; }
+
+  h1 { font-size: 22px; font-weight: 800; color: #0f172a; margin-bottom: 6px; }
+  .intro { font-size: 14px; color: #64748b; margin-bottom: 40px; line-height: 1.6; max-width: 640px; }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
+
+  hr { border: none; border-top: 1px solid #e2e8f0; margin: 40px 0; }
+</style>
+</head>
+<body>
+
+<div class="page-title">IP Address Manager</div>
+<h1>Toolbar UI Concepts</h1>
+<p class="intro">Two alternative directions for reducing toolbar complexity. Neither is a final design — just enough fidelity to feel out the tradeoffs.</p>
+
+<!-- ═══════════════════════════════════════════════════
+     CURRENT STATE
+════════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="section-label">Current state — for reference</div>
+  <div class="mock">
+    <div class="toolbar">
+      <div class="app-title">
+        <div class="app-title-main">IP Address Manager</div>
+        <div class="app-title-sub">The Allens Network · 192.168.0.0/24</div>
+      </div>
+      <div class="spacer"></div>
+      <div class="badge badge-green">● SQLite</div>
+      <button class="btn btn-teal">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+        Proxmox
+      </button>
+      <button class="btn btn-teal">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1"/></svg>
+        ARP Scan
+      </button>
+      <button class="btn btn-blue">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        Ping
+      </button>
+      <button class="btn btn-blue">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        DNS
+      </button>
+      <button class="btn btn-slate" style="gap:4px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+        Tools ▾
+      </button>
+      <button class="btn btn-dark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        Import
+      </button>
+      <button class="btn btn-green">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Export
+      </button>
+    </div>
+    <div class="toolbar">
+      <button class="btn btn-ghost">+ Add Network</button>
+      <div class="icon-btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </div>
+      <div class="icon-btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </div>
+      <div class="icon-btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+      </div>
+      <div class="icon-btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      </div>
+      <div class="spacer"></div>
+      <div class="seg">
+        <div class="seg-item active">Cards</div>
+        <div class="seg-item">Table</div>
+      </div>
+    </div>
+  </div>
+  <p class="annotation">8 action buttons + status badge on row 1. Mix of navigation, settings, and utility on row 2. No clear visual hierarchy.</p>
+</div>
+
+<hr>
+
+<!-- ═══════════════════════════════════════════════════
+     CONCEPT A — TWO-ZONE HEADER
+════════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="section-label">Concept A</div>
+  <div class="concept-title" style="margin-bottom:4px;">Two-zone header</div>
+  <p class="concept-desc">
+    Left zone owns <strong>identity</strong> — the app name and the active network. Right zone owns <strong>actions</strong>, but reduced to only what you actually reach for regularly. Everything that's occasional (Proxmox, ARP Scan, DNS) collapses into one <em>Tools</em> menu. The status badge and view controls move out of the main row into their own quieter strip.
+  </p>
+
+  <div class="mock">
+
+    <!-- Single header row -->
+    <div class="toolbar-row" style="padding: 10px 16px; gap: 8px;">
+
+      <!-- LEFT ZONE: identity + network -->
+      <div style="display:flex; align-items:center; gap:12px;">
+        <div class="app-title">
+          <div class="app-title-main">IP Address Manager</div>
+        </div>
+        <div class="vdiv"></div>
+        <div class="net-pill">
+          <div class="net-dot"></div>
+          The Allens Network
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <button class="btn btn-ghost" style="padding:5px 10px; font-size:12px; color:#94a3b8; border-color:#e2e8f0;">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Add network
+        </button>
+      </div>
+
+      <div class="spacer"></div>
+
+      <!-- RIGHT ZONE: lean actions -->
+      <div style="display:flex; align-items:center; gap:6px;">
+        <button class="btn btn-dark">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          Import
+        </button>
+        <button class="btn btn-green">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Export
+        </button>
+        <div class="vdiv"></div>
+        <button class="btn btn-slate" style="gap:5px;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+          Tools ▾
+        </button>
+        <div class="vdiv"></div>
+        <div class="icon-btn" title="Dark mode">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </div>
+        <div class="icon-btn" title="Settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </div>
+        <div class="icon-btn" title="Sign out">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sub-bar: status + view controls -->
+    <div class="toolbar-row" style="padding: 6px 16px; background: #f8fafc; border-top: 1px solid #f1f5f9; gap: 8px;">
+      <div class="status-chip"><div class="status-dot"></div> SQLite</div>
+      <span style="font-size:11px; color:#cbd5e1;">·</span>
+      <span style="font-size:11.5px; color:#94a3b8;">192.168.0.0/24</span>
+      <div class="spacer"></div>
+      <div class="seg">
+        <div class="seg-item active">Cards</div>
+        <div class="seg-item">Table</div>
+      </div>
+    </div>
+
+    <div class="mock-body">card grid / table view</div>
+  </div>
+
+  <p class="annotation">Row 1 drops from <strong>15 items</strong> to <strong>7</strong>. SQLite badge and subnet info move to a quiet sub-bar alongside the view toggle. Network selector replaces the subtitle text — clicking it opens a switcher dropdown.</p>
+
+  <div class="callout">
+    <strong>What moved into Tools ▾</strong> — Proxmox, ARP Scan, Ping, DNS, CIDR Calculator, QR Codes, Subnet Visualiser. The dropdown gains a short section header ("Network ops", "Utilities") to keep it scannable as it grows. Help also moves here or into Settings.
+  </div>
+</div>
+
+<hr>
+
+<!-- ═══════════════════════════════════════════════════
+     CONCEPT B — PROGRESSIVE DISCLOSURE
+════════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="section-label">Concept B</div>
+  <div class="concept-title" style="margin-bottom:4px;">Progressive disclosure by role</div>
+  <p class="concept-desc">
+    The toolbar has two modes. <strong>Everyday mode</strong> shows only what you use constantly — Ping, Import, Export, view toggle. <strong>Admin mode</strong> is toggled on in Settings (or via a small toggle in the toolbar) and reveals the power tools. The idea is that a user who just wants to look up an IP shouldn't share a toolbar with a user who's auditing their entire subnet.
+  </p>
+
+  <div class="two-col">
+
+    <!-- EVERYDAY MODE -->
+    <div>
+      <div class="section-label" style="margin-bottom:8px; color: #10b981;">Everyday mode <span style="color:#94a3b8; font-weight:400; text-transform:none; letter-spacing:0;">(default)</span></div>
+      <div class="mock">
+        <div class="toolbar-row" style="padding: 10px 16px; gap: 8px;">
+          <div class="app-title">
+            <div class="app-title-main">IP Address Manager</div>
+            <div class="app-title-sub">The Allens Network · 192.168.0.0/24</div>
+          </div>
+          <div class="spacer"></div>
+          <button class="btn btn-blue">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+            Ping
+          </button>
+          <button class="btn btn-dark">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Import
+          </button>
+          <button class="btn btn-green">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export
+          </button>
+          <div class="vdiv"></div>
+          <div class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></div>
+          <div class="seg">
+            <div class="seg-item active">Cards</div>
+            <div class="seg-item">Table</div>
+          </div>
+        </div>
+        <div class="mock-body">5 toolbar items total</div>
+      </div>
+      <p class="annotation">Clean enough that a non-technical person could hand off their screen without confusion.</p>
+    </div>
+
+    <!-- ADMIN MODE -->
+    <div>
+      <div class="section-label" style="margin-bottom:8px; color: #7c3aed;">Admin mode <span style="color:#94a3b8; font-weight:400; text-transform:none; letter-spacing:0;">(toggle in Settings)</span></div>
+      <div class="mock">
+        <div class="toolbar-row" style="padding: 10px 16px; gap: 6px; flex-wrap: wrap;">
+          <div class="app-title">
+            <div class="app-title-main">IP Address Manager</div>
+            <div class="app-title-sub">The Allens Network · 192.168.0.0/24</div>
+          </div>
+          <div class="spacer"></div>
+          <button class="btn btn-teal" style="font-size:11.5px; padding:6px 10px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+            Proxmox
+          </button>
+          <button class="btn btn-teal" style="font-size:11.5px; padding:6px 10px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1"/></svg>
+            ARP Scan
+          </button>
+          <button class="btn btn-blue" style="font-size:11.5px; padding:6px 10px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+            Ping
+          </button>
+          <button class="btn btn-blue" style="font-size:11.5px; padding:6px 10px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+            DNS
+          </button>
+          <button class="btn btn-slate" style="font-size:11.5px; padding:6px 10px;">Tools ▾</button>
+          <button class="btn btn-dark" style="font-size:11.5px; padding:6px 10px;">Import</button>
+          <button class="btn btn-green" style="font-size:11.5px; padding:6px 10px;">Export</button>
+          <div class="vdiv"></div>
+          <div class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></div>
+          <div class="seg">
+            <div class="seg-item active">Cards</div>
+            <div class="seg-item">Table</div>
+          </div>
+        </div>
+        <div class="mock-body">All tools visible — essentially current layout</div>
+      </div>
+      <p class="annotation">Power users opt in once; it stays on. No feature is hidden, just not surfaced by default.</p>
+    </div>
+
+  </div>
+
+  <div class="callout" style="margin-top:20px;">
+    <strong>Practical detail</strong> — The toggle would live in Settings → Display as "Show advanced toolbar" with a one-line explanation ("Displays Proxmox, ARP Scan, DNS and network management tools in the toolbar"). Defaults to off for new installs. This also makes the mobile view much less chaotic by default, since the collapsing Tools menu only needs to contain the 3 everyday items.
+  </div>
+</div>
+
+<hr>
+
+<!-- ═══════════════════════════════════════════════════
+     HYBRID IDEA
+════════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="section-label">Bonus idea — hybrid of both</div>
+  <p class="concept-desc">
+    The two approaches aren't mutually exclusive. The two-zone layout works at any density level, and progressive disclosure controls what populates the right zone. Together they'd give you a clean default and a power-user mode that still feels structured.
+  </p>
+  <div class="mock">
+    <div class="toolbar-row" style="padding: 10px 16px; gap: 8px;">
+      <div class="app-title"><div class="app-title-main">IP Address Manager</div></div>
+      <div class="vdiv"></div>
+      <div class="net-pill">
+        <div class="net-dot"></div>
+        The Allens Network
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="spacer"></div>
+
+      <!-- Everyday buttons always visible -->
+      <button class="btn btn-dark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        Import
+      </button>
+      <button class="btn btn-green">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Export
+      </button>
+
+      <!-- Tools dropdown absorbs all network ops -->
+      <button class="btn btn-slate" style="gap:5px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+        Tools ▾
+      </button>
+
+      <div class="vdiv"></div>
+      <div class="icon-btn" title="Settings + dark mode + help + sign out">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </div>
+    </div>
+    <div class="toolbar-row" style="padding: 5px 16px; background:#f8fafc; border-top:1px solid #f1f5f9; gap:8px;">
+      <div class="status-chip"><div class="status-dot"></div> SQLite</div>
+      <span style="font-size:11px; color:#cbd5e1;">·</span>
+      <span style="font-size:11.5px; color:#94a3b8;">192.168.0.0/24</span>
+      <div class="spacer"></div>
+      <div class="seg">
+        <div class="seg-item active">Cards</div>
+        <div class="seg-item">Table</div>
+      </div>
+    </div>
+    <div class="mock-body">card grid / table view</div>
+  </div>
+  <p class="annotation">One header row, 5 items. Second strip is purely informational + view toggle. Tools absorbs everything. Settings gear absorbs dark mode, help, sign out. This is the most aggressive simplification — down from 15 items to 6.</p>
+</div>
+
+</body>
+</html>

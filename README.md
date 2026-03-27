@@ -1,4 +1,4 @@
-# 🌐 IP Address Manager
+# IP Address Manager
 
 A clean, fast web app for managing your home network's IP addresses — built to replace the Excel spreadsheet you've been using for years.
 
@@ -45,7 +45,21 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
-### v1.24 / v1.24.1 Features
+### v1.25 — Redesigned header
+
+v1.25 is a focused UI quality release. No new data features — just a significant simplification of the toolbar that has been accumulating buttons since v1.12.
+
+**Two-zone header** — The toolbar is now split into a left identity zone and a right actions zone. The left side holds the app logo, the app name, and the active network — with a dropdown pill for switching networks when you have more than one (replacing the old tab row above the toolbar). The right side is trimmed to seven items: Import, Export, a unified Tools menu, and three icon buttons (dark mode, settings, sign out). The SQLite/Local status badge and subnet CIDR move to a quiet sub-bar beneath the main row, alongside the Cards/Table toggle.
+
+**Subnet Grid logo** — A 4×4 grid of rounded squares in emerald and slate, directly echoing the Subnet Visualiser heat-map. Top row: slate (outside range). Middle rows: solid emerald (assigned IPs). Bottom-right cells: faded emerald (free capacity). The icon scales cleanly from 16px to 64px and works in both light and dark contexts.
+
+**Consolidated Tools menu** — The standalone Proxmox, ARP Scan, Ping, and DNS buttons have moved off the main toolbar into a richer Tools dropdown with two named sections: **Network** (Proxmox, ARP Scan, Ping All, DNS Lookup) and **Utilities** (CIDR Calculator, Subnet Visualiser). Each item shows an icon and a one-line description. The main toolbar goes from 15 items to 7.
+
+→ Full version history: [CHANGELOG.md](./CHANGELOG.md)
+
+---
+
+### v1.24 Features (archived)
 
 **MAC Address** — Optional MAC address field in the edit modal with auto vendor lookup (bundled IEEE OUI database, no internet required). MAC and vendor name shown on expanded cards and in the table's IP column.
 
@@ -264,13 +278,14 @@ ip-manager/
 - ✅ **MAC address + vendor lookup** — optional MAC address field per entry; auto-resolves manufacturer from bundled IEEE OUI database (no internet required); displayed on cards and in table — shipped in v1.24
 - ✅ **SSH / HTTP quick-launch** — one-click HTTP/HTTPS and SSH buttons on expanded cards; HTTP/HTTPS uses the service health check config; SSH opens via OS handler — shipped in v1.24
 - ✅ **Subnet Visualiser + Planned Blocks** — 16×16 heat-map grid of the full address space; colour-coded free/static/DHCP/reserved cells with row labels and usage summary; overlay named planned blocks (e.g. "IoT .200–.220") stored per network — shipped in v1.24
-- **Scheduled automatic backup** (v1.25) — configure a backup schedule (daily / weekly) and destination in Settings → Backup. Two destination types: **local path** (write the backup JSON to any mounted directory on the LXC — NAS mount, USB drive, or any `/mnt/…` path) and **rclone** (for cloud destinations including Dropbox, Google Drive, S3, SFTP, SMB/CIFS, and any of rclone's 40+ supported backends — requires rclone to be installed on the LXC). Configurable retention policy (keep last N backups, auto-rotate). Manual "Back up now" button alongside the schedule. Each backup file is timestamped and named automatically.
-- **Dependency mapping** (v1.25) — link entries as dependencies (e.g. media server depends on NAS); when a dependency's ping or health dot is red/orange, the dependent card shows a small "⚠ dependency down" indicator
-- **Per-entry audit log** (v1.26) — drill down from any card into the full change history for that specific entry; filters the existing global audit log by IP
-- **Bulk add from Proxmox sync** (v1.26) — opt-in toggle to auto-add newly discovered Proxmox VMs/LXCs rather than only updating existing entries
-- **Custom fields** (v1.27) — user-definable key/value pairs per entry (e.g. "Serial number", "VLAN ID", "Purchase date"); searchable and importable via CSV
-- **Entry templates** (v1.27) — pre-define common entry configurations (type, location, tags, health port) in Settings; apply a template when claiming a new IP to skip repetitive form filling
-- **Topology view** (v1.28) — interactive graph derived from existing relationships (Proxmox host → VMs/LXCs, primary → secondary IPs, dependency links); no manual wiring required
+- ✅ **Two-zone header + app logo** — Subnet Grid logo; left identity zone (logo, network pill/switcher) and right actions zone (Import, Export, unified Tools menu); standalone Proxmox/ARP Scan/Ping/DNS buttons consolidated into Tools; SQLite badge and view toggle move to a quiet sub-bar — shipped in v1.25
+- **Scheduled automatic backup** (v1.26) — configure a backup schedule (daily / weekly) and destination in Settings → Backup. Two destination types: **local path** (write the backup JSON to any mounted directory on the LXC — NAS mount, USB drive, or any `/mnt/…` path) and **rclone** (for cloud destinations including Dropbox, Google Drive, S3, SFTP, SMB/CIFS, and any of rclone's 40+ supported backends — requires rclone to be installed on the LXC). Configurable retention policy (keep last N backups, auto-rotate). Manual "Back up now" button alongside the schedule. Each backup file is timestamped and named automatically.
+- **Dependency mapping** (v1.26) — link entries as dependencies (e.g. media server depends on NAS); when a dependency's ping or health dot is red/orange, the dependent card shows a small "⚠ dependency down" indicator
+- **Per-entry audit log** (v1.27) — drill down from any card into the full change history for that specific entry; filters the existing global audit log by IP
+- **Bulk add from Proxmox sync** (v1.27) — opt-in toggle to auto-add newly discovered Proxmox VMs/LXCs rather than only updating existing entries
+- **Custom fields** (v1.28) — user-definable key/value pairs per entry (e.g. "Serial number", "VLAN ID", "Purchase date"); searchable and importable via CSV
+- **Entry templates** (v1.28) — pre-define common entry configurations (type, location, tags, health port) in Settings; apply a template when claiming a new IP to skip repetitive form filling
+- **Topology view** (v1.29) — interactive graph derived from existing relationships (Proxmox host → VMs/LXCs, primary → secondary IPs, dependency links); no manual wiring required
 
 **Phase 4 — longer-term:**
 - **Multi-user auth** — per-user accounts with role-based access (read-only vs admin)

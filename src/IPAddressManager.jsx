@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 import QRCode from 'qrcode';
 
 // ── App version ───────────────────────────────────────────────────────────────
-const APP_VERSION = 'v1.24.2';
+const APP_VERSION = 'v1.25.0';
 
 // Default network configuration (overridden by Settings modal / localStorage)
 const DEFAULT_NETWORK_CONFIG = {
@@ -3005,6 +3005,39 @@ const groupIPsIntoRanges = (ips, subnet = DEFAULT_NETWORK_CONFIG.subnet) => {
   return ranges;
 };
 
+// ── App Logo ───────────────────────────────────────────────────────────────────────────────
+function SubnetGridLogo({ size = 32 }) {
+  const r = Math.round(size * 0.22);
+  const cell = Math.round(size * 0.141);
+  const gap  = Math.round(size * 0.031);
+  const start = Math.round((size - 4 * cell - 3 * gap) / 2);
+  const pos = (i) => start + i * (cell + gap);
+  // Colours: slate=outside-range, emerald=assigned, light-emerald=free
+  const colours = [
+    '#334155','#334155','#334155','#334155',
+    '#10b981','#10b981','#10b981','#10b981',
+    '#10b981','#10b981','#10b981','#34d399',
+    '#10b981','#34d399','#34d399','#334155',
+  ];
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} fill="none" xmlns="http://www.w3.org/2000/svg" style={{flexShrink:0}}>
+      <rect width={size} height={size} rx={r} fill="#0f172a"/>
+      {colours.map((fill, i) => (
+        <rect
+          key={i}
+          x={pos(i % 4)}
+          y={pos(Math.floor(i / 4))}
+          width={cell}
+          height={cell}
+          rx={Math.max(1, Math.round(cell * 0.22))}
+          fill={fill}
+          opacity={fill === '#34d399' ? (i === 11 ? 0.5 : i === 14 ? 0.3 : 0.8) : 1}
+        />
+      ))}
+    </svg>
+  );
+}
+
 // ── Subnet Visualiser Modal ────────────────────────────────────────────────────────────────
 function SubnetVisuiserModal({ network, ipData, onClose }) {
   const [blocks, setBlocks] = useState([]);
@@ -5053,6 +5086,8 @@ export default function IPAddressManager() {
   const [sortField, setSortField] = useState('ip');
   const [sortDir, setSortDir] = useState('asc');
   const [showMobileTools, setShowMobileTools] = useState(false);
+  const [showNetworkPicker, setShowNetworkPicker] = useState(false);
+  const networkPillRef = useRef(null);
   const searchRef = useRef(null);
 
   // ── On mount: check auth status, then detect API and load data ───────────────
@@ -5190,6 +5225,13 @@ export default function IPAddressManager() {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [showToolsMenu]);
+
+  useEffect(() => {
+    if (!showNetworkPicker) return;
+    const handler = (e) => { if (networkPillRef.current && !networkPillRef.current.contains(e.target)) setShowNetworkPicker(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showNetworkPicker]);
 
   // ── Persist UI prefs (browser-local, runs whenever uiPrefs changes) ─────────
   useEffect(() => {
@@ -5973,304 +6015,250 @@ export default function IPAddressManager() {
 
       {/* Header */}
       <div className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-4">
 
-          {/* Network Tabs — shown whenever there are multiple networks */}
-          {networks.length > 1 && (
-            <div className="flex items-center gap-1 mb-3 flex-wrap">
-              {networks.map(net => (
+        {/* ── Zone row: left identity / right actions ── */}
+        <div className="border-b border-slate-100">
+          <div className="max-w-7xl mx-auto px-3 sm:px-4">
+            <div className="flex items-center h-14 gap-2 sm:gap-3">
+
+              {/* LEFT ZONE */}
+              <div className="flex items-center gap-2.5 flex-shrink-0">
+                <SubnetGridLogo size={32} />
+                <span className="text-[15px] font-bold text-slate-800 hidden sm:block leading-none">IP Address Manager</span>
+              </div>
+
+              <div className="w-px h-5 bg-slate-200 flex-shrink-0 hidden sm:block" />
+
+              {/* Network pill — dropdown when multiple networks, label when single */}
+              {networks.length > 1 ? (
+                <div className="relative flex-shrink-0" ref={networkPillRef}>
+                  <button
+                    onClick={() => setShowNetworkPicker(v => !v)}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors"
+                  >
+                    <div className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
+                    <span className="max-w-[140px] truncate">{networkConfig.networkName}</span>
+                    <ChevronDown className={`w-3.5 h-3.5 flex-shrink-0 transition-transform ${showNetworkPicker ? 'rotate-180' : ''}`} />
+                  </button>
+                  {showNetworkPicker && (
+                    <div className="absolute top-full left-0 mt-1.5 w-60 bg-white border border-slate-200 rounded-xl shadow-xl z-30 overflow-hidden py-1">
+                      {networks.map(net => (
+                        <button
+                          key={net.id}
+                          onClick={() => { setActiveNetworkId(net.id); clearFilters(); setShowNetworkPicker(false); }}
+                          className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-sm transition-colors ${
+                            net.id === activeNetworkId ? 'bg-slate-800 text-white' : 'text-slate-700 hover:bg-slate-50'
+                          }`}
+                        >
+                          <div className={`w-2 h-2 rounded-full flex-shrink-0 ${net.id === activeNetworkId ? 'bg-emerald-400' : 'bg-emerald-500'}`} />
+                          <span className="flex-1 truncate">{net.networkName}</span>
+                          <span className={`text-xs font-mono flex-shrink-0 ${net.id === activeNetworkId ? 'text-slate-400' : 'text-slate-400'}`}>{subnetCIDR(net.subnet)}</span>
+                        </button>
+                      ))}
+                      <div className="h-px bg-slate-100 mx-2 my-1" />
+                      <button
+                        onClick={() => { handleAddNetwork(); setShowNetworkPicker(false); }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-sm text-slate-500 hover:bg-slate-50 transition-colors"
+                      >
+                        <Plus className="w-3.5 h-3.5 flex-shrink-0" />
+                        Add network
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="hidden sm:flex items-center gap-1.5 flex-shrink-0">
+                  <div className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
+                  <span className="text-sm font-medium text-slate-500 max-w-[160px] truncate">{networkConfig.networkName}</span>
+                </div>
+              )}
+
+              {/* Add network — shown only in single-network mode, ghosted */}
+              {networks.length === 1 && (
                 <button
-                  key={net.id}
-                  onClick={() => { setActiveNetworkId(net.id); clearFilters(); }}
-                  className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
-                    net.id === activeNetworkId
-                      ? 'bg-slate-800 text-white'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  onClick={handleAddNetwork}
+                  title="Add another network (e.g. a VLAN or IoT segment)"
+                  className="hidden sm:flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 border border-dashed border-slate-200 hover:border-slate-300 transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5 flex-shrink-0" />
+                  Add network
+                </button>
+              )}
+
+              <div className="flex-1" />
+
+              {/* RIGHT ZONE — Desktop */}
+              <div className="hidden md:flex items-center gap-1.5">
+
+                {/* Import / Export */}
+                <button
+                  onClick={() => setShowImport(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-800 text-white text-sm font-medium rounded-lg transition-colors"
+                >
+                  <Upload className="w-3.5 h-3.5 flex-shrink-0" />
+                  Import
+                </button>
+                <button
+                  onClick={handleExportExcel}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5 flex-shrink-0" />
+                  Export
+                </button>
+
+                <div className="w-px h-5 bg-slate-200 mx-0.5" />
+
+                {/* Unified Tools dropdown — absorbs network ops + utilities */}
+                <div className="relative" ref={toolsMenuRef}>
+                  <button
+                    onClick={() => setShowToolsMenu(v => !v)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white text-sm font-medium rounded-lg transition-colors"
+                    title="Network operations and utility tools"
+                  >
+                    <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 11-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 004.486-6.336l-3.276 3.277a3.004 3.004 0 01-2.25-2.25l3.276-3.276a4.5 4.5 0 00-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085m-1.745 1.437L5.909 7.5H4.5L2.25 3.75l1.5-1.5L7.5 4.5v1.409l4.26 4.26m-1.745 1.437l1.745-1.437m6.615 8.206L15.75 15.75M4.867 19.125h.008v.008h-.008v-.008z" />
+                    </svg>
+                    Tools
+                    <ChevronDown className={`w-3.5 h-3.5 flex-shrink-0 transition-transform ${showToolsMenu ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {showToolsMenu && (
+                    <div className="absolute top-full right-0 mt-1.5 w-64 bg-white border border-slate-200 rounded-xl shadow-xl z-30 overflow-hidden">
+                      {persistMode === 'api' && (
+                        <>
+                          <div className="px-3 pt-3 pb-1">
+                            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Network</p>
+                          </div>
+                          <button onClick={() => { setShowProxmoxImport(true); setShowToolsMenu(false); }} className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 transition-colors text-left">
+                            <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center flex-shrink-0">
+                              <svg className="w-4 h-4 text-purple-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/><path d="M7 8h.01M12 8h.01M17 8h.01"/></svg>
+                            </div>
+                            <div><p className="text-sm font-medium text-slate-700">Proxmox</p><p className="text-xs text-slate-400">Import &amp; sync VMs / LXCs</p></div>
+                          </button>
+                          <button onClick={() => { setShowARPScan(true); setShowToolsMenu(false); }} className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 transition-colors text-left">
+                            <div className="w-8 h-8 rounded-lg bg-teal-100 flex items-center justify-center flex-shrink-0">
+                              <Wifi className="w-4 h-4 text-teal-600" />
+                            </div>
+                            <div><p className="text-sm font-medium text-slate-700">ARP Scan</p><p className="text-xs text-slate-400">Discover active devices on subnet</p></div>
+                          </button>
+                          <button onClick={() => { fetchPingStatus(true); setShowToolsMenu(false); }} disabled={pingLoading} className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 transition-colors text-left disabled:opacity-60">
+                            <div className="w-8 h-8 rounded-lg bg-sky-100 flex items-center justify-center flex-shrink-0">
+                              {pingLoading ? <div className="w-4 h-4 border-2 border-sky-300 border-t-sky-600 rounded-full animate-spin" /> : <Zap className="w-4 h-4 text-sky-600" />}
+                            </div>
+                            <div><p className="text-sm font-medium text-slate-700">Ping All</p><p className="text-xs text-slate-400">{pingLastAt ? `Last: ${pingLastAt.toLocaleTimeString()}` : 'Check reachability of all IPs'}</p></div>
+                          </button>
+                          <button onClick={() => { fetchDnsStatus(true); setShowToolsMenu(false); }} disabled={dnsLoading} className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 transition-colors text-left disabled:opacity-60">
+                            <div className="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center flex-shrink-0">
+                              {dnsLoading ? <div className="w-4 h-4 border-2 border-violet-300 border-t-violet-600 rounded-full animate-spin" /> : <Globe className="w-4 h-4 text-violet-600" />}
+                            </div>
+                            <div><p className="text-sm font-medium text-slate-700">DNS Lookup</p><p className="text-xs text-slate-400">{dnsLastAt ? `Last: ${dnsLastAt.toLocaleString()}` : 'Reverse PTR lookup for all IPs'}</p></div>
+                          </button>
+                          <div className="h-px bg-slate-100 mx-3 my-1" />
+                        </>
+                      )}
+                      <div className="px-3 pt-2 pb-1">
+                        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Utilities</p>
+                      </div>
+                      <button onClick={() => { setShowCIDR(true); setShowToolsMenu(false); }} className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 transition-colors text-left">
+                        <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center flex-shrink-0">
+                          <svg className="w-4 h-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 11h.01M12 11h.01M15 11h.01M4.5 19.5h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z" /></svg>
+                        </div>
+                        <div><p className="text-sm font-medium text-slate-700">CIDR Calculator</p><p className="text-xs text-slate-400">Subnet maths — range, mask, host count</p></div>
+                      </button>
+                      <button onClick={() => { setShowSubnet(true); setShowToolsMenu(false); }} className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 transition-colors text-left">
+                        <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4 text-emerald-600"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
+                        </div>
+                        <div><p className="text-sm font-medium text-slate-700">Subnet Visualiser</p><p className="text-xs text-slate-400">Heat-map grid + planned blocks</p></div>
+                      </button>
+                      <div className="pb-1.5" />
+                    </div>
+                  )}
+                </div>
+
+                <div className="w-px h-5 bg-slate-200 mx-0.5" />
+
+                {/* Icon buttons */}
+                <button onClick={() => setDarkMode(d => !d)} className="p-1.5 hover:bg-slate-100 text-slate-500 rounded-lg transition-colors" title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}>
+                  {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+                </button>
+                <button onClick={() => setShowHelp(true)} className="p-1.5 hover:bg-slate-100 text-slate-500 rounded-lg transition-colors" title="Help & Reference">
+                  <HelpCircle className="w-4 h-4" />
+                </button>
+                <button onClick={() => setShowSettings(true)} className="relative p-1.5 hover:bg-slate-100 text-slate-600 rounded-lg transition-colors" title={topLevelVersionInfo?.updateAvailable ? `Update available · ${topLevelVersionInfo.latest}` : 'Settings'}>
+                  <Settings className="w-4 h-4" />
+                  {topLevelVersionInfo?.updateAvailable && <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-amber-400 rounded-full" />}
+                </button>
+                {persistMode === 'api' && (
+                  <button onClick={handleLogout} className="p-1.5 hover:bg-red-50 hover:text-red-500 text-slate-500 rounded-lg transition-colors" title="Sign out">
+                    <LogOut className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+
+              {/* RIGHT ZONE — Mobile: Tools button only */}
+              <div className="flex md:hidden items-center gap-1.5">
+                <button
+                  onClick={() => setShowMobileTools(t => !t)}
+                  className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
+                    showMobileTools ? 'bg-slate-800 text-white border-slate-800' : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
                   }`}
                 >
-                  {net.networkName}
-                  <span className={`ml-1.5 text-xs font-mono ${net.id === activeNetworkId ? 'text-slate-300' : 'text-slate-400'}`}>
-                    {subnetCIDR(net.subnet)}
-                  </span>
+                  <MoreHorizontal className="w-4 h-4" />
+                  Tools
+                  <ChevronDown className={`w-3 h-3 transition-transform ${showMobileTools ? 'rotate-180' : ''}`} />
                 </button>
-              ))}
-              <button
-                onClick={handleAddNetwork}
-                title="Add another network"
-                className="px-3 py-1.5 text-sm font-medium rounded-lg bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-600 border border-dashed border-slate-300 transition-colors"
-              >
-                + Add Network
-              </button>
+              </div>
+
             </div>
-          )}
+          </div>
+        </div>
 
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h1 className="text-xl md:text-2xl font-bold text-slate-800">IP Address Manager</h1>
-              <p className="text-xs md:text-sm text-slate-500">{networkConfig.networkName} · {subnetCIDR(networkConfig.subnet)}</p>
-            </div>
-
-            {/* ── Desktop toolbar (md+) ── */}
-            <div className="hidden md:flex gap-2 items-center flex-wrap">
-
-              {/* Status badge */}
+        {/* ── Sub-bar: status chip + subnet + view toggle ── */}
+        <div className="bg-slate-50 border-b border-slate-100">
+          <div className="max-w-7xl mx-auto px-3 sm:px-4">
+            <div className="flex items-center h-9 gap-2">
               {persistMode === 'api' && (
-                <div className="flex items-center gap-1.5 px-2.5 py-2 bg-emerald-50 text-emerald-700 rounded-lg text-xs font-medium border border-emerald-200 whitespace-nowrap" title="Data stored in SQLite on the server — shared across all users">
+                <div className="flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-md text-xs font-medium border border-emerald-200 whitespace-nowrap" title="Data stored in SQLite on the server — shared across all users">
                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
                   SQLite
                 </div>
               )}
               {persistMode === 'local' && (
-                <div className="flex items-center gap-1.5 px-2.5 py-2 bg-slate-50 text-slate-500 rounded-lg text-xs font-medium border border-slate-200 whitespace-nowrap" title="Data stored in this browser only — no API server detected">
+                <div className="flex items-center gap-1 px-2 py-0.5 bg-slate-100 text-slate-500 rounded-md text-xs font-medium border border-slate-200 whitespace-nowrap" title="Data stored in this browser only — no API server detected">
                   <div className="w-1.5 h-1.5 rounded-full bg-slate-400 flex-shrink-0" />
                   Local
                 </div>
               )}
               {hasChanges && persistMode !== 'api' && (
-                <div className="flex items-center gap-1.5 px-2.5 py-2 bg-amber-50 text-amber-700 rounded-lg text-xs font-medium border border-amber-200 whitespace-nowrap">
-                  <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                <div className="flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-700 rounded-md text-xs font-medium border border-amber-200 whitespace-nowrap">
+                  <AlertCircle className="w-3 h-3 flex-shrink-0" />
                   Unsaved
                 </div>
               )}
-
-              {/* Import tools (api-only) */}
-              {persistMode === 'api' && (
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={() => setShowProxmoxImport(true)}
-                    className="flex items-center gap-1.5 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg whitespace-nowrap transition-colors"
-                    title="Auto-discover VMs and LXCs from Proxmox"
-                  >
-                    <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="2" y="3" width="20" height="14" rx="2"/>
-                      <path d="M8 21h8M12 17v4"/>
-                      <path d="M7 8h.01M12 8h.01M17 8h.01"/>
-                    </svg>
-                    Proxmox
-                  </button>
-                  <button
-                    onClick={() => setShowARPScan(true)}
-                    className="flex items-center gap-1.5 px-3 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg whitespace-nowrap transition-colors"
-                    title="Scan your subnet for active devices via ARP"
-                  >
-                    <Wifi className="w-4 h-4 flex-shrink-0" />
-                    ARP Scan
-                  </button>
-                  <button
-                    onClick={() => fetchPingStatus(true)}
-                    disabled={pingLoading}
-                    title={pingLastAt ? `Last checked: ${pingLastAt.toLocaleTimeString()}` : 'Check reachability of all tracked IPs'}
-                    className="flex items-center gap-1.5 px-3 py-2 bg-sky-600 hover:bg-sky-700 disabled:opacity-60 text-white text-sm font-medium rounded-lg whitespace-nowrap transition-colors"
-                  >
-                    {pingLoading
-                      ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin flex-shrink-0" />
-                      : <Zap className="w-4 h-4 flex-shrink-0" />}
-                    Ping
-                  </button>
-                  <button
-                    onClick={() => fetchDnsStatus(true)}
-                    disabled={dnsLoading}
-                    title={dnsLastAt ? `DNS last run: ${dnsLastAt.toLocaleString()}` : 'Run reverse DNS (PTR) lookup for all tracked IPs'}
-                    className="flex items-center gap-1.5 px-3 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-60 text-white text-sm font-medium rounded-lg whitespace-nowrap transition-colors"
-                  >
-                    {dnsLoading
-                      ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin flex-shrink-0" />
-                      : <Globe className="w-4 h-4 flex-shrink-0" />}
-                    DNS
-                  </button>
-                </div>
-              )}
-
-              {/* Tools dropdown */}
-              <div className="relative" ref={toolsMenuRef}>
-                <button
-                  onClick={() => setShowToolsMenu(v => !v)}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg whitespace-nowrap transition-colors"
-                  title="Utility tools — CIDR Calculator and more"
-                >
-                  <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 11-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 004.486-6.336l-3.276 3.277a3.004 3.004 0 01-2.25-2.25l3.276-3.276a4.5 4.5 0 00-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085m-1.745 1.437L5.909 7.5H4.5L2.25 3.75l1.5-1.5L7.5 4.5v1.409l4.26 4.26m-1.745 1.437l1.745-1.437m6.615 8.206L15.75 15.75M4.867 19.125h.008v.008h-.008v-.008z" />
-                  </svg>
-                  Tools
-                  <ChevronDown className={`w-3.5 h-3.5 flex-shrink-0 transition-transform ${showToolsMenu ? 'rotate-180' : ''}`} />
-                </button>
-
-                {showToolsMenu && (
-                  <div className="absolute top-full left-0 mt-1.5 w-64 bg-white border border-slate-200 rounded-xl shadow-xl z-30 overflow-hidden">
-                    <div className="px-3 pt-3 pb-1">
-                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Utility Tools</p>
-                    </div>
-                    <button
-                      onClick={() => { setShowCIDR(true); setShowToolsMenu(false); }}
-                      className="w-full flex items-start gap-3 px-3 py-2.5 hover:bg-indigo-50 transition-colors text-left"
-                    >
-                      <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                        <svg className="w-4 h-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 11h.01M12 11h.01M15 11h.01M4.5 19.5h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z" />
-                        </svg>
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-slate-700">CIDR Calculator</p>
-                        <p className="text-xs text-slate-400 mt-0.5">Subnet maths — range, mask, host count</p>
-                      </div>
-                    </button>
-                    <button
-                      onClick={() => { setShowSubnet(true); setShowToolsMenu(false); }}
-                      className="w-full text-left flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 rounded-lg transition-colors"
-                    >
-                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4 flex-shrink-0">
-                        <rect x="1" y="1" width="6" height="6" rx="1"/>
-                        <rect x="9" y="1" width="6" height="6" rx="1"/>
-                        <rect x="1" y="9" width="6" height="6" rx="1"/>
-                        <rect x="9" y="9" width="6" height="6" rx="1"/>
-                      </svg>
-                      <div>
-                        <div className="font-medium">Subnet Visualiser</div>
-                        <div className="text-xs text-slate-500">Heat-map grid + planned blocks</div>
-                      </div>
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* Data buttons */}
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={() => setShowImport(true)}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-slate-700 hover:bg-slate-800 text-white text-sm font-medium rounded-lg whitespace-nowrap transition-colors"
-                >
-                  <Upload className="w-4 h-4 flex-shrink-0" />
-                  Import
-                </button>
-                <button
-                  onClick={handleExportExcel}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg whitespace-nowrap transition-colors"
-                >
-                  <Download className="w-4 h-4 flex-shrink-0" />
-                  Export
-                </button>
-              </div>
-
-              {/* Utility icon buttons */}
-              <div className="flex items-center gap-1">
-                {networks.length === 1 && (
-                  <button
-                    onClick={handleAddNetwork}
-                    className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-700 text-sm font-medium rounded-lg border border-dashed border-slate-300 hover:border-slate-400 whitespace-nowrap transition-colors"
-                    title="Add another network (e.g. a VLAN or IoT segment)"
-                  >
-                    <Plus className="w-4 h-4 flex-shrink-0" />
-                    Add Network
-                  </button>
-                )}
-                <button
-                  onClick={() => setDarkMode(d => !d)}
-                  className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-lg transition-colors"
-                  title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
-                >
-                  {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-                </button>
-                <button
-                  onClick={() => setShowHelp(true)}
-                  className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-lg transition-colors"
-                  title="Help & Reference"
-                >
-                  <HelpCircle className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => setShowSettings(true)}
-                  className="relative p-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg transition-colors"
-                  title={topLevelVersionInfo?.updateAvailable ? `Update available · ${topLevelVersionInfo.latest}` : 'Network Settings'}
-                >
-                  <Settings className="w-4 h-4" />
-                  {topLevelVersionInfo?.updateAvailable && (
-                    <span className="absolute top-1 right-1 w-2 h-2 bg-amber-400 rounded-full" />
-                  )}
-                </button>
-                {persistMode === 'api' && (
-                  <button
-                    onClick={handleLogout}
-                    className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-red-50 hover:text-red-500 text-slate-500 rounded-lg transition-colors text-sm font-medium whitespace-nowrap"
-                    title="Sign out"
-                  >
-                    <LogOut className="w-4 h-4 flex-shrink-0" />
-                    Sign out
-                  </button>
-                )}
-              </div>
-
+              <span className="text-slate-300 text-xs select-none">·</span>
+              <span className="text-xs text-slate-400 font-mono">{subnetCIDR(networkConfig.subnet)}</span>
+              <div className="flex-1" />
               {/* View toggle */}
-              <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
+              <div className="flex items-center bg-white border border-slate-200 rounded-lg p-0.5">
                 <button
                   onClick={() => setViewMode('cards')}
-                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
-                    viewMode === 'cards' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                  className={`px-3 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${
+                    viewMode === 'cards' ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-slate-700'
                   }`}
-                >
-                  Cards
-                </button>
+                >Cards</button>
                 <button
                   onClick={() => setViewMode('table')}
-                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
-                    viewMode === 'table' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                  className={`px-3 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${
+                    viewMode === 'table' ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-slate-700'
                   }`}
-                >
-                  Table
-                </button>
+                >Table</button>
               </div>
-
-            </div>
-
-            {/* ── Mobile toolbar (< md): view toggle + tools menu button ── */}
-            <div className="flex md:hidden items-center gap-2">
-              {/* Status badges — keep visible on mobile */}
-              {persistMode === 'api' && (
-                <div className="flex items-center gap-1 px-2 py-1.5 bg-emerald-50 text-emerald-700 rounded-lg text-xs font-medium border border-emerald-200">
-                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                  SQLite
-                </div>
-              )}
-              {hasChanges && persistMode !== 'api' && (
-                <div className="flex items-center gap-1 px-2 py-1.5 bg-amber-50 text-amber-700 rounded-lg text-xs font-medium border border-amber-200">
-                  <AlertCircle className="w-3 h-3" />
-                  Unsaved
-                </div>
-              )}
-              {/* View toggle */}
-              <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
-                <button
-                  onClick={() => setViewMode('cards')}
-                  className={`px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                    viewMode === 'cards' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'
-                  }`}
-                >
-                  Cards
-                </button>
-                <button
-                  onClick={() => setViewMode('table')}
-                  className={`px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                    viewMode === 'table' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'
-                  }`}
-                >
-                  Table
-                </button>
-              </div>
-              {/* Tools dropdown toggle */}
-              <button
-                onClick={() => setShowMobileTools(t => !t)}
-                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
-                  showMobileTools
-                    ? 'bg-slate-800 text-white border-slate-800'
-                    : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
-                }`}
-                title="Tools"
-              >
-                <MoreHorizontal className="w-4 h-4" />
-                Tools
-                <ChevronDown className={`w-3 h-3 transition-transform ${showMobileTools ? 'rotate-180' : ''}`} />
-              </button>
             </div>
           </div>
+        </div>
+
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 pt-3 pb-4">
 
           {/* ── Mobile tools panel ── */}
           {showMobileTools && (

@@ -6,6 +6,20 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v1.25.0
+
+**Redesigned header — two-zone layout and app logo**
+
+The toolbar has been completely restructured to reduce visual clutter and establish a clear hierarchy between identity and actions.
+
+**Two-zone header** — The header is now split into a left zone (identity) and a right zone (actions). Left zone: the new app logo + wordmark, followed by the active network name. When multiple networks exist, the network name becomes a dropdown pill for switching — replacing the old tab row. A ghosted Add network button sits next to it, subdued so it doesn't compete with primary actions. Right zone: Import, Export, a unified Tools dropdown, and three icon buttons (dark mode, settings, sign out). The SQLite/Local status badge and subnet CIDR move to a quiet sub-bar beneath the main row, alongside the Cards/Table view toggle.
+
+**Subnet Grid logo** — A 4×4 grid of rounded squares in the app's emerald and slate colours, echoing the Subnet Visualiser heat-map. The top row is slate (outside range), the middle rows are emerald (assigned IPs), and the bottom-right cells fade to lighter emerald (free). Renders at any size from 16px (favicon-scale) to 64px. Dark background matches the app's header aesthetic at all sizes.
+
+**Consolidated Tools dropdown** — The standalone Proxmox, ARP Scan, Ping, and DNS buttons have moved off the main toolbar into the Tools menu, which now has two sections: Network (Proxmox, ARP Scan, Ping All, DNS Lookup) and Utilities (CIDR Calculator, Subnet Visualiser). Each item shows a description line and a coloured icon. The result is a main toolbar that goes from 15 items to 7.
+
+---
+
 ## v1.24.2
 
 **Subnet Visualiser grid layout fix** — Row labels and cells are now placed inside a single CSS grid (17 columns: label + 16 cells), so each label is anchored to its row and shares the exact same height as its cells. Previously the labels were in a separate flex column with height: 100%, which caused them to expand independently of the cells — resulting in large blank scroll areas between labels.

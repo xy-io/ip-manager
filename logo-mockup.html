@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IP Manager — Logo Concepts</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif; background: #f1f5f9; color: #1e293b; padding: 40px 24px; }
+
+  h1 { font-size: 22px; font-weight: 800; color: #0f172a; margin-bottom: 6px; }
+  .intro { font-size: 14px; color: #64748b; margin-bottom: 40px; line-height: 1.6; max-width: 640px; }
+  .section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #94a3b8; margin-bottom: 12px; }
+
+  /* Logo card grid */
+  .logo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin-bottom: 48px; }
+
+  .logo-card {
+    background: white; border-radius: 14px; border: 2px solid #e2e8f0;
+    padding: 28px 20px 20px; cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s;
+    display: flex; flex-direction: column; align-items: center; gap: 16px;
+  }
+  .logo-card:hover { border-color: #a5b4fc; box-shadow: 0 4px 16px rgba(99,102,241,0.1); }
+  .logo-card.selected { border-color: #6366f1; box-shadow: 0 4px 20px rgba(99,102,241,0.18); }
+
+  .logo-name { font-size: 13px; font-weight: 700; color: #334155; }
+  .logo-desc { font-size: 11.5px; color: #94a3b8; text-align: center; line-height: 1.5; }
+
+  /* Size strip */
+  .size-strip { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+  .size-item { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .size-label { font-size: 10px; color: #94a3b8; font-weight: 500; }
+
+  hr { border: none; border-top: 1px solid #e2e8f0; margin: 40px 0; }
+
+  /* Header preview */
+  .header-preview { background: white; border-radius: 14px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 48px; }
+  .toolbar-row { padding: 10px 16px; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; gap: 8px; }
+  .toolbar-subrow { padding: 5px 16px; background: #f8fafc; display: flex; align-items: center; gap: 8px; }
+  .mock-body { background: #f8fafc; padding: 24px; height: 80px; display: flex; align-items: center; justify-content: center; color: #cbd5e1; font-size: 13px; }
+  .spacer { flex: 1; }
+  .vdiv { width: 1px; height: 20px; background: #e2e8f0; flex-shrink: 0; }
+
+  .btn { display: inline-flex; align-items: center; gap: 5px; padding: 7px 13px; border-radius: 8px; font-size: 12.5px; font-weight: 500; cursor: pointer; border: none; white-space: nowrap; }
+  .btn-dark  { background: #1e293b; color: white; }
+  .btn-green { background: #059669; color: white; }
+  .btn-slate { background: #334155; color: white; }
+  .btn-ghost { background: transparent; color: #475569; border: 1px solid #e2e8f0; }
+
+  .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 8px; cursor: pointer; color: #64748b; border: 1px solid #e2e8f0; background: white; }
+  .icon-btn svg { width: 15px; height: 15px; }
+  .seg { display: inline-flex; border-radius: 8px; overflow: hidden; border: 1px solid #e2e8f0; background: white; }
+  .seg-item { padding: 6px 13px; font-size: 12.5px; font-weight: 500; cursor: pointer; color: #64748b; }
+  .seg-item.active { background: #1e293b; color: white; }
+  .net-pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 8px; font-size: 12.5px; font-weight: 500; color: #475569; background: #f1f5f9; border: 1px solid #e2e8f0; cursor: pointer; }
+  .net-dot { width: 7px; height: 7px; border-radius: 50%; background: #10b981; flex-shrink: 0; }
+  .status-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; color: #065f46; background: #d1fae5; border: 1px solid #a7f3d0; }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; background: #10b981; }
+
+  .app-wordmark { display: flex; flex-direction: column; }
+  .app-wordmark-main { font-size: 14px; font-weight: 800; color: #0f172a; }
+  .app-wordmark-sub { font-size: 11px; color: #94a3b8; margin-top: 1px; }
+
+  .with-logo { display: flex; align-items: center; gap: 10px; }
+
+  /* Dark bg swatch */
+  .on-dark { background: #0f172a; border-radius: 10px; padding: 16px; display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap; }
+
+  .annotation { font-size: 11.5px; color: #94a3b8; font-style: italic; margin-top: 8px; padding: 0 4px; }
+  .annotation strong { color: #64748b; font-style: normal; }
+
+  #preview-logo { transition: opacity 0.2s; }
+  #preview-logo-dark { transition: opacity 0.2s; }
+</style>
+</head>
+<body>
+
+<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:6px;">IP Address Manager</div>
+<h1>Logo Concepts</h1>
+<p class="intro">Four directions exploring different metaphors. Click any card to see it previewed in the two-zone header below.</p>
+
+<!-- ══════════════════════════════════════
+     LOGO CARDS
+══════════════════════════════════════ -->
+<div class="section-label">Concepts — click to preview</div>
+<div class="logo-grid">
+
+  <!-- A: SUBNET GRID -->
+  <div class="logo-card selected" id="card-A" onclick="select('A')">
+    <svg id="logo-A" width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="64" height="64" rx="14" fill="#0f172a"/>
+      <!-- 4×4 grid — colours map to: emerald=assigned, light=free, teal=DHCP, slate=outside -->
+      <!-- Row 0 -->
+      <rect x="10" y="10" width="9" height="9" rx="2" fill="#334155"/>
+      <rect x="21" y="10" width="9" height="9" rx="2" fill="#334155"/>
+      <rect x="32" y="10" width="9" height="9" rx="2" fill="#334155"/>
+      <rect x="43" y="10" width="9" height="9" rx="2" fill="#334155"/>
+      <!-- Row 1 -->
+      <rect x="10" y="21" width="9" height="9" rx="2" fill="#10b981"/>
+      <rect x="21" y="21" width="9" height="9" rx="2" fill="#10b981"/>
+      <rect x="32" y="21" width="9" height="9" rx="2" fill="#10b981"/>
+      <rect x="43" y="21" width="9" height="9" rx="2" fill="#10b981"/>
+      <!-- Row 2 -->
+      <rect x="10" y="32" width="9" height="9" rx="2" fill="#10b981"/>
+      <rect x="21" y="32" width="9" height="9" rx="2" fill="#10b981"/>
+      <rect x="32" y="32" width="9" height="9" rx="2" fill="#10b981"/>
+      <rect x="43" y="32" width="9" height="9" rx="2" fill="#34d399" opacity="0.5"/>
+      <!-- Row 3 -->
+      <rect x="10" y="43" width="9" height="9" rx="2" fill="#10b981"/>
+      <rect x="21" y="43" width="9" height="9" rx="2" fill="#34d399" opacity="0.5"/>
+      <rect x="32" y="43" width="9" height="9" rx="2" fill="#34d399" opacity="0.3"/>
+      <rect x="43" y="43" width="9" height="9" rx="2" fill="#334155"/>
+    </svg>
+    <div class="logo-name">Subnet Grid</div>
+    <div class="logo-desc">Echoes the subnet visualiser — a mini heat-map of assigned and free addresses</div>
+  </div>
+
+  <!-- B: NETWORK HUB -->
+  <div class="logo-card" id="card-B" onclick="select('B')">
+    <svg id="logo-B" width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="64" height="64" rx="14" fill="#0f172a"/>
+      <!-- Hub lines -->
+      <line x1="32" y1="32" x2="32" y2="12" stroke="#10b981" stroke-width="2" stroke-linecap="round"/>
+      <line x1="32" y1="32" x2="48" y2="22" stroke="#10b981" stroke-width="2" stroke-linecap="round"/>
+      <line x1="32" y1="32" x2="50" y2="38" stroke="#10b981" stroke-width="2" stroke-linecap="round"/>
+      <line x1="32" y1="32" x2="38" y2="52" stroke="#34d399" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+      <line x1="32" y1="32" x2="18" y2="50" stroke="#34d399" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+      <line x1="32" y1="32" x2="14" y2="38" stroke="#10b981" stroke-width="2" stroke-linecap="round"/>
+      <line x1="32" y1="32" x2="16" y2="22" stroke="#34d399" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+      <!-- Peripheral nodes -->
+      <circle cx="32" cy="12" r="3.5" fill="#10b981"/>
+      <circle cx="48" cy="22" r="3.5" fill="#10b981"/>
+      <circle cx="50" cy="38" r="3.5" fill="#10b981"/>
+      <circle cx="38" cy="52" r="3" fill="#34d399" opacity="0.8"/>
+      <circle cx="18" cy="50" r="3" fill="#34d399" opacity="0.8"/>
+      <circle cx="14" cy="38" r="3.5" fill="#10b981"/>
+      <circle cx="16" cy="22" r="2.5" fill="#34d399" opacity="0.6"/>
+      <!-- Centre hub -->
+      <circle cx="32" cy="32" r="7" fill="#10b981"/>
+      <circle cx="32" cy="32" r="4" fill="#0f172a"/>
+      <circle cx="32" cy="32" r="2" fill="#10b981"/>
+    </svg>
+    <div class="logo-name">Network Hub</div>
+    <div class="logo-desc">Central node with device connections — classic network topology feel</div>
+  </div>
+
+  <!-- C: PING RINGS -->
+  <div class="logo-card" id="card-C" onclick="select('C')">
+    <svg id="logo-C" width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="64" height="64" rx="14" fill="#0f172a"/>
+      <!-- Concentric rings — ping/radar metaphor -->
+      <circle cx="32" cy="32" r="24" stroke="#10b981" stroke-width="1.5" opacity="0.2"/>
+      <circle cx="32" cy="32" r="17" stroke="#10b981" stroke-width="1.5" opacity="0.4"/>
+      <circle cx="32" cy="32" r="10" stroke="#10b981" stroke-width="1.5" opacity="0.7"/>
+      <!-- Cross-hairs -->
+      <line x1="32" y1="8" x2="32" y2="14" stroke="#10b981" stroke-width="1.5" stroke-linecap="round" opacity="0.4"/>
+      <line x1="32" y1="50" x2="32" y2="56" stroke="#10b981" stroke-width="1.5" stroke-linecap="round" opacity="0.4"/>
+      <line x1="8" y1="32" x2="14" y2="32" stroke="#10b981" stroke-width="1.5" stroke-linecap="round" opacity="0.4"/>
+      <line x1="50" y1="32" x2="56" y2="32" stroke="#10b981" stroke-width="1.5" stroke-linecap="round" opacity="0.4"/>
+      <!-- Centre dot -->
+      <circle cx="32" cy="32" r="4" fill="#10b981"/>
+      <!-- Sweep arc — suggests active scan -->
+      <path d="M32 32 L32 15 A17 17 0 0 1 47.7 41" stroke="#34d399" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.6"/>
+      <circle cx="47.7" cy="41" r="2.5" fill="#34d399" opacity="0.8"/>
+    </svg>
+    <div class="logo-name">Ping Radar</div>
+    <div class="logo-desc">Concentric rings + sweep — directly references the live ping / reachability feature</div>
+  </div>
+
+  <!-- D: IP MONOGRAM -->
+  <div class="logo-card" id="card-D" onclick="select('D')">
+    <svg id="logo-D" width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="64" height="64" rx="14" fill="#0f172a"/>
+      <!-- I glyph -->
+      <rect x="13" y="19" width="11" height="2.5" rx="1.2" fill="#10b981"/>
+      <rect x="16.5" y="21.5" width="4" height="21" rx="1.2" fill="#10b981"/>
+      <rect x="13" y="42.5" width="11" height="2.5" rx="1.2" fill="#10b981"/>
+      <!-- P glyph -->
+      <rect x="28" y="19" width="4" height="26" rx="1.2" fill="#10b981"/>
+      <rect x="28" y="19" width="14" height="2.5" rx="1.2" fill="#10b981"/>
+      <rect x="28" y="30" width="14" height="2.5" rx="1.2" fill="#10b981"/>
+      <path d="M42 19 Q50 19 50 24.75 Q50 30.5 42 30.5" stroke="#10b981" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+      <!-- Dot accent — the "." of an IP address -->
+      <circle cx="23" cy="46" r="2.5" fill="#34d399" opacity="0.9"/>
+    </svg>
+    <div class="logo-name">IP Monogram</div>
+    <div class="logo-desc">Clean letterform with a subtle dot accent — the dot nods to IP address notation</div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════
+     SIZE STRIP
+══════════════════════════════════════ -->
+<div class="section-label" style="margin-bottom:12px;">Selected logo at all sizes</div>
+<div style="background:white; border-radius:12px; border:1px solid #e2e8f0; padding:20px 24px; margin-bottom:16px;">
+  <div class="size-strip" id="size-strip">
+    <!-- populated by JS -->
+  </div>
+</div>
+<div style="background:#0f172a; border-radius:12px; padding:16px 24px; margin-bottom:48px;">
+  <div class="size-strip" id="size-strip-dark">
+    <!-- populated by JS -->
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     HEADER PREVIEW
+══════════════════════════════════════ -->
+<div class="section-label" style="margin-bottom:12px;">Two-zone header preview</div>
+<div class="header-preview">
+  <div class="toolbar-row">
+    <!-- LEFT ZONE -->
+    <div class="with-logo">
+      <div id="preview-logo">
+        <!-- swapped by JS -->
+      </div>
+      <div class="app-wordmark">
+        <div class="app-wordmark-main">IP Address Manager</div>
+      </div>
+    </div>
+    <div class="vdiv" style="margin-left:4px;"></div>
+    <div class="net-pill">
+      <div class="net-dot"></div>
+      The Allens Network
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+    </div>
+    <button class="btn btn-ghost" style="padding:5px 10px; font-size:12px; color:#94a3b8; border-color:#e2e8f0;">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Add network
+    </button>
+    <div class="spacer"></div>
+    <!-- RIGHT ZONE -->
+    <button class="btn btn-dark">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      Import
+    </button>
+    <button class="btn btn-green">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Export
+    </button>
+    <div class="vdiv"></div>
+    <button class="btn btn-slate" style="gap:5px;">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+      Tools ▾
+    </button>
+    <div class="vdiv"></div>
+    <div class="icon-btn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </div>
+    <div class="icon-btn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </div>
+    <div class="icon-btn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+    </div>
+  </div>
+  <div class="toolbar-subrow">
+    <div class="status-chip"><div class="status-dot"></div> SQLite</div>
+    <span style="font-size:11px;color:#cbd5e1;">·</span>
+    <span style="font-size:11.5px;color:#94a3b8;">192.168.0.0/24</span>
+    <div class="spacer"></div>
+    <div class="seg">
+      <div class="seg-item active">Cards</div>
+      <div class="seg-item">Table</div>
+    </div>
+  </div>
+  <div class="mock-body">card grid / table view</div>
+</div>
+
+<!-- ══════════════════════════════════════
+     DARK HEADER VARIANT
+══════════════════════════════════════ -->
+<div class="section-label" style="margin-bottom:12px;">Dark header variant</div>
+<div class="header-preview" style="border-color:#1e293b;">
+  <div class="toolbar-row" style="background:#0f172a; border-bottom-color:#1e293b;">
+    <div class="with-logo">
+      <div id="preview-logo-dark"></div>
+      <div class="app-wordmark">
+        <div class="app-wordmark-main" style="color:white;">IP Address Manager</div>
+      </div>
+    </div>
+    <div class="vdiv" style="background:#334155; margin-left:4px;"></div>
+    <div class="net-pill" style="background:#1e293b; border-color:#334155; color:#94a3b8;">
+      <div class="net-dot"></div>
+      The Allens Network
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn" style="background:#1e293b; color:#94a3b8; border:1px solid #334155; padding:7px 13px;">Import</button>
+    <button class="btn btn-green">Export</button>
+    <div class="vdiv" style="background:#334155;"></div>
+    <button class="btn" style="background:#1e293b; color:#94a3b8; border:1px solid #334155; padding:7px 13px;">Tools ▾</button>
+    <div class="vdiv" style="background:#334155;"></div>
+    <div class="icon-btn" style="background:#1e293b; border-color:#334155; color:#64748b;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </div>
+  </div>
+  <div class="toolbar-subrow" style="background:#1a2535; border-top:1px solid #1e293b;">
+    <div class="status-chip">
+      <div class="status-dot"></div> SQLite
+    </div>
+    <span style="font-size:11px;color:#334155;">·</span>
+    <span style="font-size:11.5px;color:#475569;">192.168.0.0/24</span>
+    <div class="spacer"></div>
+    <div class="seg" style="border-color:#334155; background:#0f172a;">
+      <div class="seg-item active" style="background:#334155; color:white;">Cards</div>
+      <div class="seg-item" style="color:#64748b;">Table</div>
+    </div>
+  </div>
+  <div class="mock-body" style="background:#0d1b2a; color:#334155;">card grid / table view</div>
+</div>
+
+<script>
+  // SVG source for each logo at a given size
+  function makeLogo(id, size) {
+    const svgs = {
+      A: (s) => `<svg width="${s}" height="${s}" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect width="64" height="64" rx="${s*0.22}" fill="#0f172a"/>
+        <rect x="10" y="10" width="9" height="9" rx="2" fill="#334155"/>
+        <rect x="21" y="10" width="9" height="9" rx="2" fill="#334155"/>
+        <rect x="32" y="10" width="9" height="9" rx="2" fill="#334155"/>
+        <rect x="43" y="10" width="9" height="9" rx="2" fill="#334155"/>
+        <rect x="10" y="21" width="9" height="9" rx="2" fill="#10b981"/>
+        <rect x="21" y="21" width="9" height="9" rx="2" fill="#10b981"/>
+        <rect x="32" y="21" width="9" height="9" rx="2" fill="#10b981"/>
+        <rect x="43" y="21" width="9" height="9" rx="2" fill="#10b981"/>
+        <rect x="10" y="32" width="9" height="9" rx="2" fill="#10b981"/>
+        <rect x="21" y="32" width="9" height="9" rx="2" fill="#10b981"/>
+        <rect x="32" y="32" width="9" height="9" rx="2" fill="#10b981"/>
+        <rect x="43" y="32" width="9" height="9" rx="2" fill="#34d399" opacity="0.5"/>
+        <rect x="10" y="43" width="9" height="9" rx="2" fill="#10b981"/>
+        <rect x="21" y="43" width="9" height="9" rx="2" fill="#34d399" opacity="0.5"/>
+        <rect x="32" y="43" width="9" height="9" rx="2" fill="#34d399" opacity="0.3"/>
+        <rect x="43" y="43" width="9" height="9" rx="2" fill="#334155"/>
+      </svg>`,
+
+      B: (s) => `<svg width="${s}" height="${s}" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect width="64" height="64" rx="${s*0.22}" fill="#0f172a"/>
+        <line x1="32" y1="32" x2="32" y2="12" stroke="#10b981" stroke-width="2" stroke-linecap="round"/>
+        <line x1="32" y1="32" x2="48" y2="22" stroke="#10b981" stroke-width="2" stroke-linecap="round"/>
+        <line x1="32" y1="32" x2="50" y2="38" stroke="#10b981" stroke-width="2" stroke-linecap="round"/>
+        <line x1="32" y1="32" x2="38" y2="52" stroke="#34d399" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+        <line x1="32" y1="32" x2="18" y2="50" stroke="#34d399" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+        <line x1="32" y1="32" x2="14" y2="38" stroke="#10b981" stroke-width="2" stroke-linecap="round"/>
+        <line x1="32" y1="32" x2="16" y2="22" stroke="#34d399" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+        <circle cx="32" cy="12" r="3.5" fill="#10b981"/>
+        <circle cx="48" cy="22" r="3.5" fill="#10b981"/>
+        <circle cx="50" cy="38" r="3.5" fill="#10b981"/>
+        <circle cx="38" cy="52" r="3" fill="#34d399" opacity="0.8"/>
+        <circle cx="18" cy="50" r="3" fill="#34d399" opacity="0.8"/>
+        <circle cx="14" cy="38" r="3.5" fill="#10b981"/>
+        <circle cx="16" cy="22" r="2.5" fill="#34d399" opacity="0.6"/>
+        <circle cx="32" cy="32" r="7" fill="#10b981"/>
+        <circle cx="32" cy="32" r="4" fill="#0f172a"/>
+        <circle cx="32" cy="32" r="2" fill="#10b981"/>
+      </svg>`,
+
+      C: (s) => `<svg width="${s}" height="${s}" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect width="64" height="64" rx="${s*0.22}" fill="#0f172a"/>
+        <circle cx="32" cy="32" r="24" stroke="#10b981" stroke-width="1.5" opacity="0.2"/>
+        <circle cx="32" cy="32" r="17" stroke="#10b981" stroke-width="1.5" opacity="0.4"/>
+        <circle cx="32" cy="32" r="10" stroke="#10b981" stroke-width="1.5" opacity="0.7"/>
+        <line x1="32" y1="8" x2="32" y2="14" stroke="#10b981" stroke-width="1.5" stroke-linecap="round" opacity="0.4"/>
+        <line x1="32" y1="50" x2="32" y2="56" stroke="#10b981" stroke-width="1.5" stroke-linecap="round" opacity="0.4"/>
+        <line x1="8" y1="32" x2="14" y2="32" stroke="#10b981" stroke-width="1.5" stroke-linecap="round" opacity="0.4"/>
+        <line x1="50" y1="32" x2="56" y2="32" stroke="#10b981" stroke-width="1.5" stroke-linecap="round" opacity="0.4"/>
+        <circle cx="32" cy="32" r="4" fill="#10b981"/>
+        <path d="M32 32 L32 15 A17 17 0 0 1 47.7 41" stroke="#34d399" stroke-width="2" fill="none" stroke-linecap="round" opacity="0.6"/>
+        <circle cx="47.7" cy="41" r="2.5" fill="#34d399" opacity="0.8"/>
+      </svg>`,
+
+      D: (s) => `<svg width="${s}" height="${s}" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect width="64" height="64" rx="${s*0.22}" fill="#0f172a"/>
+        <rect x="13" y="19" width="11" height="2.5" rx="1.2" fill="#10b981"/>
+        <rect x="16.5" y="21.5" width="4" height="21" rx="1.2" fill="#10b981"/>
+        <rect x="13" y="42.5" width="11" height="2.5" rx="1.2" fill="#10b981"/>
+        <rect x="28" y="19" width="4" height="26" rx="1.2" fill="#10b981"/>
+        <rect x="28" y="19" width="14" height="2.5" rx="1.2" fill="#10b981"/>
+        <rect x="28" y="30" width="14" height="2.5" rx="1.2" fill="#10b981"/>
+        <path d="M42 19 Q50 19 50 24.75 Q50 30.5 42 30.5" stroke="#10b981" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+        <circle cx="23" cy="46" r="2.5" fill="#34d399" opacity="0.9"/>
+      </svg>`
+    };
+    return svgs[id](s);
+  }
+
+  let selected = 'A';
+
+  function select(id) {
+    // Update card selection
+    ['A','B','C','D'].forEach(c => {
+      document.getElementById('card-'+c).classList.toggle('selected', c === id);
+    });
+    selected = id;
+    updatePreviews();
+  }
+
+  function updatePreviews() {
+    // Size strip (light)
+    const strip = document.getElementById('size-strip');
+    strip.innerHTML = [64, 40, 32, 24, 16].map(s => `
+      <div class="size-item">
+        ${makeLogo(selected, s)}
+        <div class="size-label">${s}px</div>
+      </div>
+    `).join('');
+
+    // Size strip (dark bg)
+    const stripDark = document.getElementById('size-strip-dark');
+    stripDark.innerHTML = [64, 40, 32, 24, 16].map(s => `
+      <div class="size-item">
+        ${makeLogo(selected, s)}
+        <div class="size-label" style="color:#475569;">${s}px</div>
+      </div>
+    `).join('');
+
+    // Header preview
+    document.getElementById('preview-logo').innerHTML = makeLogo(selected, 32);
+    document.getElementById('preview-logo-dark').innerHTML = makeLogo(selected, 32);
+  }
+
+  updatePreviews();
+</script>
+</body>
+</html>
