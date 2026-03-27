@@ -21,4 +21,5 @@ outputs/
 *.xcuserstate
 xcuserdata/
 xcschememanagement.plist
-package-lock.json
+# package-lock.json files are intentionally tracked so the update script
+# can run reproducible installs on the LXC.

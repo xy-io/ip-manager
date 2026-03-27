@@ -81,14 +81,14 @@ if [ $PULL_EXIT -ne 0 ]; then
 fi
 succeed "Code updated"
 
-# ── Step 2: npm ci (frontend) ─────────────────────────────────
+# ── Step 2: npm install (frontend) ────────────────────────────
 step "Installing frontend dependencies"
 cd "$APP_DIR"
-NPM_OUT=$(npm ci 2>&1); NPM_EXIT=$?
+NPM_OUT=$(npm install 2>&1); NPM_EXIT=$?
 log "$(echo "$NPM_OUT" | tail -3)"
 if [ $NPM_EXIT -ne 0 ]; then
-  fail_out "npm ci failed"; ERROR_LOG="npm ci failed:\n$NPM_OUT\n"
-  rollback "npm ci failed"
+  fail_out "npm install failed"; ERROR_LOG="npm install failed:\n$NPM_OUT\n"
+  rollback "npm install failed"
 fi
 succeed "Frontend dependencies ready"
 
@@ -102,14 +102,14 @@ if [ $BUILD_EXIT -ne 0 ]; then
 fi
 succeed "App built"
 
-# ── Step 4: npm ci (server) ───────────────────────────────────
+# ── Step 4: npm install (server) ──────────────────────────────
 step "Updating server packages"
 cd "$APP_DIR/server"
-SRV_OUT=$(npm ci 2>&1); SRV_EXIT=$?
+SRV_OUT=$(npm install 2>&1); SRV_EXIT=$?
 log "$(echo "$SRV_OUT" | tail -3)"
 if [ $SRV_EXIT -ne 0 ]; then
-  fail_out "Server npm ci failed"; ERROR_LOG="Server npm ci failed:\n$SRV_OUT\n"
-  rollback "Server npm ci failed"
+  fail_out "Server npm install failed"; ERROR_LOG="Server npm install failed:\n$SRV_OUT\n"
+  rollback "Server npm install failed"
 fi
 succeed "Server packages ready"
 
