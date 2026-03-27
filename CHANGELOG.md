@@ -6,6 +6,14 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v1.24.1
+
+**Subnet Visualiser improvements** — polish pass on the heat-map grid.
+
+Row labels (.0, .16, .32 … .240) now appear on the left edge of the grid so you can read off any address without counting cells. A usage summary bar above the grid shows total assigned, DHCP pool, and free static counts as coloured chips. A dashed boundary line separates the DHCP pool from the static range when both are enabled — making the split between managed and manually assigned space immediately visible. Planned block cells now show the IP count for that block in small text, so you can see at a glance how many addresses a planned reservation will consume. The Add Block form submits on Enter.
+
+---
+
 ## v1.24
 
 **MAC addresses, quick-launch, and Subnet Visualiser** — Three new quality-of-life additions.
