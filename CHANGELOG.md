@@ -6,6 +6,12 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v1.24.2
+
+**Subnet Visualiser grid layout fix** — Row labels and cells are now placed inside a single CSS grid (17 columns: label + 16 cells), so each label is anchored to its row and shares the exact same height as its cells. Previously the labels were in a separate flex column with height: 100%, which caused them to expand independently of the cells — resulting in large blank scroll areas between labels.
+
+---
+
 ## v1.24.1
 
 **Subnet Visualiser improvements** — polish pass on the heat-map grid.

@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 import QRCode from 'qrcode';
 
 // ── App version ───────────────────────────────────────────────────────────────
-const APP_VERSION = 'v1.24.1';
+const APP_VERSION = 'v1.24.2';
 
 // Default network configuration (overridden by Settings modal / localStorage)
 const DEFAULT_NETWORK_CONFIG = {
@@ -3149,48 +3149,55 @@ function SubnetVisuiserModal({ network, ipData, onClose }) {
             ))}
           </div>
 
-          {/* Grid with row labels */}
-          <div className="flex gap-1.5 mb-5">
-            {/* Row labels */}
-            <div className="flex flex-col" style={{gap: '2px'}}>
-              {Array.from({length: 16}, (_, row) => (
-                <div
-                  key={row}
-                  className="flex items-center justify-end text-xs text-slate-400 font-mono pr-1 flex-shrink-0"
-                  style={{height: '100%', minHeight: '1.5rem'}}
-                >
-                  .{row * 16}
-                </div>
-              ))}
-            </div>
-            {/* Grid */}
-            <div className="flex-1">
-              {Array.from({length: 16}, (_, row) => (
-                <div key={row}>
-                  {/* Boundary marker — dashed line above the first static row */}
-                  {row === boundaryRow && (
-                    <div className="border-t-2 border-dashed border-indigo-300 mb-0.5 relative">
-                      <span className="absolute -top-2.5 right-0 text-xs text-indigo-400 font-medium bg-white px-1">
+          {/* Grid with row labels — single CSS grid so labels share exact row height with cells */}
+          <div className="mb-5">
+            {(() => {
+              const cells = [];
+              for (let row = 0; row < 16; row++) {
+                const isBoundary = row === boundaryRow;
+                // Full-width boundary divider inserted as a spanning row
+                if (isBoundary) {
+                  cells.push(
+                    <div
+                      key="boundary-line"
+                      style={{gridColumn: '1 / -1', position: 'relative', height: '10px'}}
+                      className="flex items-center"
+                    >
+                      <div className="flex-1 border-t-2 border-dashed border-indigo-300" />
+                      <span className="text-xs text-indigo-400 font-medium bg-white pl-1 flex-shrink-0">
                         static .{staticStart}
                       </span>
                     </div>
-                  )}
-                  <div className="grid gap-0.5 mb-0.5" style={{gridTemplateColumns: 'repeat(16, minmax(0, 1fr))'}}>
-                    {Array.from({length: 16}, (_, col) => {
-                      const i = row * 16 + col;
-                      return (
-                        <div
-                          key={i}
-                          title={getCellTitle(i)}
-                          style={{background: getCellColor(i)}}
-                          className="aspect-square rounded-sm cursor-default"
-                        />
-                      );
-                    })}
+                  );
+                }
+                // Row label
+                cells.push(
+                  <div
+                    key={`lbl-${row}`}
+                    className="flex items-center justify-end text-xs text-slate-400 font-mono pr-1.5 flex-shrink-0"
+                  >
+                    .{row * 16}
                   </div>
+                );
+                // 16 cells
+                for (let col = 0; col < 16; col++) {
+                  const i = row * 16 + col;
+                  cells.push(
+                    <div
+                      key={i}
+                      title={getCellTitle(i)}
+                      style={{background: getCellColor(i)}}
+                      className="aspect-square rounded-sm cursor-default"
+                    />
+                  );
+                }
+              }
+              return (
+                <div style={{display: 'grid', gridTemplateColumns: 'auto repeat(16, minmax(0, 1fr))', gap: '2px'}}>
+                  {cells}
                 </div>
-              ))}
-            </div>
+              );
+            })()}
           </div>
 
           {/* Planned Blocks */}
