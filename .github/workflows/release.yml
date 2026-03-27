@@ -1,0 +1,72 @@
+name: Create Release
+
+# Triggers when you push a tag like v1.21, v1.22, etc.
+on:
+  push:
+    tags:
+      - 'v[0-9]*'
+
+permissions:
+  contents: write   # needed to create releases
+
+jobs:
+  release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      # Extract the changelog section that matches this tag.
+      # CHANGELOG.md uses headings like "## v1.20" and sections are
+      # separated by "---" lines, so we grab everything between the
+      # matching heading and the next separator.
+      - name: Extract changelog section
+        id: changelog
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          python3 - <<'PYEOF'
+          import os, re, sys
+
+          tag     = os.environ["TAG"]          # e.g. "v1.20"
+          cl_path = "CHANGELOG.md"
+
+          try:
+              text = open(cl_path).read()
+          except FileNotFoundError:
+              print(f"::warning::CHANGELOG.md not found", file=sys.stderr)
+              body = ""
+          else:
+              # Match the heading for this exact tag, then grab until next ---
+              pattern = rf"^## {re.escape(tag)}\s*\n(.*?)(?=\n---|\Z)"
+              m = re.search(pattern, text, re.DOTALL | re.MULTILINE)
+              body = m.group(1).strip() if m else f"Release {tag}"
+
+          # Write to GITHUB_OUTPUT using the heredoc delimiter style
+          delimiter = "CHANGELOG_EOF"
+          with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
+              fh.write(f"body<<{delimiter}\n{body}\n{delimiter}\n")
+          PYEOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name:   ${{ github.ref_name }}
+          name:       ${{ github.ref_name }}
+          body:       ${{ steps.changelog.outputs.body }}
+          draft:      false
+          prerelease: false
