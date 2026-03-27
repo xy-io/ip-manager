@@ -84,6 +84,11 @@ succeed "Code updated"
 # ── Step 2: npm install (frontend) ────────────────────────────
 step "Installing frontend dependencies"
 cd "$APP_DIR"
+# Remove node_modules and package-lock.json before installing.
+# This ensures platform-specific optional packages (e.g. rollup native
+# binaries) are resolved for the current OS/arch rather than whatever
+# platform generated the committed lockfile.
+rm -rf node_modules package-lock.json
 NPM_OUT=$(npm install 2>&1); NPM_EXIT=$?
 log "$(echo "$NPM_OUT" | tail -3)"
 if [ $NPM_EXIT -ne 0 ]; then

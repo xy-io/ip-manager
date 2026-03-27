@@ -21,5 +21,8 @@ outputs/
 *.xcuserstate
 xcuserdata/
 xcschememanagement.plist
-# package-lock.json files are intentionally tracked so the update script
-# can run reproducible installs on the LXC.
+# package-lock.json is NOT tracked — it is generated on the deployment
+# platform (Linux x64) at install/update time. Committing a lockfile from
+# a different OS causes optional native modules (e.g. rollup binaries) to
+# be missing on the target platform.
+package-lock.json
