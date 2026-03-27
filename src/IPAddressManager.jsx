@@ -3009,11 +3009,8 @@ const groupIPsIntoRanges = (ips, subnet = DEFAULT_NETWORK_CONFIG.subnet) => {
 function SubnetVisuiserModal({ network, ipData, onClose }) {
   const [blocks, setBlocks] = useState([]);
   const [saving, setSaving] = useState(false);
-  const [editingBlock, setEditingBlock] = useState(null); // { name, color, start, end } or null
   const [draft, setDraft] = useState({ name: '', color: '#6366f1', start: '', end: '' });
-  const [loadError, setLoadError] = useState(null);
 
-  // Load planned blocks from server
   useEffect(() => {
     fetch(`/api/subnet-blocks?network=${encodeURIComponent(network.id)}`)
       .then(r => r.json())
@@ -3038,23 +3035,17 @@ function SubnetVisuiserModal({ network, ipData, onClose }) {
     const s = parseInt(draft.start, 10);
     const e = parseInt(draft.end, 10);
     if (!draft.name || isNaN(s) || isNaN(e) || s > e || s < 0 || e > 255) return;
-    const updated = [...blocks, { name: draft.name, color: draft.color, start: s, end: e }];
-    saveBlocks(updated);
+    saveBlocks([...blocks, { name: draft.name, color: draft.color, start: s, end: e }]);
     setDraft({ name: '', color: '#6366f1', start: '', end: '' });
-    setEditingBlock(null);
   };
 
-  const removeBlock = (idx) => {
-    const updated = blocks.filter((_, i) => i !== idx);
-    saveBlocks(updated);
-  };
+  const removeBlock = (idx) => saveBlocks(blocks.filter((_, i) => i !== idx));
 
-  // Build a lookup: last octet → status
-  const subnet = network.subnet; // e.g. "192.168.1"
+  // Build lookup: last octet → status
+  const subnet = network.subnet;
   const usedMap = {};
   (ipData || []).forEach(item => {
-    const parts = item.ip.split('.');
-    const last = parseInt(parts[3], 10);
+    const last = parseInt(item.ip.split('.')[3], 10);
     if (!isNaN(last)) {
       if (item.assetName === 'Free') usedMap[last] = 'free';
       else if (item.assetName === 'Reserved') usedMap[last] = 'reserved';
@@ -3062,37 +3053,38 @@ function SubnetVisuiserModal({ network, ipData, onClose }) {
     }
   });
 
-  const dhcpStart = network.dhcpStart || 1;
-  const dhcpEnd = network.dhcpEnd || 100;
+  const dhcpStart  = network.dhcpStart  || 1;
+  const dhcpEnd    = network.dhcpEnd    || 100;
   const staticStart = network.staticStart || 101;
-  const staticEnd = network.staticEnd || 254;
+  const staticEnd   = network.staticEnd   || 254;
 
-  // Get colour for a cell
+  // Usage counts
+  const staticTotal    = Math.max(0, staticEnd - staticStart + 1);
+  const staticAssigned = Object.entries(usedMap).filter(([k, v]) => {
+    const n = parseInt(k, 10); return v === 'assigned' && n >= staticStart && n <= staticEnd;
+  }).length;
+  const staticFree = staticTotal - staticAssigned;
+  const dhcpTotal  = Math.max(0, dhcpEnd - dhcpStart + 1);
+
   const getCellColor = (i) => {
-    // Planned blocks take priority (last block wins for overlap)
     let blockColor = null;
-    for (const b of blocks) {
-      if (i >= b.start && i <= b.end) blockColor = b.color;
-    }
+    for (const b of blocks) { if (i >= b.start && i <= b.end) blockColor = b.color; }
     if (blockColor) return blockColor;
-
     const status = usedMap[i];
-    if (status === 'assigned') return '#10b981'; // emerald
-    if (status === 'reserved') return '#f59e0b'; // amber
-    if (i >= dhcpStart && i <= dhcpEnd) return '#e2e8f0'; // DHCP pool — light slate
-    if (i >= staticStart && i <= staticEnd) {
-      return status === 'free' ? '#d1fae5' : '#10b981'; // light green = free static
-    }
-    return '#f8fafc'; // outside range
+    if (status === 'assigned') return '#10b981';
+    if (status === 'reserved') return '#f59e0b';
+    if (i >= dhcpStart && i <= dhcpEnd) return '#e2e8f0';
+    if (i >= staticStart && i <= staticEnd) return status === 'free' ? '#d1fae5' : '#10b981';
+    return '#f1f5f9';
   };
 
   const getCellTitle = (i) => {
     const ip = `${subnet}.${i}`;
     const block = [...blocks].reverse().find(b => i >= b.start && i <= b.end);
     const status = usedMap[i];
-    const item = (ipData || []).find(d => d.ip === ip);
+    const entry = (ipData || []).find(d => d.ip === ip);
     const parts = [];
-    if (item && item.assetName && item.assetName !== 'Free') parts.push(item.assetName);
+    if (entry && entry.assetName && entry.assetName !== 'Free') parts.push(entry.assetName);
     parts.push(ip);
     if (block) parts.push(`[${block.name}]`);
     if (i >= dhcpStart && i <= dhcpEnd) parts.push('DHCP pool');
@@ -3100,11 +3092,15 @@ function SubnetVisuiserModal({ network, ipData, onClose }) {
     return parts.join(' · ');
   };
 
+  // Detect rows that straddle the DHCP→static boundary for the divider line
+  const boundaryRow = Math.floor(staticStart / 16); // first row that contains a static address
+
   const BLOCK_COLORS = ['#6366f1','#0ea5e9','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#14b8a6'];
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        {/* Header */}
         <div className="p-5 border-b border-slate-200 flex items-center justify-between">
           <div>
             <h2 className="text-lg font-bold text-slate-800">Subnet Visualiser</h2>
@@ -3116,14 +3112,36 @@ function SubnetVisuiserModal({ network, ipData, onClose }) {
         </div>
 
         <div className="p-5">
+          {/* Usage summary */}
+          <div className="flex flex-wrap gap-3 mb-4">
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-lg">
+              <span className="inline-block w-2.5 h-2.5 rounded-sm bg-emerald-500 flex-shrink-0" />
+              <span className="text-xs font-medium text-emerald-700">
+                {staticAssigned} / {staticTotal} static assigned
+              </span>
+            </div>
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg">
+              <span className="inline-block w-2.5 h-2.5 rounded-sm bg-slate-300 flex-shrink-0" />
+              <span className="text-xs font-medium text-slate-600">
+                {dhcpTotal} DHCP pool (.{dhcpStart}–.{dhcpEnd})
+              </span>
+            </div>
+            {staticFree > 0 && (
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-100 rounded-lg">
+                <span className="inline-block w-2.5 h-2.5 rounded-sm bg-emerald-200 flex-shrink-0" />
+                <span className="text-xs font-medium text-emerald-600">{staticFree} free</span>
+              </div>
+            )}
+          </div>
+
           {/* Legend */}
-          <div className="flex flex-wrap gap-3 mb-4 text-xs">
-            <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm" style={{background:'#10b981'}} /> Assigned</span>
-            <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm" style={{background:'#d1fae5'}} /> Free static</span>
-            <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm" style={{background:'#e2e8f0'}} /> DHCP pool</span>
-            <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm" style={{background:'#f59e0b'}} /> Reserved</span>
-            <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm border border-slate-200" style={{background:'#f8fafc'}} /> Outside range</span>
-            {blocks.length > 0 && blocks.map((b, i) => (
+          <div className="flex flex-wrap gap-x-3 gap-y-1.5 mb-3 text-xs text-slate-500">
+            <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-emerald-500" /> Assigned</span>
+            <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-emerald-100 border border-emerald-200" /> Free static</span>
+            <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-slate-200" /> DHCP pool</span>
+            <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-amber-400" /> Reserved</span>
+            <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-slate-100 border border-slate-200" /> Outside range</span>
+            {blocks.map((b, i) => (
               <span key={i} className="flex items-center gap-1.5">
                 <span className="inline-block w-3 h-3 rounded-sm" style={{background: b.color}} />
                 {b.name}
@@ -3131,19 +3149,51 @@ function SubnetVisuiserModal({ network, ipData, onClose }) {
             ))}
           </div>
 
-          {/* Grid — 16×16 = 256 cells (0–255) */}
-          <div className="grid gap-0.5 mb-5" style={{gridTemplateColumns: 'repeat(16, minmax(0, 1fr))'}}>
-            {Array.from({length: 256}, (_, i) => (
-              <div
-                key={i}
-                title={getCellTitle(i)}
-                style={{background: getCellColor(i)}}
-                className="aspect-square rounded-sm cursor-default border border-white/50"
-              />
-            ))}
+          {/* Grid with row labels */}
+          <div className="flex gap-1.5 mb-5">
+            {/* Row labels */}
+            <div className="flex flex-col" style={{gap: '2px'}}>
+              {Array.from({length: 16}, (_, row) => (
+                <div
+                  key={row}
+                  className="flex items-center justify-end text-xs text-slate-400 font-mono pr-1 flex-shrink-0"
+                  style={{height: '100%', minHeight: '1.5rem'}}
+                >
+                  .{row * 16}
+                </div>
+              ))}
+            </div>
+            {/* Grid */}
+            <div className="flex-1">
+              {Array.from({length: 16}, (_, row) => (
+                <div key={row}>
+                  {/* Boundary marker — dashed line above the first static row */}
+                  {row === boundaryRow && (
+                    <div className="border-t-2 border-dashed border-indigo-300 mb-0.5 relative">
+                      <span className="absolute -top-2.5 right-0 text-xs text-indigo-400 font-medium bg-white px-1">
+                        static .{staticStart}
+                      </span>
+                    </div>
+                  )}
+                  <div className="grid gap-0.5 mb-0.5" style={{gridTemplateColumns: 'repeat(16, minmax(0, 1fr))'}}>
+                    {Array.from({length: 16}, (_, col) => {
+                      const i = row * 16 + col;
+                      return (
+                        <div
+                          key={i}
+                          title={getCellTitle(i)}
+                          style={{background: getCellColor(i)}}
+                          className="aspect-square rounded-sm cursor-default"
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
 
-          {/* Planned Blocks section */}
+          {/* Planned Blocks */}
           <div className="border-t border-slate-200 pt-4">
             <h3 className="text-sm font-semibold text-slate-700 mb-3">Planned Blocks</h3>
 
@@ -3153,11 +3203,8 @@ function SubnetVisuiserModal({ network, ipData, onClose }) {
                   <div key={idx} className="flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-lg border border-slate-200">
                     <span className="inline-block w-4 h-4 rounded-sm flex-shrink-0" style={{background: b.color}} />
                     <span className="text-sm font-medium text-slate-700 flex-1">{b.name}</span>
-                    <span className="text-xs text-slate-500 font-mono">.{b.start}–.{b.end}</span>
-                    <button
-                      onClick={() => removeBlock(idx)}
-                      className="p-1 hover:bg-red-50 rounded text-slate-400 hover:text-red-500 transition-colors"
-                    >
+                    <span className="text-xs text-slate-400 font-mono">.{b.start}–.{b.end} ({b.end - b.start + 1} IPs)</span>
+                    <button onClick={() => removeBlock(idx)} className="p-1 hover:bg-red-50 rounded text-slate-400 hover:text-red-500 transition-colors">
                       <X className="w-3.5 h-3.5" />
                     </button>
                   </div>
@@ -3173,6 +3220,7 @@ function SubnetVisuiserModal({ network, ipData, onClose }) {
                   type="text"
                   value={draft.name}
                   onChange={e => setDraft({...draft, name: e.target.value})}
+                  onKeyDown={e => e.key === 'Enter' && addBlock()}
                   placeholder="e.g., IoT devices"
                   className="px-2 py-1.5 border border-slate-300 rounded-lg text-sm w-36 focus:outline-none focus:ring-2 focus:ring-indigo-400"
                 />
@@ -3180,9 +3228,7 @@ function SubnetVisuiserModal({ network, ipData, onClose }) {
               <div>
                 <label className="block text-xs text-slate-500 mb-1">Start (.x)</label>
                 <input
-                  type="number"
-                  min="0"
-                  max="255"
+                  type="number" min="0" max="255"
                   value={draft.start}
                   onChange={e => setDraft({...draft, start: e.target.value})}
                   placeholder="200"
@@ -3192,9 +3238,7 @@ function SubnetVisuiserModal({ network, ipData, onClose }) {
               <div>
                 <label className="block text-xs text-slate-500 mb-1">End (.x)</label>
                 <input
-                  type="number"
-                  min="0"
-                  max="255"
+                  type="number" min="0" max="255"
                   value={draft.end}
                   onChange={e => setDraft({...draft, end: e.target.value})}
                   placeholder="220"
@@ -3205,13 +3249,9 @@ function SubnetVisuiserModal({ network, ipData, onClose }) {
                 <label className="block text-xs text-slate-500 mb-1">Colour</label>
                 <div className="flex gap-1">
                   {BLOCK_COLORS.map(c => (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => setDraft({...draft, color: c})}
+                    <button key={c} type="button" onClick={() => setDraft({...draft, color: c})}
                       className={`w-5 h-5 rounded-full border-2 transition-all ${draft.color === c ? 'border-slate-700 scale-110' : 'border-transparent'}`}
-                      style={{background: c}}
-                    />
+                      style={{background: c}} />
                   ))}
                 </div>
               </div>
