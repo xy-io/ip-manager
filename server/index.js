@@ -808,6 +808,93 @@ app.get('/api/proxmox-vm-status', requireAuth, async (req, res) => {
   });
 });
 
+// ── In-browser update ─────────────────────────────────────────────────────────
+// POST /api/update/start  — spawns scripts/update.sh --api-mode as root via sudo
+// GET  /api/update/stream — SSE stream of live progress events
+// GET  /api/update/result — last persisted result (survives service restart)
+//
+// Security: requireAuth on all endpoints; sudo is locked to the specific script
+// via a sudoers entry added by install.sh.  No shell injection is possible
+// because no user input is passed to the command.
+
+const UPDATE_SCRIPT   = path.join(__dirname, '..', 'scripts', 'update.sh');
+const UPDATE_RESULT   = path.join(__dirname, '.update-result.json');
+
+let updateState = {
+  running:   false,
+  lines:     [],      // buffered for late-connecting SSE clients
+  listeners: new Set(),
+};
+
+function broadcastUpdate(line) {
+  updateState.lines.push(line);
+  for (const send of updateState.listeners) { try { send(line); } catch {} }
+}
+
+app.post('/api/update/start', requireAuth, (req, res) => {
+  if (updateState.running) {
+    return res.status(409).json({ error: 'Update already in progress' });
+  }
+  // Check script exists
+  if (!fs.existsSync(UPDATE_SCRIPT)) {
+    return res.status(500).json({ error: 'Update script not found at ' + UPDATE_SCRIPT });
+  }
+
+  updateState = { running: true, lines: [], listeners: new Set() };
+  res.json({ ok: true });
+
+  // Run as root via sudoers entry (www-data ALL=(ALL) NOPASSWD: /bin/bash <script>)
+  const child = require('child_process').spawn(
+    'sudo', ['bash', UPDATE_SCRIPT, '--api-mode'],
+    { stdio: ['ignore', 'pipe', 'pipe'] }
+  );
+
+  const onLine = data => {
+    const text = data.toString();
+    text.split('\n').filter(l => l.trim()).forEach(broadcastUpdate);
+  };
+  child.stdout.on('data', onLine);
+  child.stderr.on('data', onLine);
+
+  child.on('close', code => {
+    broadcastUpdate(code === 0 ? 'DONE:complete' : 'DONE:error');
+    updateState.running = false;
+    // Listeners will disconnect on their own; clear after a delay
+    setTimeout(() => { updateState.listeners.clear(); }, 30000);
+  });
+});
+
+app.get('/api/update/stream', requireAuth, (req, res) => {
+  res.setHeader('Content-Type',  'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection',    'keep-alive');
+  res.flushHeaders();
+
+  const send = line => res.write(`data: ${line}\n\n`);
+
+  // Replay buffered lines so a late-connecting client catches up
+  updateState.lines.forEach(send);
+
+  if (!updateState.running) {
+    // Nothing running — close immediately after replay
+    res.end();
+    return;
+  }
+
+  updateState.listeners.add(send);
+  req.on('close', () => updateState.listeners.delete(send));
+});
+
+app.get('/api/update/result', requireAuth, (req, res) => {
+  try {
+    if (!fs.existsSync(UPDATE_RESULT)) return res.json(null);
+    const data = JSON.parse(fs.readFileSync(UPDATE_RESULT, 'utf8'));
+    res.json(data);
+  } catch {
+    res.json(null);
+  }
+});
+
 // GET /api/version-check — compares installed version against latest GitHub release
 // Result is cached for 1 hour to avoid hammering the GitHub API.
 const GITHUB_REPO       = 'xy-io/ip-manager';

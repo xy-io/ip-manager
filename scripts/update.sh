@@ -1,96 +1,124 @@
 #!/bin/bash
-# ─────────────────────────────────────────────────────────────────────────────
-# IP Manager — update script
-# Lives in the repo so changes land automatically on the next git pull.
-# Called by the thin wrapper at /usr/local/bin/ip-manager-update.
-# ─────────────────────────────────────────────────────────────────────────────
-set -e
+# ============================================================
+#  IP Address Manager — Update Script
+#  Usage:
+#    Terminal:  sudo bash /opt/ip-manager/scripts/update.sh
+#    Alias:     ip-manager-update
+#    In-app:    triggered via Settings → Updates (runs as root via sudoers)
+#
+#  With --api-mode stdout emits structured events the browser parses
+#  for a live progress bar.  Without it, normal coloured output.
+# ============================================================
 
-GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
-ok()   { echo -e "${GREEN}✓${NC} $1"; }
-warn() { echo -e "${YELLOW}⚠${NC}  $1"; }
-err()  { echo -e "${RED}✗${NC} $1"; }
+APP_DIR="/opt/ip-manager"
+SERVICE="ip-manager-api"
+RESULT_FILE="$APP_DIR/server/.update-result.json"
+API_MODE=false
 
-# ── 1. Pull latest code ───────────────────────────────────────────────────────
-echo "Pulling latest changes from GitHub..."
-git -C /opt/ip-manager pull
-ok "Repository up to date"
+for arg in "$@"; do [ "$arg" = "--api-mode" ] && API_MODE=true; done
 
-# Remove marketing site — development-only, not needed on the server
-rm -rf /opt/ip-manager/marketing
-
-# ── 2. System dependencies ────────────────────────────────────────────────────
-echo ""
-echo "Ensuring system dependencies are installed..."
-apt-get install -y -qq arp-scan fping libcap2-bin 2>/dev/null || true
-
-ARPSCAN_BIN=$(which arp-scan 2>/dev/null || echo "")
-if [ -n "$ARPSCAN_BIN" ]; then
-  setcap cap_net_raw+ep "$ARPSCAN_BIN" 2>/dev/null && ok "arp-scan: CAP_NET_RAW granted" || warn "arp-scan: setcap failed (non-fatal)"
+# ── Colours (terminal only) ───────────────────────────────────
+if [ "$API_MODE" = false ]; then
+  G="\033[0;32m" B="\033[0;34m" Y="\033[1;33m" R="\033[0;31m" N="\033[0m"
 else
-  warn "arp-scan not found — ARP scan will fall back to kernel ARP cache"
+  G="" B="" Y="" R="" N=""
 fi
 
-FPING_BIN=$(which fping 2>/dev/null || echo "")
-if [ -n "$FPING_BIN" ]; then
-  setcap cap_net_raw+ep "$FPING_BIN" 2>/dev/null && ok "fping: CAP_NET_RAW granted" || warn "fping: setcap failed (non-fatal)"
-else
-  warn "fping not found — ping/reachability badges will not work"
+STEP_N=0; STEP_TOTAL=5
+
+step()    { STEP_N=$((STEP_N+1))
+            [ "$API_MODE" = true ] && echo "STEP:${STEP_N}:${STEP_TOTAL}:$1" \
+                                   || echo -e "${B}[$STEP_N/$STEP_TOTAL]${N} $1"; }
+log()     { [ "$API_MODE" = true ] && echo "LOG:$1"           || echo "  $1"; }
+succeed() { [ "$API_MODE" = true ] && echo "OK:$1"            || echo -e "${G}✓ $1${N}"; }
+fail_out(){ [ "$API_MODE" = true ] && echo "FAIL:$1"          || echo -e "${R}✗ $1${N}"; }
+
+# ── Write persistent result so UI can read it after restart ──
+write_result() {
+  local status="$1" msg="$2" log="$3" ts
+  ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  msg=$(printf '%s' "$msg" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read()))" 2>/dev/null || echo "\"$msg\"")
+  log=$(printf '%s' "$log" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read()))" 2>/dev/null || echo "\"\"")
+  printf '{"status":"%s","message":%s,"log":%s,"timestamp":"%s"}\n' \
+    "$status" "$msg" "$log" "$ts" > "$RESULT_FILE"
+  chown www-data:www-data "$RESULT_FILE" 2>/dev/null || true
+}
+
+# ── Root check ────────────────────────────────────────────────
+if [ "$EUID" -ne 0 ]; then
+  echo -e "${R}[ERROR]${N} Run as root: sudo bash $0"; exit 1
 fi
 
-# ── 3. Refresh the /usr/local/bin wrapper (self-update) ──────────────────────
-# Rewrites the thin wrapper so future calls also use the latest script.
-cat > /usr/local/bin/ip-manager-update <<'WRAPPER'
-#!/bin/bash
-exec bash /opt/ip-manager/scripts/update.sh "$@"
-WRAPPER
-chmod +x /usr/local/bin/ip-manager-update
-ok "Update wrapper refreshed"
+# ── Save rollback point ───────────────────────────────────────
+ROLLBACK_HASH=$(git -C "$APP_DIR" rev-parse HEAD 2>/dev/null || echo "")
+ERROR_LOG=""
 
-# ── 4. Frontend dependencies & build ─────────────────────────────────────────
-echo ""
-echo "Installing frontend packages..."
-cd /opt/ip-manager
-rm -rf node_modules package-lock.json
-npm install 2>&1 | grep -E "^npm (error|warn)|ERR!" || true
+rollback() {
+  local reason="$1"
+  [ "$API_MODE" = true ] && echo "ROLLBACK:Rolling back to previous version…" \
+                         || echo -e "${Y}[ROLLBACK]${N} Reverting to $ROLLBACK_HASH…"
+  if [ -n "$ROLLBACK_HASH" ]; then
+    git -C "$APP_DIR" reset --hard "$ROLLBACK_HASH" >/dev/null 2>&1
+    ERROR_LOG+="[reset] Reverted to $ROLLBACK_HASH\n"
+    cd "$APP_DIR" && npm ci --quiet >/dev/null 2>&1 && ERROR_LOG+="[npm] Frontend deps restored\n"
+    npm run build >/dev/null 2>&1               && ERROR_LOG+="[build] Previous build restored\n"
+    cd "$APP_DIR/server" && npm ci --quiet >/dev/null 2>&1 && ERROR_LOG+="[npm] Server deps restored\n"
+  fi
+  write_result "failed" "$reason" "$(printf '%b' "$ERROR_LOG")"
+  [ "$API_MODE" = true ] && echo "ROLLBACK_DONE:Rolled back — restarting old version…" \
+                         || echo -e "${Y}[ROLLBACK]${N} Done. Restarting…"
+  systemctl restart "$SERVICE" || true
+  exit 1
+}
 
-echo "Rebuilding React app..."
-npm run build 2>&1 || { err "React build failed"; exit 1; }
-[ -f /opt/ip-manager/dist/index.html ] || { err "dist/index.html missing after build"; exit 1; }
-ok "React app built"
-
-# ── 5. API server dependencies ────────────────────────────────────────────────
-echo ""
-echo "Installing API server packages..."
-cd /opt/ip-manager/server
-npm install 2>&1 | grep -E "^npm (error|warn)|ERR!" || true
-ok "Server packages installed"
-
-# ── 6. Permissions & credentials file ────────────────────────────────────────
-echo ""
-echo "Setting permissions..."
-chown -R www-data:www-data /opt/ip-manager/server
-touch /opt/ip-manager/server/credentials.env
-chown www-data:www-data /opt/ip-manager/server/credentials.env
-chmod 600 /opt/ip-manager/server/credentials.env
-ok "Permissions set"
-
-# ── 7. Restart service ────────────────────────────────────────────────────────
-echo ""
-echo "Restarting API server..."
-systemctl restart ip-manager-api
-ok "ip-manager-api restarted"
-
-# ── 8. Nginx no-cache patch (idempotent) ──────────────────────────────────────
-if ! grep -q "no-store" /etc/nginx/sites-available/ip-manager 2>/dev/null; then
-  echo "Patching Nginx config (index.html no-cache)..."
-  sed -i 's|location / {|location = /index.html {\n        try_files $uri =404;\n        add_header Cache-Control "no-store, no-cache, must-revalidate";\n        add_header Pragma "no-cache";\n    }\n\n    location / {|' /etc/nginx/sites-available/ip-manager
+# ── Step 1: git pull ──────────────────────────────────────────
+step "Fetching latest code"
+PULL_OUT=$(git -C "$APP_DIR" pull 2>&1); PULL_EXIT=$?
+log "$PULL_OUT"
+if [ $PULL_EXIT -ne 0 ]; then
+  fail_out "git pull failed"; ERROR_LOG="git pull failed:\n$PULL_OUT\n"
+  rollback "git pull failed"
 fi
-systemctl reload nginx
-ok "Nginx reloaded"
+succeed "Code updated"
 
-# ── Done ──────────────────────────────────────────────────────────────────────
-echo ""
-echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${GREEN}  IP Manager updated successfully. Data unchanged.${NC}"
-echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+# ── Step 2: npm ci (frontend) ─────────────────────────────────
+step "Installing frontend dependencies"
+cd "$APP_DIR"
+NPM_OUT=$(npm ci 2>&1); NPM_EXIT=$?
+log "$(echo "$NPM_OUT" | tail -3)"
+if [ $NPM_EXIT -ne 0 ]; then
+  fail_out "npm ci failed"; ERROR_LOG="npm ci failed:\n$NPM_OUT\n"
+  rollback "npm ci failed"
+fi
+succeed "Frontend dependencies ready"
+
+# ── Step 3: build ─────────────────────────────────────────────
+step "Building app"
+BUILD_OUT=$(npm run build 2>&1); BUILD_EXIT=$?
+log "$(echo "$BUILD_OUT" | grep -E 'built in|error' | head -3)"
+if [ $BUILD_EXIT -ne 0 ]; then
+  fail_out "Build failed"; ERROR_LOG="Build failed:\n$BUILD_OUT\n"
+  rollback "Build failed"
+fi
+succeed "App built"
+
+# ── Step 4: npm ci (server) ───────────────────────────────────
+step "Updating server packages"
+cd "$APP_DIR/server"
+SRV_OUT=$(npm ci 2>&1); SRV_EXIT=$?
+log "$(echo "$SRV_OUT" | tail -3)"
+if [ $SRV_EXIT -ne 0 ]; then
+  fail_out "Server npm ci failed"; ERROR_LOG="Server npm ci failed:\n$SRV_OUT\n"
+  rollback "Server npm ci failed"
+fi
+succeed "Server packages ready"
+
+# ── Step 5: restart ───────────────────────────────────────────
+step "Restarting service"
+write_result "success" "Update complete" ""
+[ "$API_MODE" = true ] && echo "RESTARTING:Service restarting — reconnecting shortly…" \
+                       || echo -e "${B}Restarting ${SERVICE}…${N}"
+systemctl restart "$SERVICE"
+succeed "Service restarted"
+
+[ "$API_MODE" = false ] && echo -e "\n${G}Update complete!${N}\n"

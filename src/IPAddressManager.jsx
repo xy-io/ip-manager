@@ -3,7 +3,7 @@ import { Search, Server, Monitor, Wifi, HardDrive, Camera, Shield, Globe, Filter
 import * as XLSX from 'xlsx';
 
 // ── App version ───────────────────────────────────────────────────────────────
-const APP_VERSION = 'v1.20';
+const APP_VERSION = 'v1.21';
 
 // Default network configuration (overridden by Settings modal / localStorage)
 const DEFAULT_NETWORK_CONFIG = {
@@ -64,7 +64,328 @@ function generateHostId() {
 }
 
 // Settings Modal Component
-function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLocation, onDeleteLocation, tags, onRenameTag, onDeleteTag, canDeleteNetwork, onDeleteNetwork, showFreeInList, onToggleShowFreeInList, ipData, networks, onRestore, dnsConfig, dnsStatus, dnsLoading, onSaveDnsConfig, onRunDns, proxmoxSyncConfig, proxmoxSyncStatus, proxmoxSyncLoading, onSaveProxmoxSyncConfig, onRunProxmoxSync }) {
+// ── Updates Tab (lives inside SettingsModal) ──────────────────────────────────
+function UpdatesTab() {
+  const [versionInfo,  setVersionInfo]  = useState(null);
+  const [versionError, setVersionError] = useState(null);
+  const [checking,     setChecking]     = useState(false);
+  const [entries,      setEntries]      = useState(null);
+  const [expanded,     setExpanded]     = useState(null);
+
+  // Update process state
+  const [updatePhase,  setUpdatePhase]  = useState('idle'); // idle | running | restarting | done | failed | rolledback
+  const [steps,        setSteps]        = useState([]);     // [{n, total, label, status}]
+  const [logs,         setLogs]         = useState([]);
+  const [errorMsg,     setErrorMsg]     = useState('');
+  const [showLog,      setShowLog]      = useState(false);
+
+  const doVersionCheck = (force = false) => {
+    setChecking(true); setVersionError(null);
+    fetch(`/api/version-check${force ? '?force=1' : ''}`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => { d.error ? setVersionError(d.error) : setVersionInfo(d); })
+      .catch(() => setVersionError('Could not reach GitHub.'))
+      .finally(() => setChecking(false));
+  };
+
+  useEffect(() => {
+    doVersionCheck();
+    fetch('/api/changelog', { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => { if (!d.error) { setEntries(d.entries || []); if (d.entries?.[0]) setExpanded(d.entries[0].version); } });
+  }, []);
+
+  // SSE-based update progress
+  const startUpdate = async () => {
+    setUpdatePhase('running');
+    setSteps([]); setLogs([]); setErrorMsg(''); setShowLog(false);
+
+    const startRes = await fetch('/api/update/start', { method: 'POST', credentials: 'include' });
+    if (!startRes.ok) {
+      const e = await startRes.json().catch(() => ({}));
+      setUpdatePhase('failed'); setErrorMsg(e.error || 'Could not start update'); return;
+    }
+
+    const es = new EventSource('/api/update/stream');
+
+    es.onmessage = (e) => {
+      const line = e.data;
+      if (line.startsWith('STEP:')) {
+        const [, n, total, label] = line.split(':');
+        setSteps(prev => {
+          const next = [...prev];
+          // mark previous step done
+          if (next.length > 0) next[next.length - 1] = { ...next[next.length - 1], status: 'done' };
+          next.push({ n: Number(n), total: Number(total), label, status: 'active' });
+          return next;
+        });
+      } else if (line.startsWith('LOG:') || line.startsWith('OK:')) {
+        setLogs(prev => [...prev, line.replace(/^(LOG:|OK:)/, '')]);
+      } else if (line.startsWith('RESTARTING:')) {
+        setUpdatePhase('restarting');
+        setSteps(prev => prev.map((s, i) => i === prev.length - 1 ? { ...s, status: 'active' } : s));
+        es.close();
+        // Poll until server comes back up
+        const poll = setInterval(async () => {
+          try {
+            const r = await fetch('/api/update/result', { credentials: 'include' });
+            if (r.ok) {
+              clearInterval(poll);
+              const result = await r.json();
+              setSteps(prev => prev.map(s => ({ ...s, status: 'done' })));
+              setUpdatePhase(result?.status === 'success' ? 'done' : 'failed');
+              if (result?.status !== 'success') setErrorMsg(result?.message || 'Update failed');
+              doVersionCheck(true);
+            }
+          } catch { /* still restarting */ }
+        }, 2000);
+      } else if (line.startsWith('SUCCESS:')) {
+        setSteps(prev => prev.map(s => ({ ...s, status: 'done' })));
+        setUpdatePhase('done');
+        es.close();
+        doVersionCheck(true);
+      } else if (line.startsWith('FAIL:')) {
+        setErrorMsg(line.replace('FAIL:', ''));
+        setUpdatePhase('failed');
+        es.close();
+      } else if (line.startsWith('ROLLBACK:')) {
+        setUpdatePhase('rolledback');
+        setLogs(prev => [...prev, line.replace('ROLLBACK:', '⟳ ')]);
+      } else if (line.startsWith('ROLLBACK_DONE:')) {
+        setLogs(prev => [...prev, '✓ Rolled back to previous version']);
+        // Poll for server coming back after rollback restart
+        const poll = setInterval(async () => {
+          try {
+            const r = await fetch('/api/update/result', { credentials: 'include' });
+            if (r.ok) { clearInterval(poll); }
+          } catch {}
+        }, 2000);
+      } else if (line.startsWith('DONE:')) {
+        es.close();
+      }
+    };
+
+    es.onerror = () => {
+      // Connection dropped — server may be restarting
+      if (updatePhase !== 'done' && updatePhase !== 'failed') {
+        setUpdatePhase('restarting');
+      }
+      es.close();
+    };
+  };
+
+  const updateAvailable = versionInfo?.updateAvailable;
+  const progressPct = steps.length > 0
+    ? Math.round((steps.filter(s => s.status === 'done').length / steps[0].total) * 100)
+    : 0;
+
+  function renderBody(body) {
+    if (!body) return null;
+    return body.split(/\n{2,}/).map((para, i) => {
+      const parts = para.split(/\*\*(.+?)\*\*/g).map((c, j) =>
+        j % 2 === 1 ? <strong key={j}>{c}</strong> : c
+      );
+      return <p key={i} className="text-sm text-slate-600 leading-relaxed mb-2 last:mb-0">{parts}</p>;
+    });
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-base font-semibold text-slate-800 mb-1">Updates</h3>
+        <p className="text-xs text-slate-500">Check for new versions and update directly from the browser. Your data is never modified during an update. If anything goes wrong the app automatically rolls back to the working version.</p>
+      </div>
+
+      {/* Version card */}
+      <div className="border border-slate-200 rounded-xl p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs text-slate-500 uppercase tracking-wide font-medium mb-0.5">Installed</p>
+            <p className="text-2xl font-bold font-mono text-indigo-600">{versionInfo?.installed ?? APP_VERSION}</p>
+          </div>
+          <div>
+            {checking && (
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-400">
+                <div className="w-3.5 h-3.5 border-2 border-slate-300 border-t-slate-500 rounded-full animate-spin" />
+                Checking…
+              </div>
+            )}
+            {!checking && !versionError && versionInfo && !updateAvailable && (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-lg text-sm font-medium text-emerald-700">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Up to date
+              </div>
+            )}
+            {!checking && !versionError && versionInfo && updateAvailable && (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 border border-amber-300 rounded-lg text-sm font-medium text-amber-700">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                </svg>
+                Update available
+              </div>
+            )}
+            {!checking && versionError && (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-400">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 5.636a9 9 0 010 12.728M5.636 5.636a9 9 0 000 12.728M12 12h.01" />
+                </svg>
+                Offline
+              </div>
+            )}
+          </div>
+        </div>
+
+        {!checking && versionInfo && (
+          <div className="flex items-center justify-between text-xs text-slate-400">
+            <span>Latest on GitHub: <span className="font-mono">{versionInfo.latest}</span></span>
+            <button onClick={() => doVersionCheck(true)} className="text-indigo-500 hover:text-indigo-700 transition-colors">Check again</button>
+          </div>
+        )}
+        {!checking && versionError && (
+          <div className="flex items-center justify-between text-xs text-slate-400">
+            <span>Could not reach GitHub</span>
+            <button onClick={() => doVersionCheck(true)} className="text-indigo-500 hover:text-indigo-700 transition-colors">Retry</button>
+          </div>
+        )}
+      </div>
+
+      {/* Update available banner + action */}
+      {updateAvailable && updatePhase === 'idle' && (
+        <div className="border border-amber-200 bg-amber-50 rounded-xl p-4 space-y-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-amber-800">{versionInfo.latest} is available</p>
+              <p className="text-xs text-amber-700 mt-0.5">Click Update to install it now. The app will restart automatically — this takes about 30–60 seconds.</p>
+            </div>
+            <a href={versionInfo.releaseUrl} target="_blank" rel="noopener noreferrer"
+               className="text-xs text-amber-600 hover:text-amber-800 underline underline-offset-2 whitespace-nowrap flex-shrink-0">
+              Release notes ↗
+            </a>
+          </div>
+          <div className="flex items-center gap-3">
+            <button onClick={startUpdate}
+              className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold rounded-lg transition-colors">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+              </svg>
+              Update now
+            </button>
+            <span className="text-xs text-amber-600">Or run <code className="font-mono bg-amber-100 px-1 py-0.5 rounded">ip-manager-update</code> on the LXC</span>
+          </div>
+        </div>
+      )}
+
+      {/* Progress UI */}
+      {(updatePhase === 'running' || updatePhase === 'restarting' || updatePhase === 'done' || updatePhase === 'failed' || updatePhase === 'rolledback') && (
+        <div className="border border-slate-200 rounded-xl p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-slate-700">
+              {updatePhase === 'running'     && 'Updating…'}
+              {updatePhase === 'restarting'  && 'Restarting service…'}
+              {updatePhase === 'done'        && '✓ Update complete'}
+              {updatePhase === 'failed'      && '✗ Update failed — rolled back'}
+              {updatePhase === 'rolledback'  && '⟳ Rolling back…'}
+            </p>
+            {(updatePhase === 'done' || updatePhase === 'failed') && (
+              <button onClick={() => { setUpdatePhase('idle'); doVersionCheck(true); }}
+                className="text-xs text-slate-400 hover:text-slate-600 transition-colors">Dismiss</button>
+            )}
+          </div>
+
+          {/* Progress bar */}
+          <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+            <div
+              className={`h-2 rounded-full transition-all duration-500 ${
+                updatePhase === 'done' ? 'bg-emerald-500 w-full' :
+                updatePhase === 'failed' ? 'bg-red-400' :
+                'bg-indigo-500'
+              }`}
+              style={{ width: updatePhase === 'restarting' ? '90%' : `${updatePhase === 'done' ? 100 : progressPct}%` }}
+            />
+          </div>
+
+          {/* Step list */}
+          {steps.length > 0 && (
+            <div className="space-y-1">
+              {steps.map((s, i) => (
+                <div key={i} className="flex items-center gap-2 text-xs">
+                  {s.status === 'done'   && <svg className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+                  {s.status === 'active' && <div className="w-3.5 h-3.5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />}
+                  <span className={s.status === 'done' ? 'text-slate-500' : s.status === 'active' ? 'text-slate-700 font-medium' : 'text-slate-400'}>
+                    {s.label}
+                  </span>
+                </div>
+              ))}
+              {updatePhase === 'restarting' && (
+                <div className="flex items-center gap-2 text-xs">
+                  <div className="w-3.5 h-3.5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                  <span className="text-slate-700 font-medium">Waiting for service to restart…</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Error message */}
+          {(updatePhase === 'failed') && errorMsg && (
+            <div className="space-y-2">
+              <div className="px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 font-medium">
+                {errorMsg} — the previous version has been restored automatically.
+              </div>
+              <button onClick={() => setShowLog(v => !v)}
+                className="text-xs text-slate-400 hover:text-slate-600 underline transition-colors">
+                {showLog ? 'Hide' : 'Show'} error log
+              </button>
+              {showLog && logs.length > 0 && (
+                <pre className="bg-slate-900 text-slate-200 text-xs rounded-lg p-3 max-h-48 overflow-y-auto whitespace-pre-wrap">
+                  {logs.join('\n')}
+                </pre>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Manual update note (always visible when idle) */}
+      {updatePhase === 'idle' && (
+        <div className="text-xs text-slate-400 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2.5">
+          You can also update from the LXC at any time by running{' '}
+          <code className="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-600">ip-manager-update</code>.
+          Both methods are equivalent — in-browser updates use the same script.
+        </div>
+      )}
+
+      {/* Release log */}
+      {entries && entries.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Release Log</p>
+          {entries.map((entry, idx) => (
+            <div key={entry.version} className="border border-slate-200 rounded-xl overflow-hidden">
+              <button
+                className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-slate-50 transition-colors"
+                onClick={() => setExpanded(expanded === entry.version ? null : entry.version)}>
+                <div className="flex items-center gap-3 min-w-0">
+                  <span className={`font-mono text-sm font-semibold flex-shrink-0 ${idx === 0 ? 'text-indigo-600' : 'text-slate-700'}`}>{entry.version}</span>
+                  {idx === 0 && <span className="px-2 py-0.5 text-[10px] font-semibold bg-indigo-100 text-indigo-600 rounded-full uppercase tracking-wide flex-shrink-0">Installed</span>}
+                  <span className="text-sm text-slate-500 truncate">{entry.title}</span>
+                </div>
+                <svg className={`w-4 h-4 text-slate-400 flex-shrink-0 ml-2 transition-transform ${expanded === entry.version ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {expanded === entry.version && (
+                <div className="px-4 pb-4 pt-1 bg-slate-50 border-t border-slate-100">{renderBody(entry.body)}</div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLocation, onDeleteLocation, tags, onRenameTag, onDeleteTag, canDeleteNetwork, onDeleteNetwork, showFreeInList, onToggleShowFreeInList, ipData, networks, onRestore, dnsConfig, dnsStatus, dnsLoading, onSaveDnsConfig, onRunDns, proxmoxSyncConfig, proxmoxSyncStatus, proxmoxSyncLoading, onSaveProxmoxSyncConfig, onRunProxmoxSync, updateAvailable, initialTab }) {
   const [form, setForm] = useState({
     networkName: config.networkName,
     subnet: config.subnet,
@@ -100,7 +421,7 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
   });
   const [showSyncToken, setShowSyncToken] = useState(false);
   const [proxSyncSaved, setProxSyncSaved] = useState(false);
-  const [activeTab, setActiveTab] = useState('network');
+  const [activeTab, setActiveTab] = useState(initialTab || 'network');
 
   // Account / change-password state
   const [pwForm, setPwForm] = useState({ currentPassword: '', newUsername: '', newPassword: '', confirmPassword: '' });
@@ -250,6 +571,7 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
     { id: 'backup',   label: 'Backup' },
     { id: 'manage',   label: 'Locations & Tags' },
     { id: 'account',  label: 'Account' },
+    { id: 'updates',  label: 'Updates' },
   ];
 
   return (
@@ -281,9 +603,12 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
                   key={tab.id}
                   type="button"
                   onClick={() => setActiveTab(tab.id)}
-                  className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${activeTab === tab.id ? 'bg-white text-slate-800 font-semibold shadow-sm border-r-2 border-emerald-500' : 'text-slate-500 hover:text-slate-700 hover:bg-white/60'}`}
+                  className={`w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center justify-between ${activeTab === tab.id ? 'bg-white text-slate-800 font-semibold shadow-sm border-r-2 border-emerald-500' : 'text-slate-500 hover:text-slate-700 hover:bg-white/60'}`}
                 >
                   {tab.label}
+                  {tab.id === 'updates' && updateAvailable && (
+                    <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" />
+                  )}
                 </button>
               ))}
             </div>
@@ -1007,6 +1332,11 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
                   </div>
                 </div>
               </div>
+            )}
+
+            {/* ── UPDATES TAB ── */}
+            {activeTab === 'updates' && (
+              <UpdatesTab />
             )}
 
           </div>
@@ -3595,222 +3925,6 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
   );
 }
 
-// ── Updates Modal ─────────────────────────────────────────────────────────────
-function UpdatesModal({ onClose }) {
-  const [entries,      setEntries]      = useState(null);
-  const [clError,      setClError]      = useState(null);
-  const [versionInfo,  setVersionInfo]  = useState(null);  // { installed, latest, updateAvailable, releaseUrl }
-  const [versionError, setVersionError] = useState(null);
-  const [checking,     setChecking]     = useState(false);
-  const [expanded,     setExpanded]     = useState(null);
-
-  // Load changelog
-  useEffect(() => {
-    fetch('/api/changelog', { credentials: 'include' })
-      .then(r => r.json())
-      .then(d => {
-        if (d.error) { setClError(d.error); return; }
-        setEntries(d.entries || []);
-        if (d.entries && d.entries.length > 0) setExpanded(d.entries[0].version);
-      })
-      .catch(() => setClError('Could not load changelog.'));
-  }, []);
-
-  // Version check against GitHub
-  const doVersionCheck = (force = false) => {
-    setChecking(true);
-    setVersionError(null);
-    fetch(`/api/version-check${force ? '?force=1' : ''}`, { credentials: 'include' })
-      .then(r => r.json())
-      .then(d => {
-        if (d.error) { setVersionError(d.error); }
-        else { setVersionInfo(d); }
-      })
-      .catch(() => setVersionError('Could not reach GitHub.'))
-      .finally(() => setChecking(false));
-  };
-
-  useEffect(() => { doVersionCheck(); }, []);
-
-  // Simple markdown-lite renderer: bold, em-dash lines as paragraphs
-  function renderBody(body) {
-    if (!body) return null;
-    return body.split(/\n{2,}/).map((para, i) => {
-      const parts = para.split(/\*\*(.+?)\*\*/g).map((chunk, j) =>
-        j % 2 === 1 ? <strong key={j}>{chunk}</strong> : chunk
-      );
-      return (
-        <p key={i} className="text-sm text-slate-600 leading-relaxed mb-2 last:mb-0">{parts}</p>
-      );
-    });
-  }
-
-  const updateAvailable = versionInfo?.updateAvailable;
-
-  return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[85vh] flex flex-col overflow-hidden"
-           onClick={e => e.stopPropagation()}>
-
-        {/* Header */}
-        <div className="px-6 py-5 border-b border-slate-100 flex items-start justify-between flex-shrink-0">
-          <div>
-            <h2 className="text-xl font-semibold text-slate-800">Updates</h2>
-            <p className="text-sm text-slate-500 mt-0.5">IP Address Manager · release notes</p>
-          </div>
-          <button onClick={onClose}
-            className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors text-slate-400 hover:text-slate-600 ml-4 flex-shrink-0">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        {/* Version status card */}
-        <div className="px-6 py-4 border-b border-slate-100 flex-shrink-0 space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-0.5">Installed Version</p>
-              <p className="text-3xl font-bold text-indigo-600 font-mono">{versionInfo?.installed ?? APP_VERSION}</p>
-            </div>
-            {/* Status pill */}
-            {checking && (
-              <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl">
-                <div className="w-4 h-4 border-2 border-slate-300 border-t-slate-500 rounded-full animate-spin" />
-                <span className="text-sm text-slate-500">Checking…</span>
-              </div>
-            )}
-            {!checking && versionError && (
-              <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl">
-                <svg className="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-                </svg>
-                <span className="text-sm text-slate-400">Offline</span>
-              </div>
-            )}
-            {!checking && !versionError && versionInfo && !updateAvailable && (
-              <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl">
-                <svg className="w-4 h-4 text-emerald-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <span className="text-sm font-medium text-emerald-700">Up to date</span>
-              </div>
-            )}
-            {!checking && !versionError && versionInfo && updateAvailable && (
-              <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-300 rounded-xl">
-                <svg className="w-4 h-4 text-amber-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-                </svg>
-                <span className="text-sm font-medium text-amber-700">Update available</span>
-              </div>
-            )}
-          </div>
-
-          {/* Update available callout */}
-          {!checking && updateAvailable && versionInfo && (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 space-y-2">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold text-amber-800">
-                  {versionInfo.latest} is available
-                  {versionInfo.releaseName && versionInfo.releaseName !== versionInfo.latest
-                    ? ` — ${versionInfo.releaseName}` : ''}
-                </p>
-                <a href={versionInfo.releaseUrl} target="_blank" rel="noopener noreferrer"
-                   className="text-xs text-amber-600 hover:text-amber-800 underline underline-offset-2">
-                  Release notes ↗
-                </a>
-              </div>
-              <p className="text-xs text-amber-700">To update, run this on your LXC:</p>
-              <div className="flex items-center gap-2 bg-amber-900/10 rounded-lg px-3 py-2 font-mono text-xs text-amber-900 select-all">
-                bash update.sh
-              </div>
-              <p className="text-xs text-amber-600">The update script pulls the latest code, rebuilds the app, and restarts the service — your data is never touched.</p>
-            </div>
-          )}
-
-          {/* Up to date — show latest version info */}
-          {!checking && !updateAvailable && versionInfo && (
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-slate-400">
-                Latest on GitHub: <span className="font-mono">{versionInfo.latest}</span>
-              </p>
-              <button onClick={() => doVersionCheck(true)}
-                className="text-xs text-indigo-500 hover:text-indigo-700 transition-colors">
-                Check again
-              </button>
-            </div>
-          )}
-
-          {/* Offline / error state */}
-          {!checking && versionError && (
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-slate-400">Could not reach GitHub to check for updates.</p>
-              <button onClick={() => doVersionCheck(true)}
-                className="text-xs text-indigo-500 hover:text-indigo-700 transition-colors">
-                Retry
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Release list */}
-        <div className="overflow-y-auto flex-1 px-6 py-4">
-          {clError && (
-            <div className="text-sm text-red-500 bg-red-50 border border-red-200 rounded-lg px-4 py-3">{clError}</div>
-          )}
-          {!entries && !clError && (
-            <div className="flex items-center justify-center py-12 text-slate-400 text-sm">Loading…</div>
-          )}
-          {entries && entries.length > 0 && (
-            <div>
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Release Log</p>
-              <div className="space-y-2">
-                {entries.map((entry, idx) => (
-                  <div key={entry.version} className="border border-slate-200 rounded-xl overflow-hidden">
-                    <button
-                      className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-slate-50 transition-colors"
-                      onClick={() => setExpanded(expanded === entry.version ? null : entry.version)}>
-                      <div className="flex items-center gap-3 min-w-0">
-                        <span className={`font-mono text-sm font-semibold flex-shrink-0 ${idx === 0 ? 'text-indigo-600' : 'text-slate-700'}`}>
-                          {entry.version}
-                        </span>
-                        {idx === 0 && (
-                          <span className="px-2 py-0.5 text-[10px] font-semibold bg-indigo-100 text-indigo-600 rounded-full uppercase tracking-wide flex-shrink-0">
-                            Installed
-                          </span>
-                        )}
-                        <span className="text-sm text-slate-500 truncate">{entry.title}</span>
-                      </div>
-                      <svg className={`w-4 h-4 text-slate-400 flex-shrink-0 ml-2 transition-transform ${expanded === entry.version ? 'rotate-180' : ''}`}
-                           fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </button>
-                    {expanded === entry.version && (
-                      <div className="px-4 pb-4 pt-1 bg-slate-50 border-t border-slate-100">
-                        {renderBody(entry.body)}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="px-6 py-3 border-t border-slate-100 flex-shrink-0 flex items-center justify-between">
-          <p className="text-xs text-slate-400 font-mono">IP Manager {APP_VERSION}</p>
-          <button onClick={onClose}
-            className="px-4 py-1.5 text-sm font-medium bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg transition-colors">
-            Close
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // Main Component
 export default function IPAddressManager() {
   // Auth state: 'checking' while we verify the session, 'ok' when logged in, 'none' when not.
@@ -3836,7 +3950,7 @@ export default function IPAddressManager() {
   const [networks, setNetworks] = useState([{ ...DEFAULT_NETWORK_CONFIG }]);
   const [activeNetworkId, setActiveNetworkId] = useState('net-1');
   const [showSettings, setShowSettings] = useState(false);
-  const [showUpdates, setShowUpdates]   = useState(false);
+  const [topLevelVersionInfo, setTopLevelVersionInfo] = useState(null);
 
   const [ipData, setIpData] = useState([]);
   const [hasChanges, setHasChanges] = useState(false);
@@ -4007,7 +4121,6 @@ export default function IPAddressManager() {
       if (e.key === 'Escape') {
         if (editingItem) { setEditingItem(null); return; }
         if (showSettings) { setShowSettings(false); return; }
-        if (showUpdates)       { setShowUpdates(false);       return; }
         if (showImport)        { setShowImport(false);        return; }
         if (showProxmoxImport) { setShowProxmoxImport(false); return; }
         if (showARPScan)       { setShowARPScan(false);       return; }
@@ -4022,7 +4135,7 @@ export default function IPAddressManager() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [editingItem, showSettings, showUpdates, showImport, showProxmoxImport, showARPScan, showHelp, expandedCard, searchTerm]);
+  }, [editingItem, showSettings, showImport, showProxmoxImport, showARPScan, showHelp, expandedCard, searchTerm]);
 
   // ── Persist UI prefs (browser-local, runs whenever uiPrefs changes) ─────────
   useEffect(() => {
@@ -4093,6 +4206,15 @@ export default function IPAddressManager() {
     const timer = setInterval(() => fetchProxmoxVmStatus(), 60_000);
     return () => clearInterval(timer);
   }, [persistMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Version check for toolbar badge — runs once on load, low priority
+  useEffect(() => {
+    if (persistMode !== 'api') return;
+    fetch('/api/version-check', { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => { if (!d.error) setTopLevelVersionInfo(d); })
+      .catch(() => {});
+  }, [persistMode]);
 
   // ── DNS reverse lookup ───────────────────────────────────────────────────────
   const fetchDnsStatus = async (force = false) => {
@@ -4735,6 +4857,8 @@ export default function IPAddressManager() {
           proxmoxSyncLoading={proxmoxSyncLoading}
           onSaveProxmoxSyncConfig={handleSaveProxmoxSyncConfig}
           onRunProxmoxSync={handleRunProxmoxSync}
+          updateAvailable={topLevelVersionInfo?.updateAvailable}
+          initialTab={topLevelVersionInfo?.updateAvailable ? 'updates' : undefined}
         />
       )}
 
@@ -4767,9 +4891,6 @@ export default function IPAddressManager() {
 
       {/* Help Modal */}
       {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
-
-      {/* Updates Modal */}
-      {showUpdates && <UpdatesModal onClose={() => setShowUpdates(false)} />}
 
       {/* Edit Modal */}
       {editingItem && (
@@ -4941,20 +5062,14 @@ export default function IPAddressManager() {
                   <HelpCircle className="w-4 h-4" />
                 </button>
                 <button
-                  onClick={() => setShowUpdates(true)}
-                  className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-lg transition-colors"
-                  title={`What's new · ${APP_VERSION}`}
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                  </svg>
-                </button>
-                <button
                   onClick={() => setShowSettings(true)}
-                  className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg transition-colors"
-                  title="Network Settings"
+                  className="relative p-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg transition-colors"
+                  title={topLevelVersionInfo?.updateAvailable ? `Update available · ${topLevelVersionInfo.latest}` : 'Network Settings'}
                 >
                   <Settings className="w-4 h-4" />
+                  {topLevelVersionInfo?.updateAvailable && (
+                    <span className="absolute top-1 right-1 w-2 h-2 bg-amber-400 rounded-full" />
+                  )}
                 </button>
                 {persistMode === 'api' && (
                   <button
@@ -5120,15 +5235,6 @@ export default function IPAddressManager() {
               >
                 <HelpCircle className="w-4 h-4" />
                 Help
-              </button>
-              <button
-                onClick={() => { setShowUpdates(true); setShowMobileTools(false); }}
-                className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-medium rounded-lg transition-colors"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                </svg>
-                What's New
               </button>
               <button
                 onClick={() => { setShowSettings(true); setShowMobileTools(false); }}

@@ -6,6 +6,12 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v1.21
+
+**In-browser updates** — A new **Updates** section in **Settings** lets you check for new versions and apply them directly from the browser without touching the LXC. When a newer version is available on GitHub, an amber badge appears on the Settings gear icon and on the Updates tab. Clicking **Update now** runs the same update script used by the terminal command, streams live progress to a step-by-step progress bar, and restarts the service automatically. If any step fails (git pull, npm install, build, or server packages), the app automatically rolls back to the last working version, restarts, and shows a full error log you can use to investigate. The manual terminal command (`ip-manager-update`) continues to work exactly as before — in-browser updates use the same underlying script. The **Settings → Updates** tab also shows the full release log (parsed from the changelog) so you can read what changed in every version without leaving the app. GitHub releases are now published automatically via a GitHub Actions workflow on every push to `main` that bumps the version in `package.json`.
+
+---
+
 ## v1.20
 
 **Proxmox metadata — dedicated fields** — The VMID, node, and kind that were previously embedded in the user-editable Notes field (`VMID: 139 | Node: proxmox2 | Status: running`) are now stored as dedicated `proxmoxVmid`, `proxmoxNode`, and `proxmoxKind` fields. A one-time startup migration runs automatically — no action required. The Notes field is now entirely user-owned; editing it can no longer break Proxmox sync or VM status polling. A read-only **Proxmox** panel (VMID · Node · Kind) appears in the Edit modal for Proxmox entries, clearly labelled as managed automatically. The VM status badge now gates on `proxmoxVmid` being set. Proxmox sync updates `proxmoxNode` directly on HA failover rather than rewriting notes.

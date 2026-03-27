@@ -45,11 +45,9 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
-### v1.20 Features
+### v1.21 Features
 
-**Proxmox metadata — dedicated fields** — The VMID, node, and kind previously embedded in the Notes field are now stored as dedicated internal fields. A one-time migration runs automatically on startup. The Notes field is now entirely user-owned — editing it can no longer break Proxmox sync or VM status polling. A read-only **Proxmox** panel appears in the Edit modal for Proxmox entries showing VMID, node, and kind, clearly labelled as managed automatically.
-
-**Version number** — now shown in the Settings and Help & Reference modals (header and sidebar footer).
+**In-browser updates** — **Settings → Updates** shows the installed version, checks GitHub for newer releases, and lets you apply updates directly from the browser. An amber badge on the Settings gear appears when an update is waiting. Clicking **Update now** streams live progress through each step (fetch, install, build, restart) with a progress bar. On failure the app rolls back automatically and shows the error log. The `ip-manager-update` terminal command still works identically.
 
 → Full version history: [CHANGELOG.md](./CHANGELOG.md)
 

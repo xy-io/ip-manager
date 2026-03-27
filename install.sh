@@ -232,6 +232,23 @@ WRAPPER
 chmod +x /usr/local/bin/ip-manager-update
 ok "Update wrapper created — logic lives in scripts/update.sh (always current)"
 
+# ── 10. Sudoers entry for in-browser updates ───────────────────
+# The API server runs as www-data. The in-browser update feature needs to
+# run scripts/update.sh as root (for git, npm, systemctl). This entry
+# grants www-data exactly that permission and nothing else.
+log "Configuring sudoers for in-browser updates..."
+SUDOERS_LINE="www-data ALL=(ALL) NOPASSWD: /bin/bash ${APP_DIR}/scripts/update.sh"
+SUDOERS_FILE="/etc/sudoers.d/ip-manager-update"
+echo "$SUDOERS_LINE" > "$SUDOERS_FILE"
+chmod 440 "$SUDOERS_FILE"
+# Validate — if visudo rejects it we remove it rather than break sudo
+if ! visudo -cf "$SUDOERS_FILE" &>/dev/null; then
+  warn "sudoers entry failed validation — in-browser updates will not work. Manual updates (ip-manager-update) are unaffected."
+  rm -f "$SUDOERS_FILE"
+else
+  ok "sudoers configured — www-data can run update script as root"
+fi
+
 # ── Done ─────────────────────────────────────────────────────
 echo ""
 echo -e "${GREEN}============================================${NC}"
