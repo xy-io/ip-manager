@@ -1,13 +1,27 @@
 name: Create Release
 
-# Triggers when you push a tag like v1.21, v1.22, etc.
+# Two ways to trigger:
+#
+#   1. Push a tag — git tag v1.21 && git push origin v1.21
+#      (for power users / CI)
+#
+#   2. Manual — go to GitHub.com → Actions → "Create Release" → "Run workflow"
+#      Type the version (e.g. v1.21) and click the green button.
+#      No terminal required.
+
 on:
   push:
     tags:
       - 'v[0-9]*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g. v1.21)'
+        required: true
+        type: string
 
 permissions:
-  contents: write   # needed to create releases
+  contents: write
 
 jobs:
   release:
@@ -17,6 +31,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          fi
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -30,33 +53,28 @@ jobs:
       - name: Build
         run: npm run build
 
-      # Extract the changelog section that matches this tag.
-      # CHANGELOG.md uses headings like "## v1.20" and sections are
-      # separated by "---" lines, so we grab everything between the
-      # matching heading and the next separator.
+      # Extract the changelog section that matches this version.
+      # CHANGELOG.md uses "## v1.20" headings separated by "---" lines.
       - name: Extract changelog section
         id: changelog
         env:
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
           python3 - <<'PYEOF'
           import os, re, sys
 
-          tag     = os.environ["TAG"]          # e.g. "v1.20"
+          tag     = os.environ["TAG"]
           cl_path = "CHANGELOG.md"
 
           try:
               text = open(cl_path).read()
           except FileNotFoundError:
-              print(f"::warning::CHANGELOG.md not found", file=sys.stderr)
-              body = ""
+              body = f"Release {tag}"
           else:
-              # Match the heading for this exact tag, then grab until next ---
               pattern = rf"^## {re.escape(tag)}\s*\n(.*?)(?=\n---|\Z)"
               m = re.search(pattern, text, re.DOTALL | re.MULTILINE)
               body = m.group(1).strip() if m else f"Release {tag}"
 
-          # Write to GITHUB_OUTPUT using the heredoc delimiter style
           delimiter = "CHANGELOG_EOF"
           with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
               fh.write(f"body<<{delimiter}\n{body}\n{delimiter}\n")
@@ -65,8 +83,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name:   ${{ github.ref_name }}
-          name:       ${{ github.ref_name }}
+          tag_name:   ${{ steps.version.outputs.tag }}
+          name:       ${{ steps.version.outputs.tag }}
           body:       ${{ steps.changelog.outputs.body }}
           draft:      false
           prerelease: false
