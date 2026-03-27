@@ -6,6 +6,16 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v1.22
+
+**ARP & Presence** — Two new opt-in features in a dedicated **Settings → ARP & Presence** tab, both disabled by default.
+
+**Last Seen Timestamps** piggybacks on the existing 60-second ping cycle — zero extra network traffic. When enabled, the server records the last time each IP responded to a ping and displays a small clock icon with a relative timestamp (e.g. *3m ago*, *2h ago*) inline with the IP address on cards and in the table. Timestamps older than 25 hours turn amber as a visual stale indicator. Data persists across restarts and can be cleared from settings.
+
+**Background Discovery Scan** schedules a periodic ARP sweep scoped to each network's static range, surfacing devices that aren't yet tracked in the manager. Subnet-aware defaults apply automatically: /24 networks scan every 15 minutes at 1000 Kbps; /16 or larger networks default to hourly at 200 Kbps to avoid flooding large subnets. Both the interval and bandwidth cap are user-configurable. A **Scan Now** button allows an immediate manual sweep. Untracked devices found within the static range are listed in the settings tab with IP, MAC, and vendor; they can be imported via the existing ARP Scan toolbar button. The scan requires `arp-scan` with raw socket capability (installed automatically by the update script).
+
+---
+
 ## v1.21
 
 **In-browser updates** — A new **Updates** section in **Settings** lets you check for new versions and apply them directly from the browser without touching the LXC. When a newer version is available on GitHub, an amber badge appears on the Settings gear icon and on the Updates tab. Clicking **Update now** runs the same update script used by the terminal command, streams live progress to a step-by-step progress bar, and restarts the service automatically. If any step fails (git pull, npm install, build, or server packages), the app automatically rolls back to the last working version, restarts, and shows a full error log you can use to investigate. The manual terminal command (`ip-manager-update`) continues to work exactly as before — in-browser updates use the same underlying script. The **Settings → Updates** tab also shows the full release log (parsed from the changelog) so you can read what changed in every version without leaving the app. GitHub releases are now published automatically via a GitHub Actions workflow on every push to `main` that bumps the version in `package.json`.

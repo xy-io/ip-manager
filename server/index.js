@@ -567,6 +567,158 @@ app.post('/api/arp/scan', async (req, res) => {
   res.json({ results, method, total: results.length, scanWarning });
 });
 
+// ── ARP Presence config ───────────────────────────────────────────────────────
+// Shared config for both "last seen timestamps" and "background discovery scan".
+// Stored in the DB under 'arp_presence_config'; never touched without explicit
+// user action in Settings → ARP & Presence.
+
+function getArpPresenceConfig() {
+  return dbGet('arp_presence_config') || {
+    lastSeenEnabled:           false,
+    discoveryEnabled:          false,
+    discoveryIntervalMinutes:  null,   // null = subnet-aware auto default
+    discoveryBandwidthKbps:    null,   // null = subnet-aware auto default
+    discoveryInterface:        '',
+    lastDiscoveryRun:          null,
+  };
+}
+
+// Detect CIDR prefix length from a subnet string like "192.168.1" or "192.168"
+function subnetPrefixLen(subnet) {
+  if (subnet.includes('/')) return parseInt(subnet.split('/')[1]) || 24;
+  const octets = (subnet || '').split('.').filter(Boolean).length;
+  if (octets === 2) return 16;
+  return 24; // default /24
+}
+
+// In-memory last-seen map { [ip]: isoString }
+// Persisted to DB under 'last_seen_data'; loaded at startup.
+let lastSeenData = (function () { return dbGet('last_seen_data') || {}; })();
+
+// ── Background discovery scan ─────────────────────────────────────────────────
+// Scheduled arp-scan sweep scoped to each network's static range.
+// Subnet-aware rate limiting: /24 → 15 min / 1000 Kbps; /16 → 60 min / 200 Kbps.
+// Both defaults are overridable in settings.
+
+let discoveryState = {
+  running:     false,
+  lastRun:     null,
+  lastResults: [],   // [{ ip, mac, vendor, networkId, tracked, inStaticRange }]
+  lastError:   null,
+};
+let discoveryTimer = null;
+
+function getDiscoveryDefaults(prefixLen) {
+  if (prefixLen <= 16) return { intervalMinutes: 60, bandwidthKbps: 200 };
+  return { intervalMinutes: 15, bandwidthKbps: 1000 };
+}
+
+function buildDiscoveryScanCmd(cidr, iface, bandwidthKbps) {
+  const ifaceFlag = iface ? `-I ${shellEsc(iface)} ` : '';
+  const bwFlag    = bandwidthKbps ? `--bandwidth=${bandwidthKbps}K ` : '';
+  return `arp-scan ${ifaceFlag}${bwFlag}--quiet ${cidr}`;
+}
+
+async function runDiscoveryScan() {
+  if (discoveryState.running) return;
+  const config = getArpPresenceConfig();
+  if (!config.discoveryEnabled) return;
+
+  discoveryState = { ...discoveryState, running: true, lastError: null };
+
+  try {
+    const networks = dbGet('networks') || [];
+    const ipData   = dbGet('ip_data')   || [];
+    const inManager = new Set(ipData.map(e => e.ip));
+    const allResults = [];
+
+    for (const network of networks) {
+      const subnetRaw = network.subnet || '';
+      if (!subnetRaw) continue;
+
+      // Normalise subnet to CIDR
+      let cidr = subnetRaw;
+      if (!cidr.includes('/')) {
+        const octets = cidr.split('.').filter(Boolean);
+        if (octets.length === 2)      cidr = `${cidr}.0.0/16`;
+        else if (octets.length === 3) cidr = `${cidr}.0/24`;
+      }
+
+      const prefixLen = subnetPrefixLen(subnetRaw);
+      const defaults  = getDiscoveryDefaults(prefixLen);
+      const bw        = config.discoveryBandwidthKbps ?? defaults.bandwidthKbps;
+
+      let raw = [];
+      try {
+        const cmd    = buildDiscoveryScanCmd(cidr, config.discoveryInterface || '', bw);
+        const stdout = execSync(cmd, { encoding: 'utf8', timeout: 180000, stdio: ['pipe', 'pipe', 'pipe'] });
+        raw = parseArpScanOutput(stdout);
+      } catch (err) {
+        console.warn(`[discovery] arp-scan failed for ${cidr}:`, err.message);
+        continue;
+      }
+
+      // Determine static range for this network (last-octet bounds for /24; full range for /16)
+      const staticStart = network.dhcpEnabled === false ? 1 : (network.staticStart ?? 1);
+      const staticEnd   = network.dhcpEnabled === false ? 254 : (network.staticEnd ?? 254);
+      const subnetPrefix = cidr.replace(/\/\d+$/, '').split('.').slice(0, prefixLen / 8).join('.');
+
+      for (const device of raw) {
+        const lastOctet = parseInt(device.ip.split('.').pop() || '0', 10);
+        const inRange   = device.ip.startsWith(subnetPrefix + '.');
+        const inStatic  = inRange && (prefixLen >= 24
+          ? (lastOctet >= staticStart && lastOctet <= staticEnd)
+          : true);
+        allResults.push({
+          ...device,
+          networkId:     network.id,
+          networkName:   network.name || network.subnet,
+          tracked:       inManager.has(device.ip),
+          inStaticRange: inStatic,
+        });
+      }
+    }
+
+    const lastRun = new Date().toISOString();
+    discoveryState = { running: false, lastRun, lastResults: allResults, lastError: null };
+
+    // Persist last-run timestamp
+    const updated = getArpPresenceConfig();
+    dbSet('arp_presence_config', { ...updated, lastDiscoveryRun: lastRun });
+    console.log(`[discovery] Scan complete: ${allResults.length} devices found`);
+  } catch (err) {
+    discoveryState = { ...discoveryState, running: false, lastError: err.message };
+    console.error('[discovery] Error:', err.message);
+  }
+}
+
+function scheduleDiscoveryScan() {
+  if (discoveryTimer) { clearInterval(discoveryTimer); discoveryTimer = null; }
+  const config = getArpPresenceConfig();
+  if (!config.discoveryEnabled) return;
+
+  // Determine interval: use configured value or subnet-aware default (pick smallest network)
+  const networks = dbGet('networks') || [];
+  const smallestPrefix = networks.reduce((min, n) => {
+    const p = subnetPrefixLen(n.subnet || '');
+    return p > min ? p : min; // larger prefix = smaller subnet = more aggressive default
+  }, 24);
+  const defaults  = getDiscoveryDefaults(smallestPrefix);
+  const intervalMs = Math.max(
+    15 * 60 * 1000,
+    ((config.discoveryIntervalMinutes ?? defaults.intervalMinutes) * 60 * 1000)
+  );
+
+  discoveryTimer = setInterval(runDiscoveryScan, intervalMs);
+  console.log(`[discovery] Scheduled every ${Math.round(intervalMs / 60000)} min`);
+}
+
+// Restore schedule on startup
+(function () {
+  const config = getArpPresenceConfig();
+  if (config.discoveryEnabled) scheduleDiscoveryScan();
+})();
+
 // ── Ping / reachability ───────────────────────────────────────────────────────
 
 let pingCache = { results: {}, timestamp: 0, warning: null };
@@ -637,6 +789,20 @@ async function refreshPingCache() {
   if (!ips.length) return;
   const { results, warning } = await runFping(ips);
   pingCache = { results, timestamp: Date.now(), warning };
+
+  // Update last-seen timestamps for every IP that responded — only if enabled
+  const presenceConfig = getArpPresenceConfig();
+  if (presenceConfig.lastSeenEnabled) {
+    const now = new Date().toISOString();
+    let changed = false;
+    for (const [ip, status] of Object.entries(results)) {
+      if (status === 'up') {
+        lastSeenData[ip] = now;
+        changed = true;
+      }
+    }
+    if (changed) dbSet('last_seen_data', lastSeenData);
+  }
 }
 
 // Background poller — runs immediately on startup, then every PING_INTERVAL
@@ -653,6 +819,7 @@ app.get('/api/ping-status', requireAuth, async (req, res) => {
     warning:   pingCache.warning,
     cachedAt:  pingCache.timestamp,
     nextIn:    Math.max(0, PING_INTERVAL - (Date.now() - pingCache.timestamp)),
+    lastSeen:  lastSeenData,  // { [ip]: isoString } — populated when lastSeenEnabled
   });
 });
 
@@ -1256,6 +1423,95 @@ app.get('/api/dns-status', requireAuth, async (req, res) => {
     cachedAt: dnsCache.timestamp,
     config:   { server: config.server || '', enabled: config.enabled !== false, lastRun: config.lastRun || null },
   });
+});
+
+// ── ARP Presence API ──────────────────────────────────────────────────────────
+// Settings and status for "Last Seen Timestamps" and "Background Discovery Scan"
+
+// GET /api/arp-presence/config
+app.get('/api/arp-presence/config', requireAuth, (req, res) => {
+  const config = getArpPresenceConfig();
+
+  // Compute subnet-aware defaults so the frontend can show them as placeholders
+  const networks = dbGet('networks') || [];
+  const smallestPrefix = networks.reduce((min, n) => {
+    const p = subnetPrefixLen(n.subnet || '');
+    return p > min ? p : min;
+  }, 24);
+  const defaults = getDiscoveryDefaults(smallestPrefix);
+
+  res.json({
+    lastSeenEnabled:            config.lastSeenEnabled          === true,
+    discoveryEnabled:           config.discoveryEnabled         === true,
+    discoveryIntervalMinutes:   config.discoveryIntervalMinutes ?? null,
+    discoveryBandwidthKbps:     config.discoveryBandwidthKbps   ?? null,
+    discoveryInterface:         config.discoveryInterface        || '',
+    lastDiscoveryRun:           config.lastDiscoveryRun          || null,
+    // Subnet-aware auto-defaults shown in UI as placeholder hints
+    defaultIntervalMinutes:     defaults.intervalMinutes,
+    defaultBandwidthKbps:       defaults.bandwidthKbps,
+    subnetPrefixLen:            smallestPrefix,
+  });
+});
+
+// POST /api/arp-presence/config — save settings and reschedule
+app.post('/api/arp-presence/config', requireAuth, (req, res) => {
+  const {
+    lastSeenEnabled,
+    discoveryEnabled,
+    discoveryIntervalMinutes,
+    discoveryBandwidthKbps,
+    discoveryInterface,
+  } = req.body || {};
+
+  const current = getArpPresenceConfig();
+  const updated = {
+    ...current,
+    lastSeenEnabled:           lastSeenEnabled  === true,
+    discoveryEnabled:          discoveryEnabled === true,
+    discoveryIntervalMinutes:  discoveryIntervalMinutes != null
+      ? Math.max(5, parseInt(discoveryIntervalMinutes) || 15)
+      : null,
+    discoveryBandwidthKbps:    discoveryBandwidthKbps != null
+      ? Math.max(50, parseInt(discoveryBandwidthKbps) || 1000)
+      : null,
+    discoveryInterface: (discoveryInterface || '').trim(),
+  };
+  dbSet('arp_presence_config', updated);
+  scheduleDiscoveryScan(); // apply new schedule immediately
+  res.json({ ok: true });
+});
+
+// GET /api/arp-presence/status — current discovery state + last seen summary
+app.get('/api/arp-presence/status', requireAuth, (req, res) => {
+  const config = getArpPresenceConfig();
+  res.json({
+    lastSeen:       lastSeenData,          // { [ip]: isoString }
+    discovery: {
+      running:      discoveryState.running,
+      lastRun:      discoveryState.lastRun,
+      lastResults:  discoveryState.lastResults,
+      lastError:    discoveryState.lastError,
+    },
+    lastSeenEnabled:  config.lastSeenEnabled  === true,
+    discoveryEnabled: config.discoveryEnabled === true,
+  });
+});
+
+// POST /api/arp-presence/scan — manual immediate discovery scan
+app.post('/api/arp-presence/scan', requireAuth, (req, res) => {
+  if (discoveryState.running) {
+    return res.json({ ok: false, message: 'Scan already in progress' });
+  }
+  res.json({ ok: true, message: 'Scan started' });
+  runDiscoveryScan(); // fire and forget — client polls /status for results
+});
+
+// POST /api/arp-presence/clear-last-seen — clears stored lastSeen data
+app.post('/api/arp-presence/clear-last-seen', requireAuth, (req, res) => {
+  lastSeenData = {};
+  dbSet('last_seen_data', {});
+  res.json({ ok: true });
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────────

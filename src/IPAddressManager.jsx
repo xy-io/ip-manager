@@ -3,7 +3,7 @@ import { Search, Server, Monitor, Wifi, HardDrive, Camera, Shield, Globe, Filter
 import * as XLSX from 'xlsx';
 
 // ── App version ───────────────────────────────────────────────────────────────
-const APP_VERSION = 'v1.21';
+const APP_VERSION = 'v1.22';
 
 // Default network configuration (overridden by Settings modal / localStorage)
 const DEFAULT_NETWORK_CONFIG = {
@@ -61,6 +61,260 @@ function formatDate(iso) {
 // Generates a short unique ID for host groups (Option A linking)
 function generateHostId() {
   return `host-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+// ── ARP & Presence Tab (lives inside SettingsModal) ───────────────────────────
+function ArpPresenceTab() {
+  const [config,  setConfig]  = useState(null);
+  const [status,  setStatus]  = useState(null);
+  const [saving,  setSaving]  = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [msg,     setMsg]     = useState(null); // { type: 'ok'|'err', text }
+
+  // Local editable state
+  const [lastSeenEnabled,          setLastSeenEnabled]          = useState(false);
+  const [discoveryEnabled,         setDiscoveryEnabled]         = useState(false);
+  const [discoveryInterval,        setDiscoveryInterval]        = useState('');
+  const [discoveryBandwidth,       setDiscoveryBandwidth]       = useState('');
+  const [discoveryInterface,       setDiscoveryInterface]       = useState('');
+
+  const loadConfig = async () => {
+    try {
+      const r = await fetch('/api/arp-presence/config');
+      if (!r.ok) return;
+      const d = await r.json();
+      setConfig(d);
+      setLastSeenEnabled(d.lastSeenEnabled);
+      setDiscoveryEnabled(d.discoveryEnabled);
+      setDiscoveryInterval(d.discoveryIntervalMinutes != null ? String(d.discoveryIntervalMinutes) : '');
+      setDiscoveryBandwidth(d.discoveryBandwidthKbps  != null ? String(d.discoveryBandwidthKbps)  : '');
+      setDiscoveryInterface(d.discoveryInterface || '');
+    } catch {}
+  };
+
+  const loadStatus = async () => {
+    try {
+      const r = await fetch('/api/arp-presence/status');
+      if (!r.ok) return;
+      setStatus(await r.json());
+    } catch {}
+  };
+
+  useEffect(() => {
+    loadConfig();
+    loadStatus();
+    const t = setInterval(loadStatus, 10_000);
+    return () => clearInterval(t);
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true); setMsg(null);
+    try {
+      const body = {
+        lastSeenEnabled,
+        discoveryEnabled,
+        discoveryIntervalMinutes: discoveryInterval  !== '' ? parseInt(discoveryInterval)  : null,
+        discoveryBandwidthKbps:   discoveryBandwidth !== '' ? parseInt(discoveryBandwidth) : null,
+        discoveryInterface,
+      };
+      const r = await fetch('/api/arp-presence/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (!r.ok) throw new Error('Save failed');
+      setMsg({ type: 'ok', text: 'Settings saved.' });
+      loadConfig();
+    } catch (e) {
+      setMsg({ type: 'err', text: e.message });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleScanNow = async () => {
+    setScanning(true); setMsg(null);
+    try {
+      const r = await fetch('/api/arp-presence/scan', { method: 'POST' });
+      const d = await r.json();
+      if (!d.ok && d.message) { setMsg({ type: 'err', text: d.message }); setScanning(false); return; }
+      setMsg({ type: 'ok', text: 'Scan started — results will appear below in a few seconds.' });
+      // Poll status until scan completes
+      const poll = setInterval(async () => {
+        await loadStatus();
+        setStatus(prev => {
+          if (prev && !prev.discovery?.running) { clearInterval(poll); setScanning(false); }
+          return prev;
+        });
+      }, 2000);
+      setTimeout(() => { clearInterval(poll); setScanning(false); }, 120_000);
+    } catch (e) {
+      setMsg({ type: 'err', text: e.message }); setScanning(false);
+    }
+  };
+
+  const handleClearLastSeen = async () => {
+    try {
+      await fetch('/api/arp-presence/clear-last-seen', { method: 'POST' });
+      setMsg({ type: 'ok', text: 'Last seen data cleared.' });
+      loadStatus();
+    } catch {}
+  };
+
+  const labelCls   = "block text-sm font-medium text-slate-700 mb-1";
+  const inputCls   = "w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm";
+  const sectionCls = "border border-slate-200 rounded-xl p-4 space-y-4";
+
+  const fmtTime = (iso) => {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    const diffMs = Date.now() - d.getTime();
+    const diffMin = Math.floor(diffMs / 60_000);
+    if (diffMin < 1) return 'just now';
+    if (diffMin < 60) return `${diffMin}m ago`;
+    const diffH = Math.floor(diffMin / 60);
+    if (diffH < 24) return `${diffH}h ago`;
+    return `${Math.floor(diffH / 24)}d ago`;
+  };
+
+  const discoveryResults = status?.discovery?.lastResults || [];
+  const untracked = discoveryResults.filter(r => !r.tracked && r.inStaticRange);
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h3 className="text-base font-semibold text-slate-800">ARP & Presence</h3>
+        <p className="text-sm text-slate-500 mt-0.5">Track when devices were last seen online, and optionally scan for untracked devices on your network.</p>
+      </div>
+
+      {/* ── Last Seen Timestamps ── */}
+      <div className={sectionCls}>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-slate-700">Last Seen Timestamps</p>
+            <p className="text-xs text-slate-500 mt-0.5">Piggybacks on the existing ping cycle (every 60 s) — zero extra network traffic. Records the last time each device responded to a ping.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setLastSeenEnabled(v => !v)}
+            className={`flex-shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${lastSeenEnabled ? 'bg-emerald-500' : 'bg-slate-300'}`}
+          >
+            <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${lastSeenEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+          </button>
+        </div>
+        {lastSeenEnabled && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 text-xs text-emerald-700">
+            When enabled, a clock icon appears on each card and table row showing how long ago the device was last seen online. A grey indicator appears when no data has been collected yet or when the device has been offline.
+          </div>
+        )}
+        {status && Object.keys(status.lastSeen || {}).length > 0 && (
+          <div className="flex items-center justify-between text-xs text-slate-500 mt-1">
+            <span>{Object.keys(status.lastSeen).length} IPs with last-seen data</span>
+            <button type="button" onClick={handleClearLastSeen} className="text-red-500 hover:text-red-700 transition-colors">Clear data</button>
+          </div>
+        )}
+      </div>
+
+      {/* ── Background Discovery Scan ── */}
+      <div className={sectionCls}>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-slate-700">Background Discovery Scan</p>
+            <p className="text-xs text-slate-500 mt-0.5">Scheduled ARP sweep scoped to your static IP range. Surfaces devices on your network that aren't yet tracked. Rate-limited to minimise traffic on large subnets.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setDiscoveryEnabled(v => !v)}
+            className={`flex-shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${discoveryEnabled ? 'bg-emerald-500' : 'bg-slate-300'}`}
+          >
+            <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${discoveryEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+          </button>
+        </div>
+
+        {config && (
+          <div className="bg-slate-50 rounded-lg px-3 py-2 text-xs text-slate-600 space-y-0.5">
+            <p>Subnet: <span className="font-mono">/{config.subnetPrefixLen}</span> &nbsp;·&nbsp; Auto interval: <span className="font-mono">{config.defaultIntervalMinutes} min</span> &nbsp;·&nbsp; Auto bandwidth cap: <span className="font-mono">{config.defaultBandwidthKbps} Kbps</span></p>
+            {config.subnetPrefixLen <= 16 && (
+              <p className="text-amber-600">⚠ /16 or larger subnet detected — default bandwidth cap is conservative (200 Kbps). A full scan may take several minutes.</p>
+            )}
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={labelCls}>Scan interval (min) <span className="text-slate-400 font-normal">— blank = auto ({config?.defaultIntervalMinutes ?? '…'})</span></label>
+            <input type="number" min="5" className={inputCls} value={discoveryInterval} onChange={e => setDiscoveryInterval(e.target.value)} placeholder={String(config?.defaultIntervalMinutes ?? 15)} />
+          </div>
+          <div>
+            <label className={labelCls}>Bandwidth cap (Kbps) <span className="text-slate-400 font-normal">— blank = auto</span></label>
+            <input type="number" min="50" className={inputCls} value={discoveryBandwidth} onChange={e => setDiscoveryBandwidth(e.target.value)} placeholder={String(config?.defaultBandwidthKbps ?? 1000)} />
+          </div>
+        </div>
+
+        <div>
+          <label className={labelCls}>Network interface <span className="text-slate-400 font-normal">— blank = auto-detect</span></label>
+          <input type="text" className={inputCls} value={discoveryInterface} onChange={e => setDiscoveryInterface(e.target.value)} placeholder="e.g. eth0" />
+        </div>
+
+        {/* Scan status */}
+        <div className="flex items-center justify-between">
+          <div className="text-xs text-slate-500">
+            {status?.discovery?.running ? (
+              <span className="text-amber-600">⟳ Scan in progress…</span>
+            ) : status?.discovery?.lastRun ? (
+              <span>Last scan: {fmtTime(status.discovery.lastRun)} · {discoveryResults.length} device{discoveryResults.length !== 1 ? 's' : ''} found</span>
+            ) : (
+              <span>No scan run yet</span>
+            )}
+          </div>
+          <button
+            type="button"
+            disabled={scanning || status?.discovery?.running}
+            onClick={handleScanNow}
+            className="text-xs px-3 py-1.5 bg-teal-500 text-white rounded-lg hover:bg-teal-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {scanning || status?.discovery?.running ? 'Scanning…' : 'Scan Now'}
+          </button>
+        </div>
+
+        {/* Last error */}
+        {status?.discovery?.lastError && (
+          <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700">
+            Last scan error: {status.discovery.lastError}
+          </div>
+        )}
+
+        {/* Untracked devices */}
+        {untracked.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-amber-700">{untracked.length} untracked device{untracked.length !== 1 ? 's' : ''} found in static range</p>
+            <div className="max-h-40 overflow-y-auto space-y-1">
+              {untracked.map((d, i) => (
+                <div key={i} className="flex items-center gap-2 text-xs bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
+                  <span className="font-mono font-semibold text-slate-700 w-28 flex-shrink-0">{d.ip}</span>
+                  <span className="font-mono text-slate-500 w-40 flex-shrink-0 hidden sm:block">{d.mac}</span>
+                  <span className="text-slate-600 truncate">{d.vendor || 'Unknown vendor'}</span>
+                  {d.networkName && <span className="text-slate-400 ml-auto flex-shrink-0">{d.networkName}</span>}
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-slate-400">Use the ARP Scan button in the toolbar to import these devices.</p>
+          </div>
+        )}
+      </div>
+
+      {/* Save + feedback */}
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          disabled={saving}
+          onClick={handleSave}
+          className="px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {saving ? 'Saving…' : 'Save Changes'}
+        </button>
+        {msg && (
+          <span className={`text-sm ${msg.type === 'ok' ? 'text-emerald-600' : 'text-red-500'}`}>{msg.text}</span>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // Settings Modal Component
@@ -570,6 +824,7 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
     { id: 'proxmox',  label: 'Proxmox Sync' },
     { id: 'backup',   label: 'Backup' },
     { id: 'manage',   label: 'Locations & Tags' },
+    { id: 'presence', label: 'ARP & Presence' },
     { id: 'account',  label: 'Account' },
     { id: 'updates',  label: 'Updates' },
   ];
@@ -1332,6 +1587,11 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
                   </div>
                 </div>
               </div>
+            )}
+
+            {/* ── ARP & PRESENCE TAB ── */}
+            {activeTab === 'presence' && (
+              <ArpPresenceTab />
             )}
 
             {/* ── UPDATES TAB ── */}
@@ -2333,6 +2593,26 @@ const getTypeColor = (type) => {
   return 'bg-gray-100 text-gray-500 border-gray-200';
 };
 
+// Formats an ISO timestamp as a short relative string (e.g. "3m ago", "2h ago", "never")
+function formatLastSeen(iso) {
+  if (!iso) return null;
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const diffMin = Math.floor(diffMs / 60_000);
+  if (diffMin < 1) return 'just now';
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const h = Math.floor(diffMin / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  return `${d}d ago`;
+}
+
+// Returns 'stale' if last seen > 25 hours ago, 'recent' otherwise
+function lastSeenAge(iso) {
+  if (!iso) return 'none';
+  const h = (Date.now() - new Date(iso).getTime()) / 3_600_000;
+  return h > 25 ? 'stale' : 'recent';
+}
+
 const TRACKED_FIELDS = [
   { key: 'assetName', label: 'Name' },
   { key: 'hostname',  label: 'Hostname' },
@@ -2462,6 +2742,7 @@ function HelpModal({ onClose }) {
     { id: 'arp',        label: 'ARP Scan' },
     { id: 'ping',       label: 'Ping / Reachability' },
     { id: 'health',     label: 'Service Health' },
+    { id: 'presence',   label: 'ARP & Presence' },
     { id: 'backup',     label: 'Backup & Restore' },
     { id: 'importexp',  label: 'Import & Export' },
     { id: 'dns',        label: 'DNS Lookup' },
@@ -2822,6 +3103,31 @@ function HelpModal({ onClose }) {
 
         <H3>Hovering the dot</H3>
         <P>Hovering the dot shows the full probe URL and the last HTTP status code received, so you can quickly verify it is pointing at the right endpoint.</P>
+      </div>
+    ),
+
+    presence: (
+      <div>
+        <H2>ARP &amp; Presence</H2>
+        <P>The ARP &amp; Presence features in <strong>Settings → ARP &amp; Presence</strong> give you two independent capabilities for tracking device activity on your network. Both are disabled by default.</P>
+
+        <H3>Last Seen Timestamps</H3>
+        <P>When enabled, the server records the last time each IP address responded to a ping. This piggybacks on the existing 60-second ping cycle — no extra network traffic is generated. A small clock icon with a relative time (e.g. <em>3m ago</em>, <em>2h ago</em>) appears inline with the IP address on both cards and in the table.</P>
+        <P>If a device has been offline or hasn't been seen for more than 25 hours, the timestamp turns amber as a visual indicator that it may be stale. Hovering the timestamp shows the exact date and time.</P>
+        <P>Last-seen data is stored server-side and persists across page reloads and service restarts. You can clear all stored data from the Settings → ARP &amp; Presence tab at any time.</P>
+
+        <H3>Background Discovery Scan</H3>
+        <P>When enabled, the server periodically runs an ARP sweep across your network's static range to detect devices that aren't yet tracked in the manager. Results are shown in Settings → ARP &amp; Presence; untracked devices can then be imported via the ARP Scan button in the toolbar.</P>
+
+        <H3>Rate limiting &amp; subnet awareness</H3>
+        <div className="space-y-0.5 mb-3">
+          <Row label="/24 subnet">{'/24 networks default to a 15-minute scan interval and 1000 Kbps bandwidth cap.'}</Row>
+          <Row label="/16 or larger">{'/16+ networks default to a 60-minute interval and 200 Kbps cap to avoid flooding large subnets.'}</Row>
+        </div>
+        <P>Both the interval and bandwidth cap can be overridden in settings. You can also pin a specific network interface (e.g. <code className="font-mono bg-slate-100 px-1 rounded text-xs">eth0</code>) if the server has multiple interfaces.</P>
+
+        <H3>Requirements</H3>
+        <P>Background discovery uses <code className="font-mono bg-slate-100 px-1 rounded text-xs">arp-scan</code>, the same tool used by the manual ARP Scan. If it's not installed or lacks raw socket capability, the scan will silently skip and log an error. Run the update script (<code className="font-mono bg-slate-100 px-1 rounded text-xs">ip-manager-update</code>) to install and configure it automatically.</P>
       </div>
     ),
 
@@ -3996,6 +4302,8 @@ export default function IPAddressManager() {
   const [pingLoading, setPingLoading] = useState(false);
   const [pingWarning, setPingWarning] = useState(null);
   const [pingLastAt, setPingLastAt] = useState(null); // Date
+  // Last seen timestamps — { [ip]: isoString } — populated when lastSeenEnabled on server
+  const [lastSeen, setLastSeen] = useState({});
 
   // Service health checks — { [ip]: { status: 'up'|'down', code: number|null } }
   const [healthStatus, setHealthStatus] = useState({});
@@ -4185,6 +4493,7 @@ export default function IPAddressManager() {
       setPingStatus(data.results || {});
       setPingWarning(data.warning || null);
       setPingLastAt(new Date());
+      if (data.lastSeen) setLastSeen(data.lastSeen);
     } catch { /* silently ignore network errors */ } finally {
       setPingLoading(false);
     }
@@ -5647,6 +5956,15 @@ export default function IPAddressManager() {
                             className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${healthStatus[item.ip].status === 'up' ? 'bg-sky-400' : 'bg-orange-400'}`}
                           />
                         )}
+                        {!isFree && !isReserved && lastSeen[item.ip] && (
+                          <span
+                            title={`Last seen: ${new Date(lastSeen[item.ip]).toLocaleString()}`}
+                            className={`inline-flex items-center gap-0.5 text-xs font-mono ml-0.5 ${lastSeenAge(lastSeen[item.ip]) === 'stale' ? 'text-amber-500' : 'text-slate-400'}`}
+                          >
+                            <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                            {formatLastSeen(lastSeen[item.ip])}
+                          </span>
+                        )}
                       </div>
                       {(() => {
                         if (isFree || isReserved) return null;
@@ -5958,6 +6276,15 @@ export default function IPAddressManager() {
                                 title={`Service ${healthStatus[item.ip].status === 'up' ? 'up' : 'down'}${healthStatus[item.ip].code ? ` (HTTP ${healthStatus[item.ip].code})` : ''} — ${item.healthScheme || 'http'}://${item.ip}:${item.healthPort}${item.healthPath || '/'}`}
                                 className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${healthStatus[item.ip].status === 'up' ? 'bg-sky-400' : 'bg-orange-400'}`}
                               />
+                            )}
+                            {!isFree && !isReserved && lastSeen[item.ip] && (
+                              <span
+                                title={`Last seen: ${new Date(lastSeen[item.ip]).toLocaleString()}`}
+                                className={`inline-flex items-center gap-0.5 text-xs font-mono ${lastSeenAge(lastSeen[item.ip]) === 'stale' ? 'text-amber-500' : 'text-slate-400'}`}
+                              >
+                                <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                                {formatLastSeen(lastSeen[item.ip])}
+                              </span>
                             )}
                           </div>
                           {(() => {

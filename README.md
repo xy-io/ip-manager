@@ -45,9 +45,13 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
-### v1.21 Features
+### v1.22 Features
 
-**In-browser updates** — **Settings → Updates** shows the installed version, checks GitHub for newer releases, and lets you apply updates directly from the browser. An amber badge on the Settings gear appears when an update is waiting. Clicking **Update now** streams live progress through each step (fetch, install, build, restart) with a progress bar. On failure the app rolls back automatically and shows the error log. The `ip-manager-update` terminal command still works identically.
+**ARP & Presence** — Two new opt-in features in **Settings → ARP & Presence** (both disabled by default).
+
+**Last Seen Timestamps** — piggybacks on the existing ping cycle (zero extra traffic). When enabled, a clock icon and relative timestamp (*3m ago*, *2h ago*) appear on every card and table row. Timestamps older than 25 hours turn amber as a visual stale indicator.
+
+**Background Discovery Scan** — scheduled ARP sweep scoped to your static range that surfaces untracked devices. Subnet-aware defaults: /24 → 15-minute interval, 1000 Kbps cap; /16+ → hourly, 200 Kbps cap. Both are user-configurable. Untracked devices within the static range appear in the settings tab for review and import.
 
 → Full version history: [CHANGELOG.md](./CHANGELOG.md)
 
@@ -238,22 +242,22 @@ ip-manager/
 - ✅ **Proxmox live status** — power-state badge (▶ running / ■ stopped / ⏸ paused) on Proxmox-tagged entries; reuses existing sync credentials; read-only — shipped in v1.19
 - ✅ **Proxmox dedicated metadata fields** — VMID, node, kind stored separately from user notes; auto-migration on startup; read-only info panel in Edit modal; version number in Settings and Help modals — shipped in v1.20
 - ✅ **In-browser updates** — version check against GitHub, live progress bar, automatic rollback on failure, release log in Settings — shipped in v1.21
-- **Last seen timestamps** (v1.22) — every entry gains a **Last seen** field, updated automatically by the existing ping cycle at no extra network cost. Shown on cards and in the table; sortable. Entries not seen within a configurable threshold (default 24 h) get a subtle "stale" indicator so silently disappeared devices are immediately visible. Entirely opt-in via **Settings → ARP & Presence** — disabled by default, one toggle to enable.
-- **Background discovery scan** (v1.22) — opt-in background ARP sweep that finds devices on your subnet that aren't yet in the manager and surfaces them as "untracked" entries you can import. Configured in **Settings → ARP & Presence** alongside last-seen. Because ARP scan traffic scales with subnet size, the feature is **subnet-aware**: on a /24 (254 addresses) the default interval is every 15 minutes; on larger subnets (/16 = 65,534 addresses) the default is hourly, the scan is automatically rate-limited via `arp-scan --bandwidth`, and a warning is shown in Settings noting the expected sweep duration. Users can override the interval and bandwidth cap or disable the scan entirely — the setting is never silently ignored. The scan scope is always limited to the configured **static range** rather than the full subnet, keeping traffic proportional to the space you actually manage.
+- ✅ **Last seen timestamps** — opt-in; piggybacks on the existing ping cycle, zero extra traffic; clock icon + relative timestamp on cards and table; stale indicator after 25 h — shipped in v1.22
+- ✅ **Background discovery scan** — opt-in scheduled ARP sweep scoped to static range; subnet-aware defaults (/24: 15 min / 1000 Kbps, /16: 60 min / 200 Kbps); user-configurable interval and bandwidth cap; untracked devices surfaced in Settings → ARP & Presence — shipped in v1.22
 
 **Phase 3 — inventory depth & planning tools:**
-- **Scheduled automatic backup** (v1.22) — configure a backup schedule (daily / weekly) and destination in Settings → Backup. Two destination types: **local path** (write the backup JSON to any mounted directory on the LXC — NAS mount, USB drive, or any `/mnt/…` path) and **rclone** (for cloud destinations including Dropbox, Google Drive, S3, SFTP, SMB/CIFS, and any of rclone's 40+ supported backends — requires rclone to be installed on the LXC). Configurable retention policy (keep last N backups, auto-rotate). Manual "Back up now" button alongside the schedule. Each backup file is timestamped and named automatically.
-- **CIDR calculator** (v1.23) — built-in utility panel: enter any CIDR block, get back usable range, broadcast address, host count, and wildcard mask; no need to leave the app when planning a new VLAN
-- **QR codes** (v1.23) — generate a QR code for any entry's management URL or IP; useful for physically labelling rack equipment so you can scan and jump straight to the device
-- **Subnet visualiser + Planned blocks** (v1.24) — heat-map grid of all addresses in a subnet showing free/used/DHCP/static at a glance; overlay named colour-coded planned blocks (e.g. "Camera VLAN expansion") on the grid for deliberate network planning
-- **MAC address + vendor lookup** (v1.24) — store MAC address per entry; auto-resolve manufacturer from a bundled OUI table (no external API); shown as a small label on cards
-- **SSH / HTTP quick-launch** (v1.24) — clickable link icons on each card derived from the stored health check URL or IP; opens management interface or SSH session in one click
-- **Dependency mapping** (v1.25) — link entries as dependencies (e.g. media server depends on NAS); when a dependency's ping or health dot is red/orange, the dependent card shows a small "⚠ dependency down" indicator
-- **Per-entry audit log** (v1.26) — drill down from any card into the full change history for that specific entry; filters the existing global audit log by IP
-- **Bulk add from Proxmox sync** (v1.26) — opt-in toggle to auto-add newly discovered Proxmox VMs/LXCs rather than only updating existing entries
-- **Custom fields** (v1.27) — user-definable key/value pairs per entry (e.g. "Serial number", "VLAN ID", "Purchase date"); searchable and importable via CSV
-- **Entry templates** (v1.27) — pre-define common entry configurations (type, location, tags, health port) in Settings; apply a template when claiming a new IP to skip repetitive form filling
-- **Topology view** (v1.28) — interactive graph derived from existing relationships (Proxmox host → VMs/LXCs, primary → secondary IPs, dependency links); no manual wiring required
+- **Scheduled automatic backup** (v1.23) — configure a backup schedule (daily / weekly) and destination in Settings → Backup. Two destination types: **local path** (write the backup JSON to any mounted directory on the LXC — NAS mount, USB drive, or any `/mnt/…` path) and **rclone** (for cloud destinations including Dropbox, Google Drive, S3, SFTP, SMB/CIFS, and any of rclone's 40+ supported backends — requires rclone to be installed on the LXC). Configurable retention policy (keep last N backups, auto-rotate). Manual "Back up now" button alongside the schedule. Each backup file is timestamped and named automatically.
+- **CIDR calculator** (v1.24) — built-in utility panel: enter any CIDR block, get back usable range, broadcast address, host count, and wildcard mask; no need to leave the app when planning a new VLAN
+- **QR codes** (v1.24) — generate a QR code for any entry's management URL or IP; useful for physically labelling rack equipment so you can scan and jump straight to the device
+- **Subnet visualiser + Planned blocks** (v1.25) — heat-map grid of all addresses in a subnet showing free/used/DHCP/static at a glance; overlay named colour-coded planned blocks (e.g. "Camera VLAN expansion") on the grid for deliberate network planning
+- **MAC address + vendor lookup** (v1.25) — store MAC address per entry; auto-resolve manufacturer from a bundled OUI table (no external API); shown as a small label on cards
+- **SSH / HTTP quick-launch** (v1.25) — clickable link icons on each card derived from the stored health check URL or IP; opens management interface or SSH session in one click
+- **Dependency mapping** (v1.26) — link entries as dependencies (e.g. media server depends on NAS); when a dependency's ping or health dot is red/orange, the dependent card shows a small "⚠ dependency down" indicator
+- **Per-entry audit log** (v1.27) — drill down from any card into the full change history for that specific entry; filters the existing global audit log by IP
+- **Bulk add from Proxmox sync** (v1.27) — opt-in toggle to auto-add newly discovered Proxmox VMs/LXCs rather than only updating existing entries
+- **Custom fields** (v1.28) — user-definable key/value pairs per entry (e.g. "Serial number", "VLAN ID", "Purchase date"); searchable and importable via CSV
+- **Entry templates** (v1.28) — pre-define common entry configurations (type, location, tags, health port) in Settings; apply a template when claiming a new IP to skip repetitive form filling
+- **Topology view** (v1.29) — interactive graph derived from existing relationships (Proxmox host → VMs/LXCs, primary → secondary IPs, dependency links); no manual wiring required
 
 **Phase 4 — longer-term:**
 - **Multi-user auth** — per-user accounts with role-based access (read-only vs admin)
