@@ -1,24 +1,14 @@
 name: Create Release
 
-# Two ways to trigger:
-#
-#   1. Push a tag — git tag v1.21 && git push origin v1.21
-#      (for power users / CI)
-#
-#   2. Manual — go to GitHub.com → Actions → "Create Release" → "Run workflow"
-#      Type the version (e.g. v1.21) and click the green button.
-#      No terminal required.
+# Fires automatically on every push to main.
+# Reads the version from package.json, checks if a release already
+# exists for that version, and creates one if not.
+# No tags, no manual steps — just push from GitHub Desktop as normal.
 
 on:
   push:
-    tags:
-      - 'v[0-9]*'
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version to release (e.g. v1.21)'
-        required: true
-        type: string
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -31,49 +21,57 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so we can read previous tags
 
-      - name: Resolve version
+      - name: Read version from package.json
         id: version
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v${VERSION}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "tag=${TAG}"         >> $GITHUB_OUTPUT
+          echo "Detected version: ${TAG}"
+
+      - name: Check if release already exists
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG=${{ steps.version.outputs.tag }}
+          if gh release view "${TAG}" --repo ${{ github.repository }} > /dev/null 2>&1; then
+            echo "exists=true"  >> $GITHUB_OUTPUT
+            echo "Release ${TAG} already exists — skipping."
           else
-            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "No release for ${TAG} — will create one."
           fi
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build
-        run: npm run build
-
-      # Extract the changelog section that matches this version.
-      # CHANGELOG.md uses "## v1.20" headings separated by "---" lines.
       - name: Extract changelog section
+        if: steps.check.outputs.exists == 'false'
         id: changelog
         env:
           TAG: ${{ steps.version.outputs.tag }}
         run: |
           python3 - <<'PYEOF'
-          import os, re, sys
+          import os, re
 
-          tag     = os.environ["TAG"]
-          cl_path = "CHANGELOG.md"
+          tag  = os.environ["TAG"]   # e.g. "v1.20.0" — also try "v1.20"
+          text = open("CHANGELOG.md").read()
 
-          try:
-              text = open(cl_path).read()
-          except FileNotFoundError:
-              body = f"Release {tag}"
-          else:
-              pattern = rf"^## {re.escape(tag)}\s*\n(.*?)(?=\n---|\Z)"
+          # Try exact tag first, then without the patch segment (v1.20.0 → v1.20)
+          def find_section(t):
+              pattern = rf"^## {re.escape(t)}\s*\n(.*?)(?=\n---|\Z)"
               m = re.search(pattern, text, re.DOTALL | re.MULTILINE)
-              body = m.group(1).strip() if m else f"Release {tag}"
+              return m.group(1).strip() if m else None
+
+          body = find_section(tag)
+          if body is None:
+              # Strip patch version: v1.20.0 → v1.20
+              short_tag = re.sub(r'(\.\d+)$', '', tag)
+              body = find_section(short_tag)
+          if body is None:
+              body = f"Release {tag}"
 
           delimiter = "CHANGELOG_EOF"
           with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
@@ -81,10 +79,12 @@ jobs:
           PYEOF
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name:   ${{ steps.version.outputs.tag }}
-          name:       ${{ steps.version.outputs.tag }}
-          body:       ${{ steps.changelog.outputs.body }}
-          draft:      false
-          prerelease: false
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG=${{ steps.version.outputs.tag }}
+          gh release create "${TAG}" \
+            --repo ${{ github.repository }} \
+            --title "${TAG}" \
+            --notes "${{ steps.changelog.outputs.body }}"
