@@ -240,7 +240,9 @@ log "Configuring sudoers for in-browser updates..."
 # Use the real path of bash — on many Debian/Ubuntu systems /bin/bash is a
 # symlink to /usr/bin/bash but sudoers matches on the exact resolved path.
 BASH_BIN=$(readlink -f /bin/bash 2>/dev/null || which bash)
-SUDOERS_LINE="www-data ALL=(root) NOPASSWD: ${BASH_BIN} ${APP_DIR}/scripts/update.sh"
+# Include --api-mode in the rule — sudoers matches arguments exactly, so the
+# rule must match what the server actually calls.
+SUDOERS_LINE="www-data ALL=(root) NOPASSWD: ${BASH_BIN} ${APP_DIR}/scripts/update.sh --api-mode"
 SUDOERS_FILE="/etc/sudoers.d/ip-manager-update"
 echo "$SUDOERS_LINE" > "$SUDOERS_FILE"
 chmod 440 "$SUDOERS_FILE"
