@@ -1,9 +1,10 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Search, Server, Monitor, Wifi, HardDrive, Camera, Shield, Globe, Filter, X, MapPin, Cpu, Box, CircleDot, ChevronDown, ChevronUp, Copy, Check, Zap, Download, Edit3, Plus, Trash2, Save, AlertCircle, Settings, Upload, FileText, AlertTriangle, CheckCircle, ChevronRight, Tag, ArrowUpDown, ArrowUp, ArrowDown, HelpCircle, LogOut, Moon, Sun, MoreHorizontal } from 'lucide-react';
+import { Search, Server, Monitor, Wifi, HardDrive, Camera, Shield, Globe, Filter, X, MapPin, Cpu, Box, CircleDot, ChevronDown, ChevronUp, Copy, Check, Zap, Download, Edit3, Plus, Trash2, Save, AlertCircle, Settings, Upload, FileText, AlertTriangle, CheckCircle, ChevronRight, Tag, ArrowUpDown, ArrowUp, ArrowDown, HelpCircle, LogOut, Moon, Sun, MoreHorizontal, Terminal } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import QRCode from 'qrcode';
 
 // ── App version ───────────────────────────────────────────────────────────────
-const APP_VERSION = 'v1.22';
+const APP_VERSION = 'v1.24';
 
 // Default network configuration (overridden by Settings modal / localStorage)
 const DEFAULT_NETWORK_CONFIG = {
@@ -429,8 +430,10 @@ function UpdatesTab() {
   };
 
   const updateAvailable = versionInfo?.updateAvailable;
+  // Progress: count done steps + 0.5 for the currently-active step so the bar
+  // advances visibly as soon as each step starts, not only when it finishes.
   const progressPct = steps.length > 0
-    ? Math.round((steps.filter(s => s.status === 'done').length / steps[0].total) * 100)
+    ? Math.round(((steps.filter(s => s.status === 'done').length + (steps.some(s => s.status === 'active') ? 0.5 : 0)) / steps[0].total) * 100)
     : 0;
 
   function renderBody(body) {
@@ -550,14 +553,19 @@ function UpdatesTab() {
 
           {/* Progress bar */}
           <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-            <div
-              className={`h-2 rounded-full transition-all duration-500 ${
-                updatePhase === 'done' ? 'bg-emerald-500 w-full' :
-                updatePhase === 'failed' ? 'bg-red-400' :
-                'bg-indigo-500'
-              }`}
-              style={{ width: updatePhase === 'restarting' ? '90%' : `${updatePhase === 'done' ? 100 : progressPct}%` }}
-            />
+            {/* Indeterminate shimmer when running but no steps received yet */}
+            {(updatePhase === 'running' || updatePhase === 'rolledback') && progressPct === 0 && steps.length === 0 ? (
+              <div className="h-2 w-1/3 bg-indigo-400 rounded-full animate-pulse" style={{ animation: 'pulse 1.5s ease-in-out infinite' }} />
+            ) : (
+              <div
+                className={`h-2 rounded-full transition-all duration-500 ${
+                  updatePhase === 'done' ? 'bg-emerald-500 w-full' :
+                  updatePhase === 'failed' ? 'bg-red-400' :
+                  'bg-indigo-500'
+                }`}
+                style={{ width: updatePhase === 'restarting' ? '90%' : `${updatePhase === 'done' ? 100 : progressPct}%` }}
+              />
+            )}
           </div>
 
           {/* Step list */}
@@ -1961,6 +1969,277 @@ function ProxmoxImportModal({ onClose, onImport }) {
   );
 }
 
+// ── CIDR Calculator ──────────────────────────────────────────────────────────
+// Pure client-side; no server calls needed.
+
+function parseCIDR(raw) {
+  const input = raw.trim();
+  // Accept "192.168.1.0/24" or shorthand "192.168.1/24"
+  const m = input.match(/^(\d{1,3}(?:\.\d{1,3}){0,3})\/(\d{1,2})$/);
+  if (!m) return null;
+  const prefix = parseInt(m[2], 10);
+  if (prefix < 0 || prefix > 32) return null;
+
+  // Expand short notation: "192.168.1" → "192.168.1.0"
+  const parts = m[1].split('.').map(Number);
+  while (parts.length < 4) parts.push(0);
+  if (parts.some(p => p < 0 || p > 255)) return null;
+
+  const ipInt   = (parts[0] << 24 | parts[1] << 16 | parts[2] << 8 | parts[3]) >>> 0;
+  const mask    = prefix === 0 ? 0 : (0xFFFFFFFF << (32 - prefix)) >>> 0;
+  const network = (ipInt & mask) >>> 0;
+  const bcast   = (network | (~mask >>> 0)) >>> 0;
+
+  const toIP = n => [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join('.');
+  const toBin = n => n.toString(2).padStart(8, '0');
+  const totalHosts = Math.pow(2, 32 - prefix);
+  const usable     = prefix >= 31 ? totalHosts : Math.max(0, totalHosts - 2);
+  const first      = prefix >= 31 ? network : network + 1;
+  const last       = prefix >= 31 ? bcast   : bcast   - 1;
+
+  return {
+    cidr:       `${toIP(network)}/${prefix}`,
+    network:    toIP(network),
+    broadcast:  toIP(bcast),
+    firstUsable: toIP(first),
+    lastUsable:  toIP(last),
+    subnetMask:  toIP(mask),
+    wildcardMask: toIP((~mask) >>> 0),
+    prefix,
+    totalHosts,
+    usableHosts: usable,
+    nextNetwork: toIP((bcast + 1) >>> 0),
+    binary: parts.map((_, i) => toBin((network >>> (24 - i * 8)) & 255)).join('.') + `/${prefix}`,
+    ipClass: prefix <= 8 ? 'A' : prefix <= 16 ? 'B' : prefix <= 24 ? 'C' : prefix <= 30 ? 'D' : 'Host',
+  };
+}
+
+function CIDRCalculatorModal({ onClose }) {
+  const [input, setInput]   = useState('');
+  const [result, setResult] = useState(null);
+  const [error,  setError]  = useState('');
+  const [copied, setCopied] = useState('');
+  const inputRef = useRef(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  const calculate = (val = input) => {
+    if (!val.trim()) { setResult(null); setError(''); return; }
+    const r = parseCIDR(val);
+    if (r) { setResult(r); setError(''); }
+    else    { setResult(null); setError('Enter a valid CIDR block — e.g. 192.168.1.0/24'); }
+  };
+
+  const handleKey = e => { if (e.key === 'Enter') calculate(); if (e.key === 'Escape') onClose(); };
+
+  const preset = cidr => { setInput(cidr); calculate(cidr); };
+
+  const copyVal = (val, key) => {
+    navigator.clipboard.writeText(val).then(() => {
+      setCopied(key);
+      setTimeout(() => setCopied(''), 1500);
+    });
+  };
+
+  const Row = ({ label, value, k }) => (
+    <div className="flex items-center justify-between py-2 border-b border-slate-100 last:border-0 group">
+      <span className="text-xs text-slate-500 w-36 flex-shrink-0">{label}</span>
+      <div className="flex items-center gap-2 min-w-0">
+        <span className="font-mono text-sm text-slate-800 truncate">{value}</span>
+        <button onClick={() => copyVal(value, k)}
+          className="opacity-0 group-hover:opacity-100 p-0.5 text-slate-400 hover:text-slate-600 transition-all flex-shrink-0">
+          {copied === k ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+        </button>
+      </div>
+    </div>
+  );
+
+  const PRESETS = ['10.0.0.0/8','172.16.0.0/12','192.168.0.0/16','192.168.1.0/24','192.168.1.0/28','10.0.0.0/30'];
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="p-5 border-b border-slate-200 flex items-center justify-between flex-shrink-0">
+          <div>
+            <h2 className="text-xl font-bold text-slate-800">CIDR Calculator</h2>
+            <p className="text-sm text-slate-500 mt-0.5">Subnet maths — no need to leave the app</p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
+            <X className="w-5 h-5 text-slate-500" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4 overflow-y-auto flex-1">
+          {/* Input */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">CIDR Block</label>
+            <div className="flex gap-2">
+              <input
+                ref={inputRef}
+                value={input}
+                onChange={e => { setInput(e.target.value); if (result || error) calculate(e.target.value); }}
+                onKeyDown={handleKey}
+                placeholder="192.168.1.0/24"
+                className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm font-mono"
+              />
+              <button onClick={() => calculate()}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-colors">
+                Calculate
+              </button>
+            </div>
+            {error && <p className="text-xs text-red-500 mt-1.5">{error}</p>}
+          </div>
+
+          {/* Quick presets */}
+          <div>
+            <p className="text-xs text-slate-400 font-medium uppercase tracking-wide mb-2">Common blocks</p>
+            <div className="flex flex-wrap gap-1.5">
+              {PRESETS.map(p => (
+                <button key={p} onClick={() => preset(p)}
+                  className="px-2.5 py-1 text-xs font-mono bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 text-slate-600 rounded-md border border-slate-200 hover:border-indigo-300 transition-colors">
+                  {p}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Results */}
+          {result && (
+            <div className="border border-slate-200 rounded-xl overflow-hidden">
+              {/* Summary bar */}
+              <div className="bg-indigo-50 border-b border-indigo-100 px-4 py-3 flex items-center justify-between">
+                <div>
+                  <p className="font-mono font-bold text-indigo-700 text-lg">{result.cidr}</p>
+                  <p className="text-xs text-indigo-500 mt-0.5">
+                    {result.usableHosts.toLocaleString()} usable hosts · Class {result.ipClass}
+                  </p>
+                </div>
+                <button onClick={() => copyVal(result.cidr, 'cidr')}
+                  className="p-2 hover:bg-indigo-100 rounded-lg transition-colors text-indigo-400 hover:text-indigo-600">
+                  {copied === 'cidr' ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                </button>
+              </div>
+              <div className="px-4 divide-y divide-slate-100">
+                <Row label="Network address"   value={result.network}     k="network" />
+                <Row label="Broadcast address" value={result.broadcast}   k="bcast" />
+                <Row label="First usable"      value={result.firstUsable} k="first" />
+                <Row label="Last usable"       value={result.lastUsable}  k="last" />
+                <Row label="Subnet mask"       value={result.subnetMask}  k="mask" />
+                <Row label="Wildcard mask"     value={result.wildcardMask} k="wild" />
+                <Row label="Total addresses"   value={result.totalHosts.toLocaleString()} k="total" />
+                <Row label="Usable hosts"      value={result.usableHosts.toLocaleString()} k="usable" />
+                <Row label="Next network"      value={result.nextNetwork} k="next" />
+                <Row label="Binary"            value={result.binary}      k="bin" />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── QR Code Modal ─────────────────────────────────────────────────────────────
+
+function QRModal({ item, onClose }) {
+  const [mode,   setMode]   = useState('smart'); // 'smart' | 'ip'
+  const [qrSrc,  setQrSrc]  = useState('');
+  const [copied, setCopied] = useState(false);
+
+  const smartUrl = item.healthPort
+    ? `${item.healthScheme || 'http'}://${item.ip}:${item.healthPort}${item.healthPath || '/'}`
+    : `http://${item.ip}`;
+
+  const content = mode === 'ip' ? item.ip : smartUrl;
+
+  useEffect(() => {
+    QRCode.toDataURL(content, { width: 260, margin: 2, color: { dark: '#1e293b', light: '#ffffff' } })
+      .then(setQrSrc)
+      .catch(() => setQrSrc(''));
+  }, [content]);
+
+  const download = () => {
+    const a = document.createElement('a');
+    a.href = qrSrc;
+    a.download = `qr-${item.ip.replace(/\./g, '-')}.png`;
+    a.click();
+  };
+
+  const copyContent = () => {
+    navigator.clipboard.writeText(content).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xs" onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="p-4 border-b border-slate-200 flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-slate-800">QR Code</h2>
+            <p className="text-xs text-slate-500 font-mono mt-0.5">{item.ip} · {item.assetName}</p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
+            <X className="w-4 h-4 text-slate-500" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Mode toggle */}
+          <div className="flex rounded-lg border border-slate-200 overflow-hidden text-sm">
+            <button
+              onClick={() => setMode('smart')}
+              className={`flex-1 py-2 text-center transition-colors text-xs font-medium ${mode === 'smart' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+            >
+              {item.healthPort ? 'Service URL' : 'HTTP URL'}
+            </button>
+            <button
+              onClick={() => setMode('ip')}
+              className={`flex-1 py-2 text-center transition-colors text-xs font-medium border-l border-slate-200 ${mode === 'ip' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+            >
+              IP Address
+            </button>
+          </div>
+
+          {/* QR image */}
+          <div className="flex justify-center bg-white rounded-xl border border-slate-100 p-4">
+            {qrSrc
+              ? <img src={qrSrc} alt="QR code" className="w-48 h-48" />
+              : <div className="w-48 h-48 bg-slate-50 rounded-lg flex items-center justify-center">
+                  <div className="w-6 h-6 border-2 border-slate-300 border-t-indigo-500 rounded-full animate-spin" />
+                </div>
+            }
+          </div>
+
+          {/* Encoded content */}
+          <div className="bg-slate-50 rounded-lg px-3 py-2 flex items-center gap-2">
+            <span className="font-mono text-xs text-slate-600 flex-1 truncate">{content}</span>
+            <button onClick={copyContent} className="p-1 text-slate-400 hover:text-slate-600 flex-shrink-0 transition-colors">
+              {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+            </button>
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-2">
+            <button onClick={download}
+              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-colors">
+              <Download className="w-4 h-4" />
+              Download PNG
+            </button>
+            <button onClick={onClose}
+              className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-medium rounded-lg transition-colors">
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── ARP Scan Modal ────────────────────────────────────────────────────────────
 
 function ARPScanModal({ onClose, onImport, subnet, networkConfig }) {
@@ -2726,6 +3005,231 @@ const groupIPsIntoRanges = (ips, subnet = DEFAULT_NETWORK_CONFIG.subnet) => {
   return ranges;
 };
 
+// ── Subnet Visualiser Modal ────────────────────────────────────────────────────────────────
+function SubnetVisuiserModal({ network, ipData, onClose }) {
+  const [blocks, setBlocks] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [editingBlock, setEditingBlock] = useState(null); // { name, color, start, end } or null
+  const [draft, setDraft] = useState({ name: '', color: '#6366f1', start: '', end: '' });
+  const [loadError, setLoadError] = useState(null);
+
+  // Load planned blocks from server
+  useEffect(() => {
+    fetch(`/api/subnet-blocks?network=${encodeURIComponent(network.id)}`)
+      .then(r => r.json())
+      .then(d => setBlocks(Array.isArray(d.blocks) ? d.blocks : []))
+      .catch(() => setBlocks([]));
+  }, [network.id]);
+
+  const saveBlocks = async (updated) => {
+    setSaving(true);
+    try {
+      await fetch(`/api/subnet-blocks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ networkId: network.id, blocks: updated }),
+      });
+      setBlocks(updated);
+    } catch {}
+    setSaving(false);
+  };
+
+  const addBlock = () => {
+    const s = parseInt(draft.start, 10);
+    const e = parseInt(draft.end, 10);
+    if (!draft.name || isNaN(s) || isNaN(e) || s > e || s < 0 || e > 255) return;
+    const updated = [...blocks, { name: draft.name, color: draft.color, start: s, end: e }];
+    saveBlocks(updated);
+    setDraft({ name: '', color: '#6366f1', start: '', end: '' });
+    setEditingBlock(null);
+  };
+
+  const removeBlock = (idx) => {
+    const updated = blocks.filter((_, i) => i !== idx);
+    saveBlocks(updated);
+  };
+
+  // Build a lookup: last octet → status
+  const subnet = network.subnet; // e.g. "192.168.1"
+  const usedMap = {};
+  (ipData || []).forEach(item => {
+    const parts = item.ip.split('.');
+    const last = parseInt(parts[3], 10);
+    if (!isNaN(last)) {
+      if (item.assetName === 'Free') usedMap[last] = 'free';
+      else if (item.assetName === 'Reserved') usedMap[last] = 'reserved';
+      else usedMap[last] = 'assigned';
+    }
+  });
+
+  const dhcpStart = network.dhcpStart || 1;
+  const dhcpEnd = network.dhcpEnd || 100;
+  const staticStart = network.staticStart || 101;
+  const staticEnd = network.staticEnd || 254;
+
+  // Get colour for a cell
+  const getCellColor = (i) => {
+    // Planned blocks take priority (last block wins for overlap)
+    let blockColor = null;
+    for (const b of blocks) {
+      if (i >= b.start && i <= b.end) blockColor = b.color;
+    }
+    if (blockColor) return blockColor;
+
+    const status = usedMap[i];
+    if (status === 'assigned') return '#10b981'; // emerald
+    if (status === 'reserved') return '#f59e0b'; // amber
+    if (i >= dhcpStart && i <= dhcpEnd) return '#e2e8f0'; // DHCP pool — light slate
+    if (i >= staticStart && i <= staticEnd) {
+      return status === 'free' ? '#d1fae5' : '#10b981'; // light green = free static
+    }
+    return '#f8fafc'; // outside range
+  };
+
+  const getCellTitle = (i) => {
+    const ip = `${subnet}.${i}`;
+    const block = [...blocks].reverse().find(b => i >= b.start && i <= b.end);
+    const status = usedMap[i];
+    const item = (ipData || []).find(d => d.ip === ip);
+    const parts = [];
+    if (item && item.assetName && item.assetName !== 'Free') parts.push(item.assetName);
+    parts.push(ip);
+    if (block) parts.push(`[${block.name}]`);
+    if (i >= dhcpStart && i <= dhcpEnd) parts.push('DHCP pool');
+    else if (i >= staticStart && i <= staticEnd) parts.push(status === 'free' ? 'Free static' : 'Static');
+    return parts.join(' · ');
+  };
+
+  const BLOCK_COLORS = ['#6366f1','#0ea5e9','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#14b8a6'];
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="p-5 border-b border-slate-200 flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-slate-800">Subnet Visualiser</h2>
+            <p className="text-sm text-slate-500 mt-0.5">{network.networkName} · {network.subnet}.0/{network.prefixLen || 24}</p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
+            <X className="w-5 h-5 text-slate-500" />
+          </button>
+        </div>
+
+        <div className="p-5">
+          {/* Legend */}
+          <div className="flex flex-wrap gap-3 mb-4 text-xs">
+            <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm" style={{background:'#10b981'}} /> Assigned</span>
+            <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm" style={{background:'#d1fae5'}} /> Free static</span>
+            <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm" style={{background:'#e2e8f0'}} /> DHCP pool</span>
+            <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm" style={{background:'#f59e0b'}} /> Reserved</span>
+            <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm border border-slate-200" style={{background:'#f8fafc'}} /> Outside range</span>
+            {blocks.length > 0 && blocks.map((b, i) => (
+              <span key={i} className="flex items-center gap-1.5">
+                <span className="inline-block w-3 h-3 rounded-sm" style={{background: b.color}} />
+                {b.name}
+              </span>
+            ))}
+          </div>
+
+          {/* Grid — 16×16 = 256 cells (0–255) */}
+          <div className="grid gap-0.5 mb-5" style={{gridTemplateColumns: 'repeat(16, minmax(0, 1fr))'}}>
+            {Array.from({length: 256}, (_, i) => (
+              <div
+                key={i}
+                title={getCellTitle(i)}
+                style={{background: getCellColor(i)}}
+                className="aspect-square rounded-sm cursor-default border border-white/50"
+              />
+            ))}
+          </div>
+
+          {/* Planned Blocks section */}
+          <div className="border-t border-slate-200 pt-4">
+            <h3 className="text-sm font-semibold text-slate-700 mb-3">Planned Blocks</h3>
+
+            {blocks.length > 0 && (
+              <div className="space-y-1.5 mb-3">
+                {blocks.map((b, idx) => (
+                  <div key={idx} className="flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-lg border border-slate-200">
+                    <span className="inline-block w-4 h-4 rounded-sm flex-shrink-0" style={{background: b.color}} />
+                    <span className="text-sm font-medium text-slate-700 flex-1">{b.name}</span>
+                    <span className="text-xs text-slate-500 font-mono">.{b.start}–.{b.end}</span>
+                    <button
+                      onClick={() => removeBlock(idx)}
+                      className="p-1 hover:bg-red-50 rounded text-slate-400 hover:text-red-500 transition-colors"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Add block form */}
+            <div className="flex gap-2 flex-wrap items-end">
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">Name</label>
+                <input
+                  type="text"
+                  value={draft.name}
+                  onChange={e => setDraft({...draft, name: e.target.value})}
+                  placeholder="e.g., IoT devices"
+                  className="px-2 py-1.5 border border-slate-300 rounded-lg text-sm w-36 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">Start (.x)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="255"
+                  value={draft.start}
+                  onChange={e => setDraft({...draft, start: e.target.value})}
+                  placeholder="200"
+                  className="px-2 py-1.5 border border-slate-300 rounded-lg text-sm w-20 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">End (.x)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="255"
+                  value={draft.end}
+                  onChange={e => setDraft({...draft, end: e.target.value})}
+                  placeholder="220"
+                  className="px-2 py-1.5 border border-slate-300 rounded-lg text-sm w-20 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">Colour</label>
+                <div className="flex gap-1">
+                  {BLOCK_COLORS.map(c => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setDraft({...draft, color: c})}
+                      className={`w-5 h-5 rounded-full border-2 transition-all ${draft.color === c ? 'border-slate-700 scale-110' : 'border-transparent'}`}
+                      style={{background: c}}
+                    />
+                  ))}
+                </div>
+              </div>
+              <button
+                onClick={addBlock}
+                disabled={saving}
+                className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+              >
+                Add block
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Help Modal ────────────────────────────────────────────────────────────────
 function HelpModal({ onClose }) {
   const [activeSection, setActiveSection] = useState('overview');
@@ -2743,6 +3247,11 @@ function HelpModal({ onClose }) {
     { id: 'ping',       label: 'Ping / Reachability' },
     { id: 'health',     label: 'Service Health' },
     { id: 'presence',   label: 'ARP & Presence' },
+    { id: 'cidr',       label: 'CIDR Calculator' },
+    { id: 'qr',         label: 'QR Codes' },
+    { id: 'mac',        label: 'MAC Address' },
+    { id: 'quicklaunch', label: 'Quick Launch' },
+    { id: 'subnetvis',  label: 'Subnet Visualiser' },
     { id: 'backup',     label: 'Backup & Restore' },
     { id: 'importexp',  label: 'Import & Export' },
     { id: 'dns',        label: 'DNS Lookup' },
@@ -3128,6 +3637,112 @@ function HelpModal({ onClose }) {
 
         <H3>Requirements</H3>
         <P>Background discovery uses <code className="font-mono bg-slate-100 px-1 rounded text-xs">arp-scan</code>, the same tool used by the manual ARP Scan. If it's not installed or lacks raw socket capability, the scan will silently skip and log an error. Run the update script (<code className="font-mono bg-slate-100 px-1 rounded text-xs">ip-manager-update</code>) to install and configure it automatically.</P>
+      </div>
+    ),
+
+    cidr: (
+      <div>
+        <H2>CIDR Calculator</H2>
+        <P>The CIDR Calculator is a quick-reference tool for subnet arithmetic. Open it via the <strong>Tools</strong> dropdown in the toolbar (wrench icon).</P>
+
+        <H3>How to use it</H3>
+        <P>Type any IP address with a prefix length — e.g. <code className="font-mono bg-slate-100 px-1 rounded text-xs">192.168.1.0/24</code> or <code className="font-mono bg-slate-100 px-1 rounded text-xs">10.0.0.1/16</code> — into the input field. Results update as you type, with no submit button needed.</P>
+
+        <H3>What it calculates</H3>
+        <div className="space-y-0.5 mb-3">
+          <Row label="Network">The network address for the given prefix.</Row>
+          <Row label="Broadcast">The broadcast address for the subnet.</Row>
+          <Row label="Usable range">First and last usable host addresses.</Row>
+          <Row label="Subnet mask">Dotted-decimal form (e.g. 255.255.255.0).</Row>
+          <Row label="Wildcard mask">The inverse of the subnet mask.</Row>
+          <Row label="Total hosts">Total addresses in the subnet (including network + broadcast).</Row>
+          <Row label="Usable hosts">Addresses available for hosts (total minus 2).</Row>
+          <Row label="Next network">The first address of the next subnet of the same size.</Row>
+          <Row label="IP class">Classful class of the IP (A / B / C / D / E).</Row>
+          <Row label="Binary">Dot-separated binary representation of the IP address.</Row>
+        </div>
+
+        <H3>Quick-fill from a card</H3>
+        <P>There is no direct one-click fill yet — open the calculator from the Tools dropdown and type your subnet manually. The calculator works entirely client-side: no data is sent to the server.</P>
+      </div>
+    ),
+
+    qr: (
+      <div>
+        <H2>QR Codes</H2>
+        <P>Generate a QR code for any tracked device — useful for printing asset labels, scanning with a phone to jump straight to an admin UI, or quickly sharing an IP address.</P>
+
+        <H3>How to open it</H3>
+        <P>In <strong>card view</strong>, expand a card and click the violet <strong>QR</strong> button in the action row. In <strong>table view</strong>, click the QR icon in the Actions column for that row. The QR modal opens with a 256 × 256 pixel code and a mode toggle.</P>
+
+        <H3>Content modes</H3>
+        <div className="space-y-0.5 mb-3">
+          <Row label="Service URL">Encodes the full URL from the device's Service/App URL field (e.g. <code className="font-mono bg-slate-100 px-1 rounded text-xs">http://192.168.1.10:8080</code>). Only available if a URL is set.</Row>
+          <Row label="IP Address">Encodes the bare IP address (e.g. <code className="font-mono bg-slate-100 px-1 rounded text-xs">192.168.1.10</code>). Always available.</Row>
+        </div>
+        <P>The modal defaults to Service URL mode when a URL is present, or IP Address mode otherwise.</P>
+
+        <H3>Saving the QR code</H3>
+        <P>Click <strong>Download PNG</strong> to save the QR image to your computer (named after the device, e.g. <code className="font-mono bg-slate-100 px-1 rounded text-xs">pi-hole-qr.png</code>). Click <strong>Copy text</strong> to copy the encoded URL or IP to your clipboard.</P>
+
+        <H3>Technical note</H3>
+        <P>QR codes are generated entirely in the browser using the <code className="font-mono bg-slate-100 px-1 rounded text-xs">qrcode</code> library — no data leaves your local network.</P>
+      </div>
+    ),
+
+    mac: (
+      <div>
+        <H2>MAC Address</H2>
+        <P>Each IP entry can store a MAC address and its associated hardware vendor. This is purely informational — the app does not use the MAC address for any network operations.</P>
+
+        <H3>Adding a MAC address</H3>
+        <P>Open the edit modal for any assigned entry (click the pencil icon or expand a card and click <strong>Edit</strong>). The <strong>MAC Address</strong> field is below the Hostname field. Type the MAC in any standard format (e.g. <code className="font-mono bg-slate-100 px-1 rounded text-xs">DC:A6:32:1A:2B:3C</code>, <code className="font-mono bg-slate-100 px-1 rounded text-xs">dc-a6-32-1a-2b-3c</code>, or <code className="font-mono bg-slate-100 px-1 rounded text-xs">DCA6321A2B3C</code>). When you move focus out of the field, the app looks up the OUI prefix and displays the vendor name alongside the field (e.g. <em>Raspberry Pi Trading Ltd</em>).</P>
+
+        <H3>Vendor lookup</H3>
+        <P>Vendor names are resolved by querying the bundled IEEE OUI database on the server — no internet connection is required. The first six hex digits (the OUI prefix) identify the manufacturer. If no match is found the field is left blank.</P>
+
+        <H3>Where it appears</H3>
+        <P>Once saved, the MAC address appears in small monospace text below the IP address on expanded cards and in the table's IP column, with the vendor name shown as a tooltip and inline where space allows.</P>
+      </div>
+    ),
+
+    quicklaunch: (
+      <div>
+        <H2>Quick Launch</H2>
+        <P>Expanded cards have two quick-launch link buttons that open in a new browser tab, letting you jump straight to a device's web UI or SSH session without having to remember the address.</P>
+
+        <H3>HTTP / HTTPS button</H3>
+        <P>Appears in the card action row when a <strong>Service Health Check</strong> port is configured for the entry. Clicking it opens <code className="font-mono bg-slate-100 px-1 rounded text-xs">{"{scheme}://{ip}:{port}{path}"}</code> in a new tab, using the same scheme (http/https), port, and path you set for health monitoring. This makes it a zero-extra-configuration shortcut — if you've already set up health checks, the button is ready.</P>
+
+        <H3>SSH button</H3>
+        <P>Appears when the entry has a <strong>Hostname</strong> set. Clicking it invokes an <code className="font-mono bg-slate-100 px-1 rounded text-xs">ssh://hostname</code> URL, which your OS hands off to whatever SSH client is registered (e.g. Terminal on macOS, PuTTY on Windows). If no SSH client is registered for the <code className="font-mono bg-slate-100 px-1 rounded text-xs">ssh://</code> scheme, nothing will happen — you may need to register one.</P>
+
+        <H3>Note</H3>
+        <P>Both buttons are read-only links — they never send any commands to the server. The HTTP button is a shortcut for things you'd navigate to manually anyway.</P>
+      </div>
+    ),
+
+    subnetvis: (
+      <div>
+        <H2>Subnet Visualiser</H2>
+        <P>The Subnet Visualiser shows the entire address space of the current network as a 16×16 heat-map grid (256 cells, one per last octet from .0 to .255). Open it via the <strong>Tools</strong> dropdown.</P>
+
+        <H3>Reading the grid</H3>
+        <div className="space-y-0.5 mb-3">
+          <Row label="Emerald green">Assigned — the IP is tracked and in use.</Row>
+          <Row label="Light green">Free static — in your static range but unclaimed.</Row>
+          <Row label="Light grey">DHCP pool — managed by your router.</Row>
+          <Row label="Amber">Reserved — a DHCP reservation in Settings.</Row>
+          <Row label="Near-white">Outside configured range.</Row>
+        </div>
+        <P>Hover any cell to see a tooltip with the full IP, asset name, and range classification.</P>
+
+        <H3>Planned Blocks</H3>
+        <P>Below the grid is a <strong>Planned Blocks</strong> section. Blocks let you overlay named colour regions on top of the standard colours to mark intent (e.g. "IoT devices .200–.220", "Security cameras .221–.240"). Each block has a name, start and end last-octet, and a colour picked from a palette.</P>
+        <P>Blocks are stored server-side per network and persist across sessions. The last block in the list takes priority if ranges overlap. Remove a block with the × button.</P>
+
+        <H3>Note</H3>
+        <P>The Subnet Visualiser is a read-only planning aid — it doesn't change any IP entries or network configuration. Changes to assignments are made via the normal add/edit/release flow.</P>
       </div>
     ),
 
@@ -3836,9 +4451,11 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
     healthScheme: item.healthScheme || 'http',
     healthPort:   item.healthPort   || '',
     healthPath:   item.healthPath   || '/',
+    mac: item.mac || '',
   });
   const [tagInput, setTagInput] = useState('');
   const [showTagSuggestions, setShowTagSuggestions] = useState(false);
+  const [macVendor, setMacVendor] = useState(item.macVendor || '');
 
   // Host group linking state
   const [pendingLinks,   setPendingLinks]   = useState([]); // IPs to link as secondary on save
@@ -3895,7 +4512,7 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
       onAddLocation?.(finalLocation);
     }
     onSave(
-      { ...item, ...formData, location: finalLocation },
+      { ...item, ...formData, location: finalLocation, macVendor },
       { link: pendingLinks, unlink: pendingUnlinks }
     );
   };
@@ -3942,6 +4559,39 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
               placeholder="e.g., myserver.the-allens.uk"
               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">MAC Address</label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={formData.mac}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setFormData({ ...formData, mac: v });
+                  setMacVendor('');
+                }}
+                onBlur={async () => {
+                  const mac = formData.mac.trim();
+                  const hex = mac.replace(/[^0-9a-fA-F]/g, '');
+                  if (hex.length >= 6) {
+                    try {
+                      const r = await fetch(`/api/mac/vendor?mac=${encodeURIComponent(mac)}`);
+                      const d = await r.json();
+                      if (d.vendor) setMacVendor(d.vendor);
+                    } catch {}
+                  }
+                }}
+                placeholder="e.g., DC:A6:32:1A:2B:3C"
+                className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent font-mono text-sm"
+              />
+              {macVendor && (
+                <div className="flex items-center px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-500 max-w-[160px] truncate" title={macVendor}>
+                  {macVendor}
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -4296,6 +4946,11 @@ export default function IPAddressManager() {
   const [showProxmoxImport, setShowProxmoxImport] = useState(false);
   const [showARPScan, setShowARPScan] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [showCIDR, setShowCIDR] = useState(false);
+  const [showSubnet, setShowSubnet] = useState(false);
+  const [showToolsMenu, setShowToolsMenu] = useState(false);
+  const [qrItem, setQrItem] = useState(null); // entry to show QR for
+  const toolsMenuRef = useRef(null);
 
   // Ping / reachability — { [ip]: 'up' | 'down' }, null = not yet fetched
   const [pingStatus, setPingStatus] = useState({});
@@ -4465,6 +5120,10 @@ export default function IPAddressManager() {
         if (showProxmoxImport) { setShowProxmoxImport(false); return; }
         if (showARPScan)       { setShowARPScan(false);       return; }
         if (showHelp)          { setShowHelp(false);          return; }
+        if (showCIDR)          { setShowCIDR(false);          return; }
+        if (showSubnet)        { setShowSubnet(false);        return; }
+        if (qrItem)            { setQrItem(null);             return; }
+        if (showToolsMenu)     { setShowToolsMenu(false);     return; }
         if (expandedCard !== null) { setExpandedCard(null); return; }
         if (searchTerm)   { setSearchTerm('');       return; }
       }
@@ -4475,7 +5134,15 @@ export default function IPAddressManager() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [editingItem, showSettings, showImport, showProxmoxImport, showARPScan, showHelp, expandedCard, searchTerm]);
+  }, [editingItem, showSettings, showImport, showProxmoxImport, showARPScan, showHelp, showCIDR, showSubnet, qrItem, showToolsMenu, expandedCard, searchTerm]);
+
+  // Close tools menu on outside click
+  useEffect(() => {
+    if (!showToolsMenu) return;
+    const handler = (e) => { if (toolsMenuRef.current && !toolsMenuRef.current.contains(e.target)) setShowToolsMenu(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showToolsMenu]);
 
   // ── Persist UI prefs (browser-local, runs whenever uiPrefs changes) ─────────
   useEffect(() => {
@@ -5233,6 +5900,15 @@ export default function IPAddressManager() {
       {/* Help Modal */}
       {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
 
+      {/* CIDR Calculator */}
+      {showCIDR && <CIDRCalculatorModal onClose={() => setShowCIDR(false)} />}
+
+      {/* Subnet Visualiser */}
+      {showSubnet && <SubnetVisuiserModal network={networkConfig} ipData={networkIpData} onClose={() => setShowSubnet(false)} />}
+
+      {/* QR Code Modal */}
+      {qrItem && <QRModal item={qrItem} onClose={() => setQrItem(null)} />}
+
       {/* Edit Modal */}
       {editingItem && (
         <EditModal
@@ -5357,6 +6033,58 @@ export default function IPAddressManager() {
                   </button>
                 </div>
               )}
+
+              {/* Tools dropdown */}
+              <div className="relative" ref={toolsMenuRef}>
+                <button
+                  onClick={() => setShowToolsMenu(v => !v)}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg whitespace-nowrap transition-colors"
+                  title="Utility tools — CIDR Calculator and more"
+                >
+                  <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 11-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 004.486-6.336l-3.276 3.277a3.004 3.004 0 01-2.25-2.25l3.276-3.276a4.5 4.5 0 00-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085m-1.745 1.437L5.909 7.5H4.5L2.25 3.75l1.5-1.5L7.5 4.5v1.409l4.26 4.26m-1.745 1.437l1.745-1.437m6.615 8.206L15.75 15.75M4.867 19.125h.008v.008h-.008v-.008z" />
+                  </svg>
+                  Tools
+                  <ChevronDown className={`w-3.5 h-3.5 flex-shrink-0 transition-transform ${showToolsMenu ? 'rotate-180' : ''}`} />
+                </button>
+
+                {showToolsMenu && (
+                  <div className="absolute top-full left-0 mt-1.5 w-64 bg-white border border-slate-200 rounded-xl shadow-xl z-30 overflow-hidden">
+                    <div className="px-3 pt-3 pb-1">
+                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Utility Tools</p>
+                    </div>
+                    <button
+                      onClick={() => { setShowCIDR(true); setShowToolsMenu(false); }}
+                      className="w-full flex items-start gap-3 px-3 py-2.5 hover:bg-indigo-50 transition-colors text-left"
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <svg className="w-4 h-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 11h.01M12 11h.01M15 11h.01M4.5 19.5h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z" />
+                        </svg>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-slate-700">CIDR Calculator</p>
+                        <p className="text-xs text-slate-400 mt-0.5">Subnet maths — range, mask, host count</p>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => { setShowSubnet(true); setShowToolsMenu(false); }}
+                      className="w-full text-left flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 rounded-lg transition-colors"
+                    >
+                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4 flex-shrink-0">
+                        <rect x="1" y="1" width="6" height="6" rx="1"/>
+                        <rect x="9" y="1" width="6" height="6" rx="1"/>
+                        <rect x="1" y="9" width="6" height="6" rx="1"/>
+                        <rect x="9" y="9" width="6" height="6" rx="1"/>
+                      </svg>
+                      <div>
+                        <div className="font-medium">Subnet Visualiser</div>
+                        <div className="text-xs text-slate-500">Heat-map grid + planned blocks</div>
+                      </div>
+                    </button>
+                  </div>
+                )}
+              </div>
 
               {/* Data buttons */}
               <div className="flex items-center gap-1.5">
@@ -6012,6 +6740,12 @@ export default function IPAddressManager() {
                             {item.hostname}
                           </div>
                         )}
+                        {item.mac && (
+                          <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-0.5">
+                            <span className="font-mono">{item.mac}</span>
+                            {item.macVendor && <span className="text-slate-400">· {item.macVendor}</span>}
+                          </div>
+                        )}
 
                         {/* Secondary IPs — shown on the primary card */}
                         {item.isPrimary && item.hostId && (() => {
@@ -6152,6 +6886,28 @@ export default function IPAddressManager() {
                         )}
 
                         <div className="flex gap-2 mt-3">
+                          {item.healthPort && (
+                            <a
+                              href={`${item.healthScheme || 'http'}://${item.ip}:${item.healthPort}${item.healthPath || '/'}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-sky-50 text-sky-700 border border-sky-200 hover:bg-sky-100 transition-colors"
+                              title={`Open ${item.healthScheme || 'http'}://${item.ip}:${item.healthPort}${item.healthPath || '/'}`}
+                            >
+                              <Globe className="w-3.5 h-3.5" />
+                              {item.healthScheme === 'https' ? 'HTTPS' : 'HTTP'}
+                            </a>
+                          )}
+                          {item.hostname && (
+                            <a
+                              href={`ssh://${item.hostname}`}
+                              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors"
+                              title={`SSH to ${item.hostname}`}
+                            >
+                              <Terminal className="w-3.5 h-3.5" />
+                              SSH
+                            </a>
+                          )}
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -6171,6 +6927,19 @@ export default function IPAddressManager() {
                               </>
                             )}
                           </button>
+                          {!isFree && !isReserved && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setQrItem(item); }}
+                              className="flex items-center justify-center gap-1.5 px-3 py-2 bg-violet-100 hover:bg-violet-200 rounded-lg text-sm text-violet-700 transition-colors"
+                              title="Generate QR code for this entry"
+                            >
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>
+                                <path d="M14 14h3v3M17 17v3h3M14 20h3"/>
+                              </svg>
+                              QR
+                            </button>
+                          )}
                           {!isReserved && (
                             <button
                               onClick={(e) => {
@@ -6287,6 +7056,11 @@ export default function IPAddressManager() {
                               </span>
                             )}
                           </div>
+                          {item.mac && (
+                            <div className="text-xs text-slate-400 font-mono mt-0.5" title={item.macVendor || item.mac}>
+                              {item.mac}
+                            </div>
+                          )}
                           {(() => {
                             if (isFree || isReserved) return null;
                             const ptr = dnsStatus[item.ip]?.ptr;
@@ -6415,17 +7189,31 @@ export default function IPAddressManager() {
                         </td>
                         <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">{formatDate(item.updatedAt)}</td>
                         <td className="px-4 py-3">
-                          <button
-                            onClick={() => setEditingItem(item)}
-                            className={`flex items-center gap-1 px-2 py-1 text-xs font-medium rounded transition-colors ${
-                              isFree
-                                ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
-                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                            }`}
-                          >
-                            {isFree ? <Plus className="w-3 h-3" /> : <Edit3 className="w-3 h-3" />}
-                            {isFree ? 'Claim' : 'Edit'}
-                          </button>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => setEditingItem(item)}
+                              className={`flex items-center gap-1 px-2 py-1 text-xs font-medium rounded transition-colors ${
+                                isFree
+                                  ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                              }`}
+                            >
+                              {isFree ? <Plus className="w-3 h-3" /> : <Edit3 className="w-3 h-3" />}
+                              {isFree ? 'Claim' : 'Edit'}
+                            </button>
+                            {!isFree && !isReserved && (
+                              <button
+                                onClick={() => setQrItem(item)}
+                                title="QR code"
+                                className="flex items-center justify-center p-1 text-violet-400 hover:text-violet-600 hover:bg-violet-50 rounded transition-colors"
+                              >
+                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                  <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>
+                                  <path d="M14 14h3v3M17 17v3h3M14 20h3"/>
+                                </svg>
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );

@@ -1,6 +1,6 @@
 {
   "name": "ip-manager",
-  "version": "1.22.0",
+  "version": "1.24.0",
   "description": "Home Network IP Address Manager",
   "type": "module",
   "scripts": {
@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "lucide-react": "^0.400.0",
+    "qrcode": "^1.5.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "xlsx": "^0.18.5"

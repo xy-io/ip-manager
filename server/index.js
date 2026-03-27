@@ -1032,9 +1032,10 @@ app.post('/api/update/start', requireAuth, (req, res) => {
 });
 
 app.get('/api/update/stream', requireAuth, (req, res) => {
-  res.setHeader('Content-Type',  'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection',    'keep-alive');
+  res.setHeader('Content-Type',      'text/event-stream');
+  res.setHeader('Cache-Control',     'no-cache');
+  res.setHeader('Connection',        'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // tells nginx not to buffer this SSE stream
   res.flushHeaders();
 
   const send = line => res.write(`data: ${line}\n\n`);
@@ -1512,6 +1513,64 @@ app.post('/api/arp-presence/clear-last-seen', requireAuth, (req, res) => {
   lastSeenData = {};
   dbSet('last_seen_data', {});
   res.json({ ok: true });
+});
+
+// ── Subnet Blocks (Planned Blocks for Subnet Visualiser) ─────────────────────
+// Stored in settings table as JSON under key `subnet_blocks_{networkId}`
+
+// GET /api/subnet-blocks?network=net-1
+app.get('/api/subnet-blocks', requireAuth, (req, res) => {
+  const { network } = req.query;
+  if (!network) return res.status(400).json({ error: 'network param required' });
+  const key = `subnet_blocks_${network}`;
+  const blocks = dbGet(key) || [];
+  res.json({ networkId: network, blocks });
+});
+
+// POST /api/subnet-blocks — save blocks for a network
+app.post('/api/subnet-blocks', requireAuth, (req, res) => {
+  const { networkId, blocks } = req.body;
+  if (!networkId) return res.status(400).json({ error: 'networkId required' });
+  const key = `subnet_blocks_${networkId}`;
+  dbSet(key, Array.isArray(blocks) ? blocks : []);
+  res.json({ ok: true });
+});
+
+// ── MAC Vendor Lookup ─────────────────────────────────────────────────────────
+// Uses the bundled oui-data npm package (IEEE OUI database, ~4 MB JSON).
+// Loaded once on first request and cached in memory.
+
+let ouiDb = null;
+function getOuiDb() {
+  if (!ouiDb) {
+    try {
+      ouiDb = require('oui-data');
+    } catch (e) {
+      console.warn('[oui] oui-data not available:', e.message);
+      ouiDb = {};
+    }
+  }
+  return ouiDb;
+}
+
+function lookupVendor(mac) {
+  if (!mac) return null;
+  // Normalise: strip separators, uppercase, take first 6 hex chars
+  const prefix = mac.replace(/[^0-9a-fA-F]/g, '').toUpperCase().substring(0, 6);
+  if (prefix.length < 6) return null;
+  const db = getOuiDb();
+  const entry = db[prefix];
+  if (!entry) return null;
+  // oui-data values are multi-line; first line is the vendor name
+  return entry.split('\n')[0].trim() || null;
+}
+
+// GET /api/mac/vendor?mac=XX:XX:XX:XX:XX:XX
+app.get('/api/mac/vendor', requireAuth, (req, res) => {
+  const { mac } = req.query;
+  if (!mac) return res.status(400).json({ error: 'mac query param required' });
+  const vendor = lookupVendor(mac);
+  res.json({ mac, vendor: vendor || null });
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────────

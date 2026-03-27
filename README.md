@@ -45,13 +45,25 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
-### v1.22 Features
+### v1.24 Features
 
-**ARP & Presence** — Two new opt-in features in **Settings → ARP & Presence** (both disabled by default).
+**MAC Address** — Optional MAC address field in the edit modal with auto vendor lookup (bundled IEEE OUI database, no internet required). MAC and vendor name shown on expanded cards and in the table's IP column.
 
-**Last Seen Timestamps** — piggybacks on the existing ping cycle (zero extra traffic). When enabled, a clock icon and relative timestamp (*3m ago*, *2h ago*) appear on every card and table row. Timestamps older than 25 hours turn amber as a visual stale indicator.
+**Quick-launch buttons** — HTTP/HTTPS and SSH one-click buttons appear on expanded cards. HTTP/HTTPS uses the Service Health Check configuration (scheme + port + path). SSH opens `ssh://hostname` via the OS.
 
-**Background Discovery Scan** — scheduled ARP sweep scoped to your static range that surfaces untracked devices. Subnet-aware defaults: /24 → 15-minute interval, 1000 Kbps cap; /16+ → hourly, 200 Kbps cap. Both are user-configurable. Untracked devices within the static range appear in the settings tab for review and import.
+**Subnet Visualiser** — Heat-map grid in the **Tools** dropdown showing the full address space as 256 colour-coded cells. Overlay named **Planned Blocks** (e.g. "IoT .200–.220") stored per network.
+
+→ Full version history: [CHANGELOG.md](./CHANGELOG.md)
+
+---
+
+### v1.23 Features (archived)
+
+**Tools dropdown** — A new **Tools** button (wrench icon) in the toolbar provides a scalable home for utility tools without crowding the action bar.
+
+**CIDR Calculator** — Type any CIDR notation (e.g. `192.168.1.0/24`) and instantly see network/broadcast addresses, first/last usable host, subnet mask, wildcard mask, host counts, next network, IP class, and binary representation. Entirely client-side.
+
+**QR Codes** — Every tracked device now has a **QR** button (in the expanded card action row and table Actions column). Toggle between encoding the device's Service URL or bare IP address. Download as PNG or copy to clipboard. Generated entirely in the browser.
 
 → Full version history: [CHANGELOG.md](./CHANGELOG.md)
 
