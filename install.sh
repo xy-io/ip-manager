@@ -237,7 +237,10 @@ ok "Update wrapper created — logic lives in scripts/update.sh (always current)
 # run scripts/update.sh as root (for git, npm, systemctl). This entry
 # grants www-data exactly that permission and nothing else.
 log "Configuring sudoers for in-browser updates..."
-SUDOERS_LINE="www-data ALL=(ALL) NOPASSWD: /bin/bash ${APP_DIR}/scripts/update.sh"
+# Use the real path of bash — on many Debian/Ubuntu systems /bin/bash is a
+# symlink to /usr/bin/bash but sudoers matches on the exact resolved path.
+BASH_BIN=$(readlink -f /bin/bash 2>/dev/null || which bash)
+SUDOERS_LINE="www-data ALL=(root) NOPASSWD: ${BASH_BIN} ${APP_DIR}/scripts/update.sh"
 SUDOERS_FILE="/etc/sudoers.d/ip-manager-update"
 echo "$SUDOERS_LINE" > "$SUDOERS_FILE"
 chmod 440 "$SUDOERS_FILE"
@@ -246,7 +249,7 @@ if ! visudo -cf "$SUDOERS_FILE" &>/dev/null; then
   warn "sudoers entry failed validation — in-browser updates will not work. Manual updates (ip-manager-update) are unaffected."
   rm -f "$SUDOERS_FILE"
 else
-  ok "sudoers configured — www-data can run update script as root"
+  ok "sudoers configured — www-data can run update script as root (${BASH_BIN})"
 fi
 
 # ── Done ─────────────────────────────────────────────────────

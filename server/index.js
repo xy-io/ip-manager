@@ -1010,9 +1010,11 @@ app.post('/api/update/start', requireAuth, (req, res) => {
   updateState = { running: true, lines: [], listeners: new Set() };
   res.json({ ok: true });
 
-  // Run as root via sudoers entry (www-data ALL=(ALL) NOPASSWD: /bin/bash <script>)
+  // Run as root via sudoers entry (www-data ALL=(root) NOPASSWD: /usr/bin/bash <script>)
+  // Use the full path to bash so the sudoers rule matches exactly — sudo resolves
+  // 'bash' to /usr/bin/bash at runtime and sudoers matches on the resolved path.
   const child = require('child_process').spawn(
-    'sudo', ['bash', UPDATE_SCRIPT, '--api-mode'],
+    'sudo', ['/usr/bin/bash', UPDATE_SCRIPT, '--api-mode'],
     { stdio: ['ignore', 'pipe', 'pipe'] }
   );
 
