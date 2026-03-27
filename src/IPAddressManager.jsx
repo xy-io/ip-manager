@@ -3595,6 +3595,222 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
   );
 }
 
+// ── Updates Modal ─────────────────────────────────────────────────────────────
+function UpdatesModal({ onClose }) {
+  const [entries,      setEntries]      = useState(null);
+  const [clError,      setClError]      = useState(null);
+  const [versionInfo,  setVersionInfo]  = useState(null);  // { installed, latest, updateAvailable, releaseUrl }
+  const [versionError, setVersionError] = useState(null);
+  const [checking,     setChecking]     = useState(false);
+  const [expanded,     setExpanded]     = useState(null);
+
+  // Load changelog
+  useEffect(() => {
+    fetch('/api/changelog', { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => {
+        if (d.error) { setClError(d.error); return; }
+        setEntries(d.entries || []);
+        if (d.entries && d.entries.length > 0) setExpanded(d.entries[0].version);
+      })
+      .catch(() => setClError('Could not load changelog.'));
+  }, []);
+
+  // Version check against GitHub
+  const doVersionCheck = (force = false) => {
+    setChecking(true);
+    setVersionError(null);
+    fetch(`/api/version-check${force ? '?force=1' : ''}`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => {
+        if (d.error) { setVersionError(d.error); }
+        else { setVersionInfo(d); }
+      })
+      .catch(() => setVersionError('Could not reach GitHub.'))
+      .finally(() => setChecking(false));
+  };
+
+  useEffect(() => { doVersionCheck(); }, []);
+
+  // Simple markdown-lite renderer: bold, em-dash lines as paragraphs
+  function renderBody(body) {
+    if (!body) return null;
+    return body.split(/\n{2,}/).map((para, i) => {
+      const parts = para.split(/\*\*(.+?)\*\*/g).map((chunk, j) =>
+        j % 2 === 1 ? <strong key={j}>{chunk}</strong> : chunk
+      );
+      return (
+        <p key={i} className="text-sm text-slate-600 leading-relaxed mb-2 last:mb-0">{parts}</p>
+      );
+    });
+  }
+
+  const updateAvailable = versionInfo?.updateAvailable;
+
+  return (
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[85vh] flex flex-col overflow-hidden"
+           onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
+        <div className="px-6 py-5 border-b border-slate-100 flex items-start justify-between flex-shrink-0">
+          <div>
+            <h2 className="text-xl font-semibold text-slate-800">Updates</h2>
+            <p className="text-sm text-slate-500 mt-0.5">IP Address Manager · release notes</p>
+          </div>
+          <button onClick={onClose}
+            className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors text-slate-400 hover:text-slate-600 ml-4 flex-shrink-0">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Version status card */}
+        <div className="px-6 py-4 border-b border-slate-100 flex-shrink-0 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-0.5">Installed Version</p>
+              <p className="text-3xl font-bold text-indigo-600 font-mono">{versionInfo?.installed ?? APP_VERSION}</p>
+            </div>
+            {/* Status pill */}
+            {checking && (
+              <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl">
+                <div className="w-4 h-4 border-2 border-slate-300 border-t-slate-500 rounded-full animate-spin" />
+                <span className="text-sm text-slate-500">Checking…</span>
+              </div>
+            )}
+            {!checking && versionError && (
+              <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl">
+                <svg className="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                </svg>
+                <span className="text-sm text-slate-400">Offline</span>
+              </div>
+            )}
+            {!checking && !versionError && versionInfo && !updateAvailable && (
+              <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl">
+                <svg className="w-4 h-4 text-emerald-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className="text-sm font-medium text-emerald-700">Up to date</span>
+              </div>
+            )}
+            {!checking && !versionError && versionInfo && updateAvailable && (
+              <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-300 rounded-xl">
+                <svg className="w-4 h-4 text-amber-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                </svg>
+                <span className="text-sm font-medium text-amber-700">Update available</span>
+              </div>
+            )}
+          </div>
+
+          {/* Update available callout */}
+          {!checking && updateAvailable && versionInfo && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-amber-800">
+                  {versionInfo.latest} is available
+                  {versionInfo.releaseName && versionInfo.releaseName !== versionInfo.latest
+                    ? ` — ${versionInfo.releaseName}` : ''}
+                </p>
+                <a href={versionInfo.releaseUrl} target="_blank" rel="noopener noreferrer"
+                   className="text-xs text-amber-600 hover:text-amber-800 underline underline-offset-2">
+                  Release notes ↗
+                </a>
+              </div>
+              <p className="text-xs text-amber-700">To update, run this on your LXC:</p>
+              <div className="flex items-center gap-2 bg-amber-900/10 rounded-lg px-3 py-2 font-mono text-xs text-amber-900 select-all">
+                bash update.sh
+              </div>
+              <p className="text-xs text-amber-600">The update script pulls the latest code, rebuilds the app, and restarts the service — your data is never touched.</p>
+            </div>
+          )}
+
+          {/* Up to date — show latest version info */}
+          {!checking && !updateAvailable && versionInfo && (
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-slate-400">
+                Latest on GitHub: <span className="font-mono">{versionInfo.latest}</span>
+              </p>
+              <button onClick={() => doVersionCheck(true)}
+                className="text-xs text-indigo-500 hover:text-indigo-700 transition-colors">
+                Check again
+              </button>
+            </div>
+          )}
+
+          {/* Offline / error state */}
+          {!checking && versionError && (
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-slate-400">Could not reach GitHub to check for updates.</p>
+              <button onClick={() => doVersionCheck(true)}
+                className="text-xs text-indigo-500 hover:text-indigo-700 transition-colors">
+                Retry
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Release list */}
+        <div className="overflow-y-auto flex-1 px-6 py-4">
+          {clError && (
+            <div className="text-sm text-red-500 bg-red-50 border border-red-200 rounded-lg px-4 py-3">{clError}</div>
+          )}
+          {!entries && !clError && (
+            <div className="flex items-center justify-center py-12 text-slate-400 text-sm">Loading…</div>
+          )}
+          {entries && entries.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Release Log</p>
+              <div className="space-y-2">
+                {entries.map((entry, idx) => (
+                  <div key={entry.version} className="border border-slate-200 rounded-xl overflow-hidden">
+                    <button
+                      className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-slate-50 transition-colors"
+                      onClick={() => setExpanded(expanded === entry.version ? null : entry.version)}>
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className={`font-mono text-sm font-semibold flex-shrink-0 ${idx === 0 ? 'text-indigo-600' : 'text-slate-700'}`}>
+                          {entry.version}
+                        </span>
+                        {idx === 0 && (
+                          <span className="px-2 py-0.5 text-[10px] font-semibold bg-indigo-100 text-indigo-600 rounded-full uppercase tracking-wide flex-shrink-0">
+                            Installed
+                          </span>
+                        )}
+                        <span className="text-sm text-slate-500 truncate">{entry.title}</span>
+                      </div>
+                      <svg className={`w-4 h-4 text-slate-400 flex-shrink-0 ml-2 transition-transform ${expanded === entry.version ? 'rotate-180' : ''}`}
+                           fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                    {expanded === entry.version && (
+                      <div className="px-4 pb-4 pt-1 bg-slate-50 border-t border-slate-100">
+                        {renderBody(entry.body)}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-3 border-t border-slate-100 flex-shrink-0 flex items-center justify-between">
+          <p className="text-xs text-slate-400 font-mono">IP Manager {APP_VERSION}</p>
+          <button onClick={onClose}
+            className="px-4 py-1.5 text-sm font-medium bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg transition-colors">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Main Component
 export default function IPAddressManager() {
   // Auth state: 'checking' while we verify the session, 'ok' when logged in, 'none' when not.
@@ -3620,6 +3836,7 @@ export default function IPAddressManager() {
   const [networks, setNetworks] = useState([{ ...DEFAULT_NETWORK_CONFIG }]);
   const [activeNetworkId, setActiveNetworkId] = useState('net-1');
   const [showSettings, setShowSettings] = useState(false);
+  const [showUpdates, setShowUpdates]   = useState(false);
 
   const [ipData, setIpData] = useState([]);
   const [hasChanges, setHasChanges] = useState(false);
@@ -3790,6 +4007,7 @@ export default function IPAddressManager() {
       if (e.key === 'Escape') {
         if (editingItem) { setEditingItem(null); return; }
         if (showSettings) { setShowSettings(false); return; }
+        if (showUpdates)       { setShowUpdates(false);       return; }
         if (showImport)        { setShowImport(false);        return; }
         if (showProxmoxImport) { setShowProxmoxImport(false); return; }
         if (showARPScan)       { setShowARPScan(false);       return; }
@@ -3804,7 +4022,7 @@ export default function IPAddressManager() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [editingItem, showSettings, showImport, showProxmoxImport, showARPScan, showHelp, expandedCard, searchTerm]);
+  }, [editingItem, showSettings, showUpdates, showImport, showProxmoxImport, showARPScan, showHelp, expandedCard, searchTerm]);
 
   // ── Persist UI prefs (browser-local, runs whenever uiPrefs changes) ─────────
   useEffect(() => {
@@ -4550,6 +4768,9 @@ export default function IPAddressManager() {
       {/* Help Modal */}
       {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
 
+      {/* Updates Modal */}
+      {showUpdates && <UpdatesModal onClose={() => setShowUpdates(false)} />}
+
       {/* Edit Modal */}
       {editingItem && (
         <EditModal
@@ -4718,6 +4939,15 @@ export default function IPAddressManager() {
                   title="Help & Reference"
                 >
                   <HelpCircle className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setShowUpdates(true)}
+                  className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-lg transition-colors"
+                  title={`What's new · ${APP_VERSION}`}
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                  </svg>
                 </button>
                 <button
                   onClick={() => setShowSettings(true)}
@@ -4890,6 +5120,15 @@ export default function IPAddressManager() {
               >
                 <HelpCircle className="w-4 h-4" />
                 Help
+              </button>
+              <button
+                onClick={() => { setShowUpdates(true); setShowMobileTools(false); }}
+                className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-medium rounded-lg transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                </svg>
+                What's New
               </button>
               <button
                 onClick={() => { setShowSettings(true); setShowMobileTools(false); }}

@@ -808,6 +808,96 @@ app.get('/api/proxmox-vm-status', requireAuth, async (req, res) => {
   });
 });
 
+// GET /api/version-check — compares installed version against latest GitHub release
+// Result is cached for 1 hour to avoid hammering the GitHub API.
+const GITHUB_REPO       = 'xy-io/ip-manager';
+const VERSION_CHECK_TTL = 60 * 60 * 1000; // 1 hour
+let versionCheckCache   = { result: null, fetchedAt: 0 };
+
+function fetchLatestGitHubRelease() {
+  return new Promise((resolve, reject) => {
+    const opts = {
+      hostname: 'api.github.com',
+      path:     `/repos/${GITHUB_REPO}/releases/latest`,
+      method:   'GET',
+      headers:  { 'User-Agent': 'ip-manager-version-check', 'Accept': 'application/vnd.github.v3+json' },
+    };
+    const req = https.request(opts, res => {
+      let body = '';
+      res.on('data', chunk => { body += chunk; });
+      res.on('end', () => {
+        try { resolve(JSON.parse(body)); }
+        catch { reject(new Error('Invalid JSON from GitHub')); }
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(8000, () => { req.destroy(); reject(new Error('Timeout')); });
+    req.end();
+  });
+}
+
+app.get('/api/version-check', requireAuth, async (req, res) => {
+  const force = req.query.force === '1';
+  const stale = (Date.now() - versionCheckCache.fetchedAt) > VERSION_CHECK_TTL;
+  if (force || stale || !versionCheckCache.result) {
+    try {
+      const data   = await fetchLatestGitHubRelease();
+      const latest = (data.tag_name || '').replace(/^v/, '');
+      // Read installed version from package.json (single source of truth)
+      const pkgPath   = path.join(__dirname, '..', 'package.json');
+      const pkgJson   = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+      const installed = (pkgJson.version || '0.0').replace(/^v/, '');
+      // Simple numeric comparison: split on '.' and compare each segment
+      function versionGt(a, b) {
+        const pa = a.split('.').map(Number);
+        const pb = b.split('.').map(Number);
+        for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+          const diff = (pa[i] || 0) - (pb[i] || 0);
+          if (diff !== 0) return diff > 0;
+        }
+        return false;
+      }
+      versionCheckCache = {
+        result: {
+          installed:       `v${installed}`,
+          latest:          `v${latest}`,
+          updateAvailable: versionGt(latest, installed),
+          releaseUrl:      data.html_url || `https://github.com/${GITHUB_REPO}/releases/latest`,
+          releaseName:     data.name || `v${latest}`,
+          checkedAt:       Date.now(),
+        },
+        fetchedAt: Date.now(),
+      };
+    } catch (err) {
+      // Network unreachable or GitHub down — return degraded response, don't crash
+      return res.json({ error: 'Could not reach GitHub', detail: err.message });
+    }
+  }
+  res.json(versionCheckCache.result);
+});
+
+// GET /api/changelog — parses CHANGELOG.md and returns structured version list
+app.get('/api/changelog', requireAuth, (req, res) => {
+  try {
+    const clPath = path.join(__dirname, '..', 'CHANGELOG.md');
+    const raw = fs.readFileSync(clPath, 'utf8');
+    // Split on ## v headings to get per-version blocks
+    const blocks = raw.split(/^## (v[\d.]+)/m).slice(1);
+    const entries = [];
+    for (let i = 0; i < blocks.length; i += 2) {
+      const version = blocks[i].trim();
+      const body    = (blocks[i + 1] || '').replace(/^---\s*$/m, '').trim();
+      // Extract bold title before the em-dash as a short heading
+      const titleMatch = body.match(/^\*\*(.+?)\*\*/);
+      const title   = titleMatch ? titleMatch[1] : version;
+      entries.push({ version, title, body });
+    }
+    res.json({ entries });
+  } catch (err) {
+    res.status(500).json({ error: 'Could not read changelog', detail: err.message });
+  }
+});
+
 // ── Proxmox scheduled sync ────────────────────────────────────────────────────
 // Periodically re-queries Proxmox and updates any entries that have drifted
 // (e.g. a VM or LXC migrated to a different node after an HA failover).
