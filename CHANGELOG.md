@@ -12,9 +12,9 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 **MAC Address field** — Every IP entry now has an optional MAC address field (in the edit modal, below Hostname). When you tab out of the field the server looks up the OUI prefix in the bundled IEEE database (no internet required) and shows the vendor name inline — e.g. *Raspberry Pi Trading Ltd*. The MAC and vendor are stored with the entry and displayed in small monospace text below the IP on expanded cards and in the table's IP column.
 
-**Quick-launch buttons** — Expanded cards now show link buttons that open in a new tab: an **HTTP/HTTPS** button (appears when a Service Health Check port is configured — reuses the scheme, port, and path you already set), and an **SSH** button (appears when a hostname is set — opens an `ssh://hostname` URL handed off to your OS's SSH client).
+**Quick-launch buttons** — Expanded cards now show link buttons that open in a new tab: an **HTTP/HTTPS** button (appears when a Service Health Check port is configured — reuses the scheme, port, and path you already set), and an **SSH** button (appears when a hostname is set — opens an ssh://hostname URL handed off to your OS's SSH client).
 
-**Subnet Visualiser** — A new modal in the **Tools** dropdown shows the full /24 address space as a 16×16 heat-map grid (256 cells, one per last octet). Cell colours reflect whether each address is assigned, free static, in the DHCP pool, reserved, or outside range. Below the grid, a **Planned Blocks** section lets you overlay named colour regions (e.g. "IoT devices .200–.220") to mark intent. Blocks are stored server-side per network and persist across sessions.
+**Subnet Visualiser** — A new modal in the **Tools** dropdown shows the full /24 address space as a 16×16 heat-map grid (256 cells, one per last octet). Cell colours reflect whether each address is assigned, free static, in the DHCP pool, reserved, or outside range. Below the grid, a **Planned Blocks** section lets you overlay named colour regions (e.g. IoT devices .200–.220) to mark intent. Blocks are stored server-side per network and persist across sessions.
 
 Help & Reference updated with new **MAC Address**, **Quick Launch**, and **Subnet Visualiser** sections.
 
@@ -24,9 +24,9 @@ Help & Reference updated with new **MAC Address**, **Quick Launch**, and **Subne
 
 **Tools dropdown + CIDR Calculator + QR Codes** — A new **Tools** dropdown in the toolbar (wrench icon) provides a scalable home for utility tools without cluttering the main action bar.
 
-**CIDR Calculator** is the first tool in the dropdown. Type any CIDR notation (e.g. `192.168.1.0/24`) and instantly see: network and broadcast addresses, first/last usable host, subnet mask, wildcard mask, total and usable host counts, the next network of the same size, IP class, and the full binary representation of the address. Entirely client-side — no server call.
+**CIDR Calculator** is the first tool in the dropdown. Type any CIDR notation (e.g. 192.168.1.0/24) and instantly see: network and broadcast addresses, first/last usable host, subnet mask, wildcard mask, total and usable host counts, the next network of the same size, IP class, and the full binary representation of the address. Entirely client-side — no server call.
 
-**QR Codes** — Every tracked device now has a QR button (violet, in the expanded card action row and the table Actions column). The modal lets you toggle between two content modes: **Service URL** (encodes the device's URL field, e.g. `http://192.168.1.10:8080`) and **IP Address** (encodes the bare IP). Download the code as a PNG or copy the text to the clipboard. Generated entirely in the browser — no data leaves your network.
+**QR Codes** — Every tracked device now has a QR button (violet, in the expanded card action row and the table Actions column). The modal lets you toggle between two content modes: **Service URL** (encodes the device's URL field, e.g. http://192.168.1.10:8080) and **IP Address** (encodes the bare IP). Download the code as a PNG or copy the text to the clipboard. Generated entirely in the browser — no data leaves your network.
 
 Help & Reference updated with new **CIDR Calculator** and **QR Codes** sections.
 

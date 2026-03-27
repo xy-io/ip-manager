@@ -85,9 +85,13 @@ jobs:
         if: steps.check.outputs.exists == 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_BODY: ${{ steps.changelog.outputs.body }}
         run: |
           TAG=${{ steps.version.outputs.tag }}
+          # Write notes via Python so no shell-special characters are interpreted
+          # (backticks, double-quotes, globs, etc. in CHANGELOG are all safe this way)
+          python3 -c "import os; open('/tmp/release_notes.md','w').write(os.environ['RELEASE_BODY'])"
           gh release create "${TAG}" \
             --repo ${{ github.repository }} \
             --title "${TAG}" \
-            --notes "${{ steps.changelog.outputs.body }}"
+            --notes-file /tmp/release_notes.md
