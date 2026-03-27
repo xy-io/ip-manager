@@ -59,30 +59,6 @@ v1.25 is a focused UI quality release. No new data features — just a significa
 
 ---
 
-### v1.24 Features (archived)
-
-**MAC Address** — Optional MAC address field in the edit modal with auto vendor lookup (bundled IEEE OUI database, no internet required). MAC and vendor name shown on expanded cards and in the table's IP column.
-
-**Quick-launch buttons** — HTTP/HTTPS and SSH one-click buttons appear on expanded cards. HTTP/HTTPS uses the Service Health Check configuration (scheme + port + path). SSH opens `ssh://hostname` via the OS.
-
-**Subnet Visualiser** — Heat-map grid in the **Tools** dropdown showing the full address space as 256 colour-coded cells, with row labels (.0, .16, .32…), a usage summary bar (assigned / DHCP / free counts), and a dashed boundary line between the DHCP pool and static range. Overlay named **Planned Blocks** (e.g. "IoT .200–.220") stored per network with IP count display.
-
-→ Full version history: [CHANGELOG.md](./CHANGELOG.md)
-
----
-
-### v1.23 Features (archived)
-
-**Tools dropdown** — A new **Tools** button (wrench icon) in the toolbar provides a scalable home for utility tools without crowding the action bar.
-
-**CIDR Calculator** — Type any CIDR notation (e.g. `192.168.1.0/24`) and instantly see network/broadcast addresses, first/last usable host, subnet mask, wildcard mask, host counts, next network, IP class, and binary representation. Entirely client-side.
-
-**QR Codes** — Every tracked device now has a **QR** button (in the expanded card action row and table Actions column). Toggle between encoding the device's Service URL or bare IP address. Download as PNG or copy to clipboard. Generated entirely in the browser.
-
-→ Full version history: [CHANGELOG.md](./CHANGELOG.md)
-
----
-
 ## Screenshots
 
 > Cards view — light mode, showing 91 IP entries with status dots, type badges, location chips, and tags.
