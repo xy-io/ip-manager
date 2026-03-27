@@ -50,16 +50,21 @@ jobs:
             echo "No release for ${TAG} — will create one."
           fi
 
-      - name: Extract changelog section
+      - name: Create GitHub Release
         if: steps.check.outputs.exists == 'false'
-        id: changelog
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.version.outputs.tag }}
+          GH_REPO: ${{ github.repository }}
         run: |
+          # Python reads CHANGELOG.md directly from disk and writes the release
+          # notes to a file. The changelog content never passes through the shell,
+          # so backticks, double-quotes, globs, and other special characters in
+          # release notes are completely safe.
           python3 - <<'PYEOF'
           import os, re
 
-          tag  = os.environ["TAG"]   # e.g. "v1.20.0" — also try "v1.20"
+          tag  = os.environ["TAG"]   # e.g. "v1.24.0" — also try "v1.24"
           text = open("CHANGELOG.md").read()
 
           # Try exact tag first, then without the patch segment (v1.20.0 → v1.20)
@@ -70,28 +75,16 @@ jobs:
 
           body = find_section(tag)
           if body is None:
-              # Strip patch version: v1.20.0 → v1.20
               short_tag = re.sub(r'(\.\d+)$', '', tag)
               body = find_section(short_tag)
           if body is None:
               body = f"Release {tag}"
 
-          delimiter = "CHANGELOG_EOF"
-          with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
-              fh.write(f"body<<{delimiter}\n{body}\n{delimiter}\n")
+          with open('/tmp/release_notes.md', 'w') as f:
+              f.write(body)
           PYEOF
 
-      - name: Create GitHub Release
-        if: steps.check.outputs.exists == 'false'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_BODY: ${{ steps.changelog.outputs.body }}
-        run: |
-          TAG=${{ steps.version.outputs.tag }}
-          # Write notes via Python so no shell-special characters are interpreted
-          # (backticks, double-quotes, globs, etc. in CHANGELOG are all safe this way)
-          python3 -c "import os; open('/tmp/release_notes.md','w').write(os.environ['RELEASE_BODY'])"
           gh release create "${TAG}" \
-            --repo ${{ github.repository }} \
+            --repo "${GH_REPO}" \
             --title "${TAG}" \
             --notes-file /tmp/release_notes.md
