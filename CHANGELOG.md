@@ -6,6 +6,15 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v1.25.1
+
+**Mobile header fixes**
+
+- App name now visible on mobile — shows "IP Manager" on narrow screens instead of being hidden
+- Mobile Tools panel redesigned to match the desktop dropdown: two-section card layout (Network + Utilities + App) with icon squares and description lines, replacing the old coloured button grid
+
+---
+
 ## v1.25.0
 
 **Redesigned header — two-zone layout and app logo**

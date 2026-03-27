@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 import QRCode from 'qrcode';
 
 // ── App version ───────────────────────────────────────────────────────────────
-const APP_VERSION = 'v1.25.0';
+const APP_VERSION = 'v1.25.1';
 
 // Default network configuration (overridden by Settings modal / localStorage)
 const DEFAULT_NETWORK_CONFIG = {
@@ -6025,6 +6025,7 @@ export default function IPAddressManager() {
               <div className="flex items-center gap-2.5 flex-shrink-0">
                 <SubnetGridLogo size={32} />
                 <span className="text-[15px] font-bold text-slate-800 hidden sm:block leading-none">IP Address Manager</span>
+                <span className="text-[14px] font-bold text-slate-800 block sm:hidden leading-none">IP Manager</span>
               </div>
 
               <div className="w-px h-5 bg-slate-200 flex-shrink-0 hidden sm:block" />
@@ -6262,100 +6263,113 @@ export default function IPAddressManager() {
 
           {/* ── Mobile tools panel ── */}
           {showMobileTools && (
-            <div className="flex md:hidden flex-wrap gap-2 pb-3 mb-3 border-b border-slate-200">
-              {persistMode === 'api' && (<>
+            <div className="md:hidden mb-3 rounded-xl border border-slate-200 bg-white shadow-lg overflow-hidden">
+
+              {/* Import / Export row */}
+              <div className="px-3 pt-3 pb-2.5 border-b border-slate-100 flex gap-2">
                 <button
-                  onClick={() => { setShowProxmoxImport(true); setShowMobileTools(false); }}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg transition-colors"
+                  onClick={() => { setShowImport(true); setShowMobileTools(false); }}
+                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-slate-700 hover:bg-slate-800 text-white text-sm font-medium rounded-lg transition-colors"
                 >
-                  <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="2" y="3" width="20" height="14" rx="2"/>
-                    <path d="M8 21h8M12 17v4"/>
-                    <path d="M7 8h.01M12 8h.01M17 8h.01"/>
-                  </svg>
-                  Proxmox
+                  <Upload className="w-4 h-4 flex-shrink-0" />
+                  Import
                 </button>
                 <button
-                  onClick={() => { setShowARPScan(true); setShowMobileTools(false); }}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg transition-colors"
+                  onClick={() => { handleExportExcel(); setShowMobileTools(false); }}
+                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg transition-colors"
                 >
-                  <Wifi className="w-4 h-4 flex-shrink-0" />
-                  ARP Scan
+                  <Download className="w-4 h-4 flex-shrink-0" />
+                  Export
                 </button>
-                <button
-                  onClick={() => { fetchPingStatus(true); setShowMobileTools(false); }}
-                  disabled={pingLoading}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-sky-600 hover:bg-sky-700 disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors"
-                >
-                  {pingLoading
-                    ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin flex-shrink-0" />
-                    : <Zap className="w-4 h-4 flex-shrink-0" />}
-                  Ping
-                </button>
-                <button
-                  onClick={() => { fetchDnsStatus(true); setShowMobileTools(false); }}
-                  disabled={dnsLoading}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-60 text-white text-sm font-medium rounded-lg transition-colors"
-                >
-                  {dnsLoading
-                    ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin flex-shrink-0" />
-                    : <Globe className="w-4 h-4 flex-shrink-0" />}
-                  DNS
-                </button>
-              </>)}
-              <button
-                onClick={() => { setShowImport(true); setShowMobileTools(false); }}
-                className="flex items-center gap-1.5 px-3 py-2 bg-slate-700 hover:bg-slate-800 text-white text-sm font-medium rounded-lg transition-colors"
-              >
-                <Upload className="w-4 h-4 flex-shrink-0" />
-                Import
-              </button>
-              <button
-                onClick={() => { handleExportExcel(); setShowMobileTools(false); }}
-                className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg transition-colors"
-              >
-                <Download className="w-4 h-4 flex-shrink-0" />
-                Export
-              </button>
-              {networks.length === 1 && (
-                <button
-                  onClick={() => { handleAddNetwork(); setShowMobileTools(false); }}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-medium rounded-lg border border-dashed border-slate-300 transition-colors"
-                >
-                  <Plus className="w-4 h-4 flex-shrink-0" />
-                  Add Network
-                </button>
+              </div>
+
+              {/* Network section (API mode only) */}
+              {persistMode === 'api' && (
+                <>
+                  <div className="px-3 pt-3 pb-1">
+                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Network</p>
+                  </div>
+                  <button onClick={() => { setShowProxmoxImport(true); setShowMobileTools(false); }} className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 transition-colors text-left">
+                    <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center flex-shrink-0">
+                      <svg className="w-4 h-4 text-purple-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/><path d="M7 8h.01M12 8h.01M17 8h.01"/></svg>
+                    </div>
+                    <div><p className="text-sm font-medium text-slate-700">Proxmox</p><p className="text-xs text-slate-400">Import &amp; sync VMs / LXCs</p></div>
+                  </button>
+                  <button onClick={() => { setShowARPScan(true); setShowMobileTools(false); }} className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 transition-colors text-left">
+                    <div className="w-8 h-8 rounded-lg bg-teal-100 flex items-center justify-center flex-shrink-0">
+                      <Wifi className="w-4 h-4 text-teal-600" />
+                    </div>
+                    <div><p className="text-sm font-medium text-slate-700">ARP Scan</p><p className="text-xs text-slate-400">Discover active devices on subnet</p></div>
+                  </button>
+                  <button onClick={() => { fetchPingStatus(true); setShowMobileTools(false); }} disabled={pingLoading} className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 transition-colors text-left disabled:opacity-60">
+                    <div className="w-8 h-8 rounded-lg bg-sky-100 flex items-center justify-center flex-shrink-0">
+                      {pingLoading ? <div className="w-4 h-4 border-2 border-sky-300 border-t-sky-600 rounded-full animate-spin" /> : <Zap className="w-4 h-4 text-sky-600" />}
+                    </div>
+                    <div><p className="text-sm font-medium text-slate-700">Ping All</p><p className="text-xs text-slate-400">{pingLastAt ? `Last: ${pingLastAt.toLocaleTimeString()}` : 'Check reachability of all IPs'}</p></div>
+                  </button>
+                  <button onClick={() => { fetchDnsStatus(true); setShowMobileTools(false); }} disabled={dnsLoading} className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 transition-colors text-left disabled:opacity-60">
+                    <div className="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center flex-shrink-0">
+                      {dnsLoading ? <div className="w-4 h-4 border-2 border-violet-300 border-t-violet-600 rounded-full animate-spin" /> : <Globe className="w-4 h-4 text-violet-600" />}
+                    </div>
+                    <div><p className="text-sm font-medium text-slate-700">DNS Lookup</p><p className="text-xs text-slate-400">{dnsLastAt ? `Last: ${dnsLastAt.toLocaleString()}` : 'Reverse PTR lookup for all IPs'}</p></div>
+                  </button>
+                  <div className="h-px bg-slate-100 mx-3 my-1" />
+                </>
               )}
-              <button
-                onClick={() => setDarkMode(d => !d)}
-                className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-medium rounded-lg transition-colors"
-              >
-                {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-                {darkMode ? 'Light mode' : 'Dark mode'}
+
+              {/* Utilities section */}
+              <div className="px-3 pt-2 pb-1">
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Utilities</p>
+              </div>
+              <button onClick={() => { setShowCIDR(true); setShowMobileTools(false); }} className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 transition-colors text-left">
+                <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-4 h-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 11h.01M12 11h.01M15 11h.01M4.5 19.5h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z" /></svg>
+                </div>
+                <div><p className="text-sm font-medium text-slate-700">CIDR Calculator</p><p className="text-xs text-slate-400">Subnet maths — range, mask, host count</p></div>
               </button>
-              <button
-                onClick={() => { setShowHelp(true); setShowMobileTools(false); }}
-                className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-medium rounded-lg transition-colors"
-              >
-                <HelpCircle className="w-4 h-4" />
-                Help
+              <button onClick={() => { setShowSubnet(true); setShowMobileTools(false); }} className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 transition-colors text-left">
+                <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4 text-emerald-600"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
+                </div>
+                <div><p className="text-sm font-medium text-slate-700">Subnet Visualiser</p><p className="text-xs text-slate-400">Heat-map grid + planned blocks</p></div>
               </button>
-              <button
-                onClick={() => { setShowSettings(true); setShowMobileTools(false); }}
-                className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-medium rounded-lg transition-colors"
-              >
-                <Settings className="w-4 h-4" />
-                Settings
+
+              {/* App section */}
+              <div className="h-px bg-slate-100 mx-3 my-1" />
+              <div className="px-3 pt-2 pb-1">
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">App</p>
+              </div>
+              <button onClick={() => { setDarkMode(d => !d); setShowMobileTools(false); }} className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 transition-colors text-left">
+                <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
+                  {darkMode ? <Sun className="w-4 h-4 text-slate-600" /> : <Moon className="w-4 h-4 text-slate-600" />}
+                </div>
+                <div><p className="text-sm font-medium text-slate-700">{darkMode ? 'Light mode' : 'Dark mode'}</p><p className="text-xs text-slate-400">Toggle display theme</p></div>
+              </button>
+              <button onClick={() => { setShowHelp(true); setShowMobileTools(false); }} className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 transition-colors text-left">
+                <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
+                  <HelpCircle className="w-4 h-4 text-slate-600" />
+                </div>
+                <div><p className="text-sm font-medium text-slate-700">Help</p><p className="text-xs text-slate-400">Reference guide and keyboard shortcuts</p></div>
+              </button>
+              <button onClick={() => { setShowSettings(true); setShowMobileTools(false); }} className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 transition-colors text-left">
+                <div className="relative w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
+                  <Settings className="w-4 h-4 text-slate-600" />
+                  {topLevelVersionInfo?.updateAvailable && <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-amber-400 rounded-full" />}
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-slate-700">Settings</p>
+                  <p className="text-xs text-slate-400">{topLevelVersionInfo?.updateAvailable ? `Update available · ${topLevelVersionInfo.latest}` : 'Network config, preferences, updates'}</p>
+                </div>
               </button>
               {persistMode === 'api' && (
-                <button
-                  onClick={handleLogout}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-red-50 hover:text-red-500 text-slate-500 text-sm font-medium rounded-lg transition-colors"
-                >
-                  <LogOut className="w-4 h-4 flex-shrink-0" />
-                  Sign out
+                <button onClick={handleLogout} className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-red-50 transition-colors text-left">
+                  <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center flex-shrink-0">
+                    <LogOut className="w-4 h-4 text-red-500" />
+                  </div>
+                  <div><p className="text-sm font-medium text-red-600">Sign out</p><p className="text-xs text-slate-400">End your session</p></div>
                 </button>
               )}
+              <div className="pb-1.5" />
             </div>
           )}
 
