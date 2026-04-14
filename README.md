@@ -45,19 +45,17 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
-### v1.26 — Scheduled cloud backup
+### v1.27 — Dependency mapping
 
-Automatic backups of all your data to any cloud storage provider — configured entirely from the browser. No cron jobs, no terminal (except a one-time auth step for Dropbox and Google Drive).
+Link any entry to the devices it relies on — a red **dep offline** badge appears automatically on the card when a dependency goes down, so you can see at a glance why something might be misbehaving.
 
-**Provider support** — GUI configuration for S3-compatible storage (**Backblaze B2**, **Cloudflare R2**, **AWS S3**, **Wasabi**, **MinIO**), **SFTP** (any SSH server or NAS), and **local/network paths** (NFS, SMB mounts). **Dropbox** and **Google Drive** are also supported via a one-time token paste: run `rclone authorize` on any machine with a browser, then paste the token into the Settings UI.
+**Defining dependencies** — open the edit modal for any entry and use the new Dependencies field. Search by IP, hostname, or device name; selected dependencies appear as removable amber chips. An entry cannot depend on itself.
 
-**Scheduling** — daily or weekly at a chosen time, or manual-only. Schedule is managed in-process — no system cron required. The next run time is calculated automatically and survives server restarts.
+**Card badge** — when one or more dependencies are offline (ping failure or health check failure), a red ⚠ "dep offline" badge appears in the card's badge row. Hovering shows which devices are down. The badge disappears automatically once all dependencies are back online. Entries that haven't been pinged yet don't trigger a false warning.
 
-**Retention** — configurable keep-last-N policy (1–30 backups). Older files are pruned automatically after each successful run, keeping your storage use predictable.
+**Expanded card** — expanding a card shows the full dependency list with each linked device's IP, name, and a live status dot (green = up, red = down, grey = not yet checked).
 
-**Backup format** — each backup is a dated JSON file (`ip-manager-backup-YYYY-MM-DD_HH-MM-SS.json`) containing all networks, IP entries, tags, notes, and change history. It uses the same schema as the manual download, so it can be restored via the existing Restore button in Settings → Backup.
-
-**Powered by [rclone](https://rclone.org/)** (MIT licence) — installed automatically on new deployments and silently added on first update for existing users.
+**Scope** — one level deep (direct dependencies only). Ping or health check failure both count as "down".
 
 → Full version history: [CHANGELOG.md](./CHANGELOG.md)
 
@@ -260,7 +258,7 @@ ip-manager/
 - ✅ **Subnet Visualiser + Planned Blocks** — 16×16 heat-map grid of the full address space; colour-coded free/static/DHCP/reserved cells with row labels and usage summary; overlay named planned blocks (e.g. "IoT .200–.220") stored per network — shipped in v1.24
 - ✅ **Two-zone header + app logo** — Subnet Grid logo; left identity zone (logo, network pill/switcher) and right actions zone (Import, Export, unified Tools menu); standalone Proxmox/ARP Scan/Ping/DNS buttons consolidated into Tools; SQLite badge and view toggle move to a quiet sub-bar — shipped in v1.25
 - ✅ **Scheduled cloud backup** — GUI-configured backup to S3-compatible storage, SFTP, local paths, Dropbox, or Google Drive (via rclone); daily/weekly schedule; configurable retention; manual trigger; no cron setup required — shipped in v1.26
-- **Dependency mapping** (v1.27) — link entries as dependencies (e.g. media server depends on NAS); when a dependency's ping or health dot is red/orange, the dependent card shows a small "⚠ dependency down" indicator
+- ✅ **Dependency mapping** — link entries to the devices they depend on; a red "dep offline" badge appears on the card when any dependency goes down (ping or health check); expanded card shows the full dependency list with live status dots — shipped in v1.27
 - **Per-entry audit log** (v1.27) — drill down from any card into the full change history for that specific entry; filters the existing global audit log by IP
 - **Bulk add from Proxmox sync** (v1.28) — opt-in toggle to auto-add newly discovered Proxmox VMs/LXCs rather than only updating existing entries
 - **Custom fields** (v1.28) — user-definable key/value pairs per entry (e.g. "Serial number", "VLAN ID", "Purchase date"); searchable and importable via CSV

@@ -6,6 +6,22 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v1.27.0
+
+**Dependency mapping**
+
+Link any entry to the devices it relies on — when a dependency goes offline, a red "dep offline" badge appears immediately on the card.
+
+**Edit modal** — new Dependencies field with a searchable picker (search by IP, name, or hostname). Selected dependencies are shown as removable amber chips. An entry cannot depend on itself.
+
+**Card badge** — a red ⚠ "dep offline" badge appears in the badge row whenever one or more dependencies are confirmed down (ping failure or health check failure). The tooltip names the offline devices. The badge disappears automatically when all dependencies are back online.
+
+**Expanded card** — the dependency list shows each linked entry with its IP, name, and a live status dot (green = up, red = down, grey = not yet pinged).
+
+**Status logic** — ping failure or health check failure both trigger the warning. Entries that haven't been pinged yet do not trigger a false warning.
+
+---
+
 ## v1.26.0
 
 **Scheduled cloud backup**

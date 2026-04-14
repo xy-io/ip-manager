@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 import QRCode from 'qrcode';
 
 // ── App version ───────────────────────────────────────────────────────────────
-const APP_VERSION = 'v1.26.0';
+const APP_VERSION = 'v1.27.0';
 
 // Default network configuration (overridden by Settings modal / localStorage)
 const DEFAULT_NETWORK_CONFIG = {
@@ -4977,9 +4977,12 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
     healthPort:   item.healthPort   || '',
     healthPath:   item.healthPath   || '/',
     mac: item.mac || '',
+    dependencies: item.dependencies || [],
   });
   const [tagInput, setTagInput] = useState('');
   const [showTagSuggestions, setShowTagSuggestions] = useState(false);
+  const [depInput, setDepInput] = useState('');
+  const [showDepSuggestions, setShowDepSuggestions] = useState(false);
   const [macVendor, setMacVendor] = useState(item.macVendor || '');
 
   // Host group linking state
@@ -5025,6 +5028,13 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
   };
 
   const removeTag = (tag) => setFormData(prev => ({ ...prev, tags: prev.tags.filter(t => t !== tag) }));
+
+  const addDep = (ip) => {
+    if (!ip || (formData.dependencies || []).includes(ip)) return;
+    setFormData(prev => ({ ...prev, dependencies: [...(prev.dependencies || []), ip] }));
+    setDepInput('');
+  };
+  const removeDep = (ip) => setFormData(prev => ({ ...prev, dependencies: (prev.dependencies || []).filter(d => d !== ip) }));
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -5242,6 +5252,67 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm resize-none"
             />
           </div>
+
+          {/* Dependencies */}
+          {!isFree && !isReserved && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Dependencies</label>
+              <p className="text-xs text-slate-400 mb-2">Entries this device relies on. A warning badge appears on this card when any dependency goes offline.</p>
+              {(formData.dependencies || []).length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {(formData.dependencies || []).map(depIp => {
+                    const depEntry = (allNetworkEntries || []).find(e => e.ip === depIp);
+                    return (
+                      <span key={depIp} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-amber-100 text-amber-700 border border-amber-200">
+                        <span className="font-semibold">{depEntry?.assetName || depIp}</span>
+                        <span className="text-amber-500 font-mono text-[10px]">{depIp}</span>
+                        <button type="button" onClick={() => removeDep(depIp)} className="hover:text-amber-900 ml-0.5 leading-none">×</button>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+              <div className="relative">
+                <input
+                  type="text"
+                  value={depInput}
+                  onChange={e => { setDepInput(e.target.value); setShowDepSuggestions(true); }}
+                  onFocus={() => setShowDepSuggestions(true)}
+                  onKeyDown={e => { if (e.key === 'Escape') setShowDepSuggestions(false); }}
+                  onBlur={() => setTimeout(() => setShowDepSuggestions(false), 150)}
+                  placeholder="Search by IP or name to add a dependency…"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
+                />
+                {showDepSuggestions && (() => {
+                  const suggestions = (allNetworkEntries || []).filter(e =>
+                    e.ip !== item.ip &&
+                    e.assetName !== 'Free' && e.assetName !== 'Reserved' &&
+                    !(formData.dependencies || []).includes(e.ip) &&
+                    (depInput === '' ||
+                      e.ip.includes(depInput) ||
+                      (e.assetName || '').toLowerCase().includes(depInput.toLowerCase()) ||
+                      (e.hostname || '').toLowerCase().includes(depInput.toLowerCase()))
+                  ).slice(0, 8);
+                  return suggestions.length > 0 ? (
+                    <div className="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                      {suggestions.map(e => (
+                        <button
+                          key={e.ip}
+                          type="button"
+                          onMouseDown={ev => { ev.preventDefault(); addDep(e.ip); setShowDepSuggestions(false); }}
+                          className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-amber-50 hover:text-amber-800 flex items-center gap-3"
+                        >
+                          <span className="font-mono text-xs text-slate-400 w-28 flex-shrink-0">{e.ip}</span>
+                          <span className="truncate font-medium">{e.assetName || '—'}</span>
+                          {e.hostname && <span className="truncate text-xs text-slate-400">{e.hostname}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null;
+                })()}
+              </div>
+            </div>
+          )}
 
           {/* Proxmox info panel — read-only, shown only when dedicated fields are present */}
           {item.proxmoxVmid && (
@@ -7159,6 +7230,28 @@ export default function IPAddressManager() {
                             </span>
                           );
                         })()}
+                        {!isFree && !isReserved && (() => {
+                          const deps = item.dependencies || [];
+                          if (!deps.length) return null;
+                          const downDeps = deps.filter(depIp =>
+                            pingStatus[depIp] === 'down' ||
+                            (healthStatus[depIp] && healthStatus[depIp].status === 'down')
+                          );
+                          if (!downDeps.length) return null;
+                          const names = downDeps.map(ip => {
+                            const e = networkIpData.find(x => x.ip === ip);
+                            return e?.assetName || ip;
+                          }).join(', ');
+                          return (
+                            <span
+                              title={`Dependency offline: ${names}`}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-red-100 text-red-700 border border-red-200"
+                            >
+                              <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+                              dep offline
+                            </span>
+                          );
+                        })()}
                       </div>
                     </div>
 
@@ -7338,6 +7431,29 @@ export default function IPAddressManager() {
                             <div className="col-span-2">
                               <div className="text-slate-400 text-xs uppercase tracking-wide">Notes</div>
                               <div className="text-slate-600 text-sm mt-0.5">{item.notes}</div>
+                            </div>
+                          )}
+                          {(item.dependencies || []).length > 0 && (
+                            <div className="col-span-2">
+                              <div className="text-slate-400 text-xs uppercase tracking-wide mb-1.5">Dependencies</div>
+                              <div className="space-y-1">
+                                {(item.dependencies || []).map(depIp => {
+                                  const depEntry = networkIpData.find(e => e.ip === depIp);
+                                  const ping   = pingStatus[depIp];
+                                  const health = healthStatus[depIp];
+                                  const isDown = ping === 'down' || (health && health.status === 'down');
+                                  const isUp   = ping === 'up'   || (health && health.status === 'up');
+                                  return (
+                                    <div key={depIp} className="flex items-center gap-2 text-xs">
+                                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isDown ? 'bg-red-400' : isUp ? 'bg-emerald-400' : 'bg-slate-300'}`}
+                                        title={isDown ? 'Offline' : isUp ? 'Online' : 'Unknown'} />
+                                      <span className="font-mono text-slate-500">{depIp}</span>
+                                      <span className="text-slate-700 font-medium">{depEntry?.assetName || '—'}</span>
+                                      {isDown && <span className="text-red-600 font-semibold ml-auto">offline</span>}
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             </div>
                           )}
                           {item.updatedAt && (
