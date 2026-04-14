@@ -49,6 +49,19 @@ if [ "$EUID" -ne 0 ]; then
   echo -e "${R}[ERROR]${N} Run as root: sudo bash $0"; exit 1
 fi
 
+# ── Ensure rclone is installed (silent — new dependency as of v1.26) ──────────
+if ! command -v rclone &>/dev/null; then
+  [ "$API_MODE" = true ] && echo "LOG:Installing rclone (new dependency)…" \
+                         || log "Installing rclone…"
+  apt-get install -y -qq rclone 2>/dev/null || true
+  # Pre-create rclone.conf if it doesn't exist yet
+  if [ ! -f "$APP_DIR/server/rclone.conf" ]; then
+    touch "$APP_DIR/server/rclone.conf"
+    chown www-data:www-data "$APP_DIR/server/rclone.conf"
+    chmod 600 "$APP_DIR/server/rclone.conf"
+  fi
+fi
+
 # ── Save rollback point ───────────────────────────────────────
 ROLLBACK_HASH=$(git -C "$APP_DIR" rev-parse HEAD 2>/dev/null || echo "")
 ERROR_LOG=""

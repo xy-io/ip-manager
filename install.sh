@@ -46,8 +46,8 @@ ok "Package lists updated"
 
 # ── 2. Install dependencies ──────────────────────────────────
 # build-essential is needed to compile better-sqlite3 native bindings
-log "Installing dependencies (curl, git, nginx, build-essential, arp-scan, fping)..."
-apt-get install -y -qq curl git nginx build-essential python3 arp-scan fping libcap2-bin
+log "Installing dependencies (curl, git, nginx, build-essential, arp-scan, fping, rclone)..."
+apt-get install -y -qq curl git nginx build-essential python3 arp-scan fping libcap2-bin rclone
 ok "Dependencies installed"
 
 # Grant arp-scan + fping the raw socket capability they need to send raw packets.
@@ -125,7 +125,11 @@ chown -R www-data:www-data "$APP_DIR/server"
 touch "$APP_DIR/server/credentials.env"
 chown www-data:www-data "$APP_DIR/server/credentials.env"
 chmod 600 "$APP_DIR/server/credentials.env"
-ok "Permissions set — server directory and credentials.env owned by www-data"
+# Pre-create rclone.conf so www-data can write to it when users configure cloud backup
+touch "$APP_DIR/server/rclone.conf"
+chown www-data:www-data "$APP_DIR/server/rclone.conf"
+chmod 600 "$APP_DIR/server/rclone.conf"
+ok "Permissions set — server directory, credentials.env, and rclone.conf owned by www-data"
 
 # ── 7. Create systemd service for the API ────────────────────
 log "Creating systemd service for the API server..."

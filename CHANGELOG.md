@@ -6,6 +6,24 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v1.26.0
+
+**Scheduled cloud backup**
+
+Automatic backups of all IP entries, network configs, tags, notes, and change history to any cloud storage provider — configured entirely from the browser via Settings → Backup.
+
+**Provider support** — GUI configuration (no terminal) for S3-compatible storage (Backblaze B2, Cloudflare R2, AWS S3, Wasabi, MinIO), SFTP, and local/network paths. Dropbox and Google Drive are also supported via a one-time token paste (run `rclone authorize` on any machine with a browser, paste the token into the UI).
+
+**Scheduling** — daily or weekly at a chosen time, or manual-only. Next run is calculated in-process (no system cron required).
+
+**Retention** — configurable keep-last-N policy; older backups are pruned automatically after each successful run.
+
+**Remote management** — add multiple named remotes, select the active one, test connection before enabling. Each backup is a dated JSON file (`ip-manager-backup-YYYY-MM-DD_HH-MM-SS.json`) — the same format as the manual download, so it can be restored via the existing Restore button.
+
+**Powered by rclone** — MIT-licensed, no attribution required. Installed automatically on new LXC deployments and silently added on first update for existing users.
+
+---
+
 ## v1.25.1
 
 **Mobile header fixes**
