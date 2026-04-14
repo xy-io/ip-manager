@@ -787,13 +787,17 @@ function BackupCloudSection() {
   if (!cfg) return <div className="py-4 text-center text-sm text-slate-400">Loading…</div>;
 
   // Not available in local mode
-  if (cfg.rcloneAvailable === false && cfg.rcloneConfExists === false) {
+  if (!cfg.rcloneAvailable) {
     return (
       <div className="mt-6 pt-5 border-t border-slate-200 space-y-3">
         <h4 className="text-sm font-semibold text-slate-700">Scheduled Cloud Backup</h4>
         <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
           <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-          <span>rclone is not installed. Update the app to install it automatically, then return here to configure cloud backup.</span>
+          <div className="space-y-1">
+            <p className="font-medium">rclone is not installed yet.</p>
+            <p>Go to <strong>Settings → Updates</strong> and run the update — the update script will install rclone automatically as part of the process. Return here once it's done.</p>
+            <p className="text-amber-700 text-xs mt-1">If you've already updated once since v1.26, run it a second time. The installer was added in this release and takes effect from the next update onwards.</p>
+          </div>
         </div>
       </div>
     );
