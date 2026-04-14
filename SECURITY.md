@@ -13,7 +13,7 @@ Only the latest release of IP Address Manager receives security updates.
 
 Please **do not** open a public GitHub issue for security vulnerabilities.
 
-Report security concerns privately by emailing: **jay@project-xy.com**
+Report security concerns privately by emailing: **xyio-dev@protonmail.com**
 
 Include as much detail as you can:
 - A description of the vulnerability and its potential impact
