@@ -6,6 +6,20 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v1.27.3
+
+**Reassign IP address without losing history**
+
+The IP address on any assigned entry is now editable directly in the Edit modal. Previously the only way to move an entry to a different IP was to release it (losing all history, notes, tags, and dependencies) and re-claim the new IP from scratch.
+
+**How it works** — change the IP field and save. The entry — including its full history, notes, tags, health config, dependencies, and host-group links — moves to the new IP. A history record is added noting the old and new address. The old IP is automatically returned to the free pool.
+
+**Conflict handling** — if the target IP is already assigned to another device, a warning banner appears before save naming the conflicting entry. The user can proceed (which overwrites the conflicting entry and frees the old IP) or cancel.
+
+**Dependency chain** — any other entries that listed the old IP as a dependency are automatically updated to point to the new IP.
+
+---
+
 ## v1.27.2
 
 **Consolidate Additional IPs — rename Secondary IPs**

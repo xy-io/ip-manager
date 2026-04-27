@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 import QRCode from 'qrcode';
 
 // ── App version ───────────────────────────────────────────────────────────────
-const APP_VERSION = 'v1.27.2';
+const APP_VERSION = 'v1.27.3';
 
 // Default network configuration (overridden by Settings modal / localStorage)
 const DEFAULT_NETWORK_CONFIG = {
@@ -4966,6 +4966,7 @@ function BulkEditModal({ count, onApply, onClose, types, locations, allTags }) {
 // Edit Modal Component
 function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddLocation, allTags, allNetworkEntries }) {
   const [formData, setFormData] = useState({
+    ip: item.ip,
     assetName: item.assetName,
     hostname: item.hostname,
     type: item.type,
@@ -4984,6 +4985,9 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
   const [depInput, setDepInput] = useState('');
   const [showDepSuggestions, setShowDepSuggestions] = useState(false);
   const [macVendor, setMacVendor] = useState(item.macVendor || '');
+
+  // IP change
+  const [showIpConflictConfirm, setShowIpConflictConfirm] = useState(false);
 
   // Host group linking state
   const [pendingLinks,   setPendingLinks]   = useState([]); // IPs to link as secondary on save
@@ -5039,6 +5043,12 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    // If IP changed and the new IP is already occupied, require explicit confirmation
+    if (ipChanged && conflictEntry && !showIpConflictConfirm) {
+      setShowIpConflictConfirm(true);
+      return;
+    }
+    setShowIpConflictConfirm(false);
     // Resolve any pending new-location draft — blur may not have committed
     // yet if the user clicked Save directly from the text input.
     const finalLocation = formData.location === '__new__'
@@ -5048,13 +5058,21 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
       onAddLocation?.(finalLocation);
     }
     onSave(
-      { ...item, ...formData, location: finalLocation, macVendor },
+      { ...item, ...formData, ip: newIp || item.ip, location: finalLocation, macVendor },
       { link: pendingLinks, unlink: pendingUnlinks }
     );
   };
 
   const isFree = item.assetName === 'Free';
   const isReserved = item.assetName === 'Reserved';
+
+  // IP change detection — only relevant for assigned (non-free, non-reserved) entries
+  const newIp = (formData.ip || '').trim();
+  const newIpValid = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(newIp);
+  const ipChanged = !isFree && !isReserved && newIp !== item.ip && newIpValid;
+  const conflictEntry = ipChanged
+    ? (allNetworkEntries || []).find(e => e.ip === newIp && e.assetName !== 'Free')
+    : null;
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
@@ -5085,6 +5103,50 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
             />
           </div>
+
+          {/* IP Address — editable for assigned entries so users can reassign without losing history */}
+          {!isFree && !isReserved && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">IP Address</label>
+              <input
+                type="text"
+                value={formData.ip}
+                onChange={e => { setFormData({ ...formData, ip: e.target.value }); setShowIpConflictConfirm(false); }}
+                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:border-transparent font-mono text-sm ${
+                  ipChanged && !newIpValid ? 'border-red-300 focus:ring-red-400'
+                  : ipChanged ? 'border-amber-300 focus:ring-amber-400'
+                  : 'border-slate-300 focus:ring-emerald-500'
+                }`}
+              />
+              {ipChanged && newIpValid && !conflictEntry && (
+                <p className="text-xs text-amber-600 mt-1">
+                  ⚠ The old IP ({item.ip}) will be returned to the free pool and all history will move to {newIp}.
+                </p>
+              )}
+              {ipChanged && !newIpValid && (
+                <p className="text-xs text-red-500 mt-1">Enter a valid IPv4 address.</p>
+              )}
+              {/* Conflict confirmation banner */}
+              {showIpConflictConfirm && conflictEntry && (
+                <div className="mt-2 rounded-xl border border-amber-300 bg-amber-50 p-3 space-y-2">
+                  <p className="text-sm font-semibold text-amber-800">⚠ {newIp} is already in use</p>
+                  <p className="text-xs text-amber-700">
+                    This IP is currently assigned to <strong>{conflictEntry.assetName}</strong>. Proceeding will overwrite that entry and return <strong>{item.ip}</strong> to the free pool.
+                  </p>
+                  <div className="flex gap-2 pt-1">
+                    <button type="submit"
+                      className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded-lg transition-colors">
+                      Proceed anyway
+                    </button>
+                    <button type="button" onClick={() => setShowIpConflictConfirm(false)}
+                      className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 text-xs font-medium rounded-lg hover:bg-slate-50 transition-colors">
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Hostname</label>
@@ -6250,23 +6312,52 @@ export default function IPAddressManager() {
 
   const handleSaveItem = (updatedItem, groupOps = {}) => {
     const now = new Date().toISOString();
+    const originalIp = editingItem?.ip;
+    const newIp = updatedItem.ip;
+    const ipChanged = originalIp && newIp && originalIp !== newIp;
     const stamped = { ...updatedItem, updatedAt: now };
     setIpData(prev => {
       let data = [...prev];
 
-      // ── Update the main entry ──────────────────────────────────────────────
-      const existing = data.find(item => item.ip === stamped.ip);
-      if (existing) {
-        const changes = computeDiff(existing, stamped);
-        const entry = changes.length
-          ? { ts: now, changes }
-          : { ts: now, changes: [{ label: 'Saved', old: '', new: '(no changes)' }] };
-        const history = [...(existing.history || []), entry].slice(-20);
-        data = data.map(item => item.ip === stamped.ip ? { ...stamped, history } : item);
+      if (ipChanged) {
+        // ── IP address reassignment ──────────────────────────────────────────
+        const originalEntry = data.find(e => e.ip === originalIp);
+
+        // Remove the old entry
+        data = data.filter(e => e.ip !== originalIp);
+
+        // Return old IP to the free pool (as a bare Free entry)
+        data = [...data, { ip: originalIp, assetName: 'Free', networkId: originalEntry?.networkId || activeNetworkId }];
+
+        // Remove whatever was at the new IP (Free or occupied — user confirmed)
+        data = data.filter(e => e.ip !== newIp);
+
+        // Carry history forward, adding an IP change record
+        const ipChangeRecord = { ts: now, changes: [{ label: 'IP Address', old: originalIp, new: newIp }] };
+        const history = [...(originalEntry?.history || []), ipChangeRecord].slice(-20);
+        data = [...data, { ...stamped, history }];
+
+        // Update any entries that had the old IP in their dependencies list
+        data = data.map(e => {
+          if (!(e.dependencies || []).includes(originalIp)) return e;
+          return { ...e, dependencies: e.dependencies.map(d => d === originalIp ? newIp : d) };
+        });
+
       } else {
-        // New entry
-        const history = [{ ts: now, changes: [{ label: 'Created', old: '', new: stamped.ip }] }];
-        data = [...data, { ...stamped, history, networkId: activeNetworkId }];
+        // ── Normal update (IP unchanged) ───────────────────────────────────
+        const existing = data.find(item => item.ip === stamped.ip);
+        if (existing) {
+          const changes = computeDiff(existing, stamped);
+          const entry = changes.length
+            ? { ts: now, changes }
+            : { ts: now, changes: [{ label: 'Saved', old: '', new: '(no changes)' }] };
+          const history = [...(existing.history || []), entry].slice(-20);
+          data = data.map(item => item.ip === stamped.ip ? { ...stamped, history } : item);
+        } else {
+          // New entry
+          const history = [{ ts: now, changes: [{ label: 'Created', old: '', new: stamped.ip }] }];
+          data = [...data, { ...stamped, history, networkId: activeNetworkId }];
+        }
       }
 
       // ── Process host-group link operations ────────────────────────────────
