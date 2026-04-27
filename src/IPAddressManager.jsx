@@ -4988,6 +4988,7 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
   // Host group linking state
   const [pendingLinks,   setPendingLinks]   = useState([]); // IPs to link as secondary on save
   const [pendingUnlinks, setPendingUnlinks] = useState([]); // IPs to unlink on save
+  const [linkManualInput, setLinkManualInput] = useState(''); // manual IP entry in Additional IPs
 
   // Compute current secondaries from allNetworkEntries (excluding pending unlinks)
   const existingSecondaries = (allNetworkEntries || []).filter(
@@ -5460,7 +5461,7 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
                     );
                   })}
 
-                  {/* Dropdown to add a new secondary */}
+                  {/* Dropdown to add from tracked entries */}
                   {linkableEntries.length > 0 && (
                     <select
                       defaultValue=""
@@ -5472,12 +5473,46 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
                       }}
                       className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-white text-sm text-slate-600"
                     >
-                      <option value="">Link another IP as secondary…</option>
+                      <option value="">Select a tracked entry…</option>
                       {linkableEntries.map(e => (
                         <option key={e.ip} value={e.ip}>{e.ip} — {e.assetName}</option>
                       ))}
                     </select>
                   )}
+
+                  {/* Manual IP entry */}
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={linkManualInput}
+                      onChange={e => setLinkManualInput(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const ip = linkManualInput.trim();
+                          if (ip && /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ip) && ip !== item.ip && !pendingLinks.includes(ip) && !existingSecondaries.find(s => s.ip === ip)) {
+                            setPendingLinks(prev => [...prev, ip]);
+                            setLinkManualInput('');
+                          }
+                        }
+                      }}
+                      placeholder="Or type an IP manually…"
+                      className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm font-mono"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const ip = linkManualInput.trim();
+                        if (ip && /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ip) && ip !== item.ip && !pendingLinks.includes(ip) && !existingSecondaries.find(s => s.ip === ip)) {
+                          setPendingLinks(prev => [...prev, ip]);
+                          setLinkManualInput('');
+                        }
+                      }}
+                      className="px-3 py-2 bg-slate-700 hover:bg-slate-800 text-white text-sm font-medium rounded-lg transition-colors"
+                    >
+                      + Link
+                    </button>
+                  </div>
                 </>
               )}
             </div>
