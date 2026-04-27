@@ -6,6 +6,18 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v1.27.5
+
+**Fix: GUI updates on LXC — remove sudo dependency**
+
+The API service now runs as `root` inside the LXC container. Previously it ran as `www-data` and relied on a sudoers entry to escalate privileges for in-browser updates. In LXC containers the container root is already isolated, so user separation within the container adds complexity without security benefit.
+
+**For existing installs** — run one CLI update (`sudo bash /opt/ip-manager/scripts/update.sh`) and the update script will automatically patch the systemd service to `User=root`, reload the daemon, and remove the legacy sudoers entry. GUI updates will work immediately after.
+
+**For fresh installs** — `install.sh` now creates the service as `User=root` from the start and skips the sudoers setup entirely.
+
+---
+
 ## v1.27.4
 
 **Support bundle**

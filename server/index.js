@@ -976,13 +976,12 @@ app.get('/api/proxmox-vm-status', requireAuth, async (req, res) => {
 });
 
 // ── In-browser update ─────────────────────────────────────────────────────────
-// POST /api/update/start  — spawns scripts/update.sh --api-mode as root via sudo
+// POST /api/update/start  — spawns scripts/update.sh --api-mode
 // GET  /api/update/stream — SSE stream of live progress events
 // GET  /api/update/result — last persisted result (survives service restart)
 //
-// Security: requireAuth on all endpoints; sudo is locked to the specific script
-// via a sudoers entry added by install.sh.  No shell injection is possible
-// because no user input is passed to the command.
+// The service runs as root inside the LXC container, so no sudo is needed.
+// requireAuth is enforced on all endpoints.
 
 const UPDATE_SCRIPT   = path.join(__dirname, '..', 'scripts', 'update.sh');
 const UPDATE_RESULT   = path.join(__dirname, '.update-result.json');
@@ -1010,11 +1009,9 @@ app.post('/api/update/start', requireAuth, (req, res) => {
   updateState = { running: true, lines: [], listeners: new Set() };
   res.json({ ok: true });
 
-  // Run as root via sudoers entry (www-data ALL=(root) NOPASSWD: /usr/bin/bash <script>)
-  // Use the full path to bash so the sudoers rule matches exactly — sudo resolves
-  // 'bash' to /usr/bin/bash at runtime and sudoers matches on the resolved path.
+  // Service runs as root inside the LXC — invoke the update script directly.
   const child = require('child_process').spawn(
-    'sudo', ['/usr/bin/bash', UPDATE_SCRIPT, '--api-mode'],
+    '/usr/bin/bash', [UPDATE_SCRIPT, '--api-mode'],
     { stdio: ['ignore', 'pipe', 'pipe'] }
   );
 

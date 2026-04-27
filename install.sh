@@ -142,7 +142,7 @@ After=network.target
 
 [Service]
 Type=simple
-User=www-data
+User=root
 WorkingDirectory=$APP_DIR/server
 ExecStart=/usr/bin/node index.js
 Restart=always
@@ -236,27 +236,10 @@ WRAPPER
 chmod +x /usr/local/bin/ip-manager-update
 ok "Update wrapper created — logic lives in scripts/update.sh (always current)"
 
-# ── 10. Sudoers entry for in-browser updates ───────────────────
-# The API server runs as www-data. The in-browser update feature needs to
-# run scripts/update.sh as root (for git, npm, systemctl). This entry
-# grants www-data exactly that permission and nothing else.
-log "Configuring sudoers for in-browser updates..."
-# Use the real path of bash — on many Debian/Ubuntu systems /bin/bash is a
-# symlink to /usr/bin/bash but sudoers matches on the exact resolved path.
-BASH_BIN=$(readlink -f /bin/bash 2>/dev/null || which bash)
-# Include --api-mode in the rule — sudoers matches arguments exactly, so the
-# rule must match what the server actually calls.
-SUDOERS_LINE="www-data ALL=(root) NOPASSWD: ${BASH_BIN} ${APP_DIR}/scripts/update.sh --api-mode"
-SUDOERS_FILE="/etc/sudoers.d/ip-manager-update"
-echo "$SUDOERS_LINE" > "$SUDOERS_FILE"
-chmod 440 "$SUDOERS_FILE"
-# Validate — if visudo rejects it we remove it rather than break sudo
-if ! visudo -cf "$SUDOERS_FILE" &>/dev/null; then
-  warn "sudoers entry failed validation — in-browser updates will not work. Manual updates (ip-manager-update) are unaffected."
-  rm -f "$SUDOERS_FILE"
-else
-  ok "sudoers configured — www-data can run update script as root (${BASH_BIN})"
-fi
+# ── 10. Clean up legacy sudoers entry (no longer needed) ───────
+# The API service now runs as root inside the LXC container, so the
+# www-data sudoers entry is no longer required. Remove it if present.
+rm -f /etc/sudoers.d/ip-manager-update
 
 # ── Done ─────────────────────────────────────────────────────
 echo ""
