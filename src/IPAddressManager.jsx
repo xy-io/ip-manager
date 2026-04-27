@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 import QRCode from 'qrcode';
 
 // ── App version ───────────────────────────────────────────────────────────────
-const APP_VERSION = 'v1.27.0';
+const APP_VERSION = 'v1.27.1';
 
 // Default network configuration (overridden by Settings modal / localStorage)
 const DEFAULT_NETWORK_CONFIG = {
@@ -4978,11 +4978,14 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
     healthPath:   item.healthPath   || '/',
     mac: item.mac || '',
     dependencies: item.dependencies || [],
+    additionalIPs: item.additionalIPs || [],
   });
   const [tagInput, setTagInput] = useState('');
   const [showTagSuggestions, setShowTagSuggestions] = useState(false);
   const [depInput, setDepInput] = useState('');
   const [showDepSuggestions, setShowDepSuggestions] = useState(false);
+  const [addIpInput, setAddIpInput] = useState('');
+  const [showAdditionalIPs, setShowAdditionalIPs] = useState((item.additionalIPs || []).length > 0);
   const [macVendor, setMacVendor] = useState(item.macVendor || '');
 
   // Host group linking state
@@ -5028,6 +5031,16 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
   };
 
   const removeTag = (tag) => setFormData(prev => ({ ...prev, tags: prev.tags.filter(t => t !== tag) }));
+
+  const addAdditionalIP = (raw) => {
+    const ip = raw.trim();
+    if (!ip || !/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ip)) return;
+    if (ip === item.ip) return; // can't add own IP
+    if ((formData.additionalIPs || []).includes(ip)) return;
+    setFormData(prev => ({ ...prev, additionalIPs: [...(prev.additionalIPs || []), ip] }));
+    setAddIpInput('');
+  };
+  const removeAdditionalIP = (ip) => setFormData(prev => ({ ...prev, additionalIPs: (prev.additionalIPs || []).filter(a => a !== ip) }));
 
   const addDep = (ip) => {
     if (!ip || (formData.dependencies || []).includes(ip)) return;
@@ -5095,6 +5108,53 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
             />
           </div>
+
+          {/* Additional IPs — opt-in, for multi-NIC devices */}
+          {!isFree && !isReserved && (
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-sm font-medium text-slate-700">Additional IPs</label>
+                {!showAdditionalIPs && (
+                  <button type="button" onClick={() => setShowAdditionalIPs(true)}
+                    className="text-xs text-emerald-600 hover:text-emerald-700 font-medium">
+                    + Add
+                  </button>
+                )}
+              </div>
+              {!showAdditionalIPs && (formData.additionalIPs || []).length === 0 && (
+                <p className="text-xs text-slate-400">For multi-NIC devices with interfaces on multiple networks. <button type="button" onClick={() => setShowAdditionalIPs(true)} className="underline hover:text-slate-600">Add IPs</button></p>
+              )}
+              {showAdditionalIPs && (
+                <div className="space-y-2">
+                  {(formData.additionalIPs || []).length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {(formData.additionalIPs || []).map(ip => (
+                        <span key={ip} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-mono font-medium rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                          {ip}
+                          <button type="button" onClick={() => removeAdditionalIP(ip)} className="hover:text-slate-900 ml-0.5 leading-none">×</button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={addIpInput}
+                      onChange={e => setAddIpInput(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addAdditionalIP(addIpInput); } }}
+                      placeholder="192.168.10.1"
+                      className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm font-mono"
+                    />
+                    <button type="button" onClick={() => addAdditionalIP(addIpInput)}
+                      className="px-3 py-2 bg-slate-700 hover:bg-slate-800 text-white text-sm font-medium rounded-lg transition-colors">
+                      Add
+                    </button>
+                  </div>
+                  <p className="text-xs text-slate-400">These IPs appear on the card and are included in search. They are not pinged separately.</p>
+                </div>
+              )}
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">MAC Address</label>
@@ -6009,6 +6069,7 @@ export default function IPAddressManager() {
         (item.apps || '').toLowerCase().includes(searchLower) ||
         (item.location || '').toLowerCase().includes(searchLower) ||
         itemTags.some(t => t.toLowerCase().includes(searchLower)) ||
+        (item.additionalIPs || []).some(ip => ip.includes(searchLower)) ||
         (item.assetName === 'Free' && 'free'.includes(searchLower)) ||
         (item.assetName === 'Free' && 'available'.includes(searchLower));
 
@@ -7258,6 +7319,7 @@ export default function IPAddressManager() {
                     <div className="mb-2">
                       <div className="flex items-center gap-2">
                         <div className={`font-mono text-lg font-semibold ${isFree ? 'text-emerald-700' : 'text-slate-800'}`}>{item.ip}</div>
+
                         {!isFree && !isReserved && pingStatus[item.ip] != null && (
                           <span title={pingStatus[item.ip] === 'up' ? 'Online' : 'Offline'}
                             className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${pingStatus[item.ip] === 'up' ? 'bg-emerald-400' : 'bg-red-400'}`} />
@@ -7281,6 +7343,13 @@ export default function IPAddressManager() {
                           </span>
                         )}
                       </div>
+                      {!isFree && !isReserved && (item.additionalIPs || []).length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {(item.additionalIPs || []).map(ip => (
+                            <span key={ip} className="font-mono text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200" title="Additional IP">{ip}</span>
+                          ))}
+                        </div>
+                      )}
                       {(() => {
                         if (isFree || isReserved) return null;
                         const ptr = dnsStatus[item.ip]?.ptr;
@@ -7690,6 +7759,13 @@ export default function IPAddressManager() {
                               </div>
                             );
                           })()}
+                          {!isFree && !isReserved && (item.additionalIPs || []).length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {(item.additionalIPs || []).map(ip => (
+                                <span key={ip} className="font-mono text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200" title="Additional IP">{ip}</span>
+                              ))}
+                            </div>
+                          )}
                         </td>
                         <td className={`px-4 py-3 text-sm ${
                           isFree ? 'text-emerald-600 font-semibold' : isReserved ? 'text-slate-400 italic' : 'text-slate-700'

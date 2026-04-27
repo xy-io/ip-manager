@@ -6,6 +6,22 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v1.27.1
+
+**Additional IPs**
+
+Lightweight opt-in field to associate extra IP addresses with an entry — useful for multi-NIC devices without creating separate tracked entries.
+
+**Edit modal** — new "Additional IPs" section after the Hostname field (collapsed by default; click "+ Add additional IPs" to expand). Enter any valid IPv4 address and add it as a chip. Chips are removable. The primary IP is excluded. These IPs are stored on the entry but are not individually pinged.
+
+**Search** — additional IPs are included in the search index, so searching for any of them surfaces the parent entry.
+
+**Card view** — additional IP chips appear below the primary IP in a muted `bg-slate-100` style to distinguish them from the primary.
+
+**Table view** — additional IP chips appear below the MAC/DNS row in the IP column, consistent with the card view styling.
+
+---
+
 ## v1.27.0
 
 **Dependency mapping**
