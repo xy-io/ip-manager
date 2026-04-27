@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 import QRCode from 'qrcode';
 
 // ── App version ───────────────────────────────────────────────────────────────
-const APP_VERSION = 'v1.27.3';
+const APP_VERSION = 'v1.27.4';
 
 // Default network configuration (overridden by Settings modal / localStorage)
 const DEFAULT_NETWORK_CONFIG = {
@@ -1089,6 +1089,99 @@ function BackupCloudSection() {
   );
 }
 
+// ── Support Tab ───────────────────────────────────────────────────────────────
+function SupportTab({ ipData, networks }) {
+  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState(null);
+
+  const handleGenerate = async () => {
+    setGenerating(true);
+    setError(null);
+    try {
+      const r = await fetch('/api/support/bundle');
+      if (!r.ok) throw new Error(`Server returned ${r.status}`);
+      const blob = await r.blob();
+      const filename = r.headers.get('Content-Disposition')?.match(/filename="(.+)"/)?.[1]
+        || `ip-manager-support-${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.txt`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const assignedCount = (ipData || []).filter(e => e.assetName !== 'Free' && e.assetName !== 'Reserved').length;
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h3 className="text-base font-semibold text-slate-800">Support Bundle</h3>
+        <p className="text-sm text-slate-500 mt-0.5">
+          Generate a diagnostic file to send to the developer when something isn't working.
+        </p>
+      </div>
+
+      {/* What's included */}
+      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+        <p className="text-sm font-medium text-slate-700">What's included</p>
+        <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs text-slate-600">
+          {[
+            'App version & build info',
+            'OS / kernel version',
+            'Node.js & npm versions',
+            'Disk & memory usage',
+            'Service status (systemd)',
+            'Last update result',
+            'Recent service logs (300 lines)',
+            `${networks?.length || 0} network(s), ${assignedCount} assigned entries (count only)`,
+          ].map(item => (
+            <div key={item} className="flex items-start gap-1.5">
+              <span className="text-emerald-500 mt-0.5 flex-shrink-0">✓</span>
+              <span>{item}</span>
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-slate-400 pt-1 border-t border-slate-200">
+          No IP addresses, hostnames, notes, credentials, or personal data are included in the bundle.
+        </p>
+      </div>
+
+      {error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={handleGenerate}
+        disabled={generating}
+        className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-900 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
+      >
+        {generating
+          ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Generating…</>
+          : <>↓ Generate &amp; Download Support Bundle</>
+        }
+      </button>
+
+      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-2">
+        <p className="text-sm font-medium text-slate-700">Prefer to collect logs manually?</p>
+        <p className="text-xs text-slate-500">Run these commands on your server and share the output:</p>
+        {[
+          'cat /opt/ip-manager/server/.update-result.json',
+          'sudo journalctl -u ip-manager-api -n 300 --no-pager',
+          'sudo bash /opt/ip-manager/scripts/update.sh',
+        ].map(cmd => (
+          <pre key={cmd} className="text-xs font-mono bg-slate-800 text-slate-100 px-3 py-2 rounded-lg overflow-x-auto">{cmd}</pre>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLocation, onDeleteLocation, tags, onRenameTag, onDeleteTag, canDeleteNetwork, onDeleteNetwork, showFreeInList, onToggleShowFreeInList, ipData, networks, onRestore, dnsConfig, dnsStatus, dnsLoading, onSaveDnsConfig, onRunDns, proxmoxSyncConfig, proxmoxSyncStatus, proxmoxSyncLoading, onSaveProxmoxSyncConfig, onRunProxmoxSync, updateAvailable, initialTab }) {
   const [form, setForm] = useState({
     networkName: config.networkName,
@@ -1277,6 +1370,7 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
     { id: 'presence', label: 'ARP & Presence' },
     { id: 'account',  label: 'Account' },
     { id: 'updates',  label: 'Updates' },
+    { id: 'support',  label: 'Support' },
   ];
 
   return (
@@ -2050,6 +2144,11 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
             {/* ── UPDATES TAB ── */}
             {activeTab === 'updates' && (
               <UpdatesTab />
+            )}
+
+            {/* ── SUPPORT TAB ── */}
+            {activeTab === 'support' && (
+              <SupportTab ipData={ipData} networks={networks} />
             )}
 
           </div>

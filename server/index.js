@@ -1155,6 +1155,71 @@ app.get('/api/changelog', requireAuth, (req, res) => {
   }
 });
 
+// ── Support bundle ────────────────────────────────────────────────────────────
+// GET /api/support/bundle — collects system diagnostics into a downloadable text file.
+// Contains NO IP data, hostnames, notes, or credentials — only system/runtime info.
+
+app.get('/api/support/bundle', requireAuth, async (req, res) => {
+  const run = (cmd) => new Promise(resolve => {
+    exec(cmd, { timeout: 10000 }, (err, stdout, stderr) => {
+      resolve((stdout || stderr || err?.message || '(no output)').trim());
+    });
+  });
+
+  let appVersion = 'unknown';
+  let ipCount = 0;
+  let networkCount = 0;
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
+    appVersion = pkg.version;
+  } catch {}
+  try { const d = dbGet('ip_data');       ipCount      = Array.isArray(d) ? d.filter(e => e.assetName !== 'Free' && e.assetName !== 'Reserved').length : 0; } catch {}
+  try { const d = dbGet('networks');      networkCount = Array.isArray(d) ? d.length : 0; } catch {}
+
+  const [uname, nodeVer, npmVer, diskInfo, memInfo, svcStatus, svcLogs, updateResult, rcloneVer] = await Promise.all([
+    run('uname -a'),
+    run('node --version'),
+    run('npm --version'),
+    run('df -h /opt/ip-manager 2>/dev/null || df -h /'),
+    run('free -h'),
+    run('systemctl status ip-manager-api --no-pager 2>/dev/null || echo "systemctl not available"'),
+    run('journalctl -u ip-manager-api -n 300 --no-pager 2>/dev/null || echo "journalctl not available"'),
+    run('cat /opt/ip-manager/server/.update-result.json 2>/dev/null || echo "(no update result on file)"'),
+    run('rclone --version 2>/dev/null | head -1 || echo "rclone not installed"'),
+  ]);
+
+  const sep = (title) => `\n${'='.repeat(60)}\n  ${title}\n${'='.repeat(60)}\n`;
+
+  const bundle = [
+    `IP Address Manager — Support Bundle`,
+    `Generated : ${new Date().toISOString()}`,
+    `App version: v${appVersion}`,
+    `Networks   : ${networkCount}`,
+    `Assigned entries: ${ipCount}`,
+    sep('SYSTEM'),
+    uname,
+    sep('RUNTIME'),
+    `Node.js : ${nodeVer}`,
+    `npm     : ${npmVer}`,
+    `rclone  : ${rcloneVer}`,
+    sep('DISK SPACE'),
+    diskInfo,
+    sep('MEMORY'),
+    memInfo,
+    sep('SERVICE STATUS'),
+    svcStatus,
+    sep('LAST UPDATE RESULT'),
+    updateResult,
+    sep('RECENT SERVICE LOGS (last 300 lines)'),
+    svcLogs,
+  ].join('\n');
+
+  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="ip-manager-support-${ts}.txt"`);
+  res.send(bundle);
+});
+
 // ── Proxmox scheduled sync ────────────────────────────────────────────────────
 // Periodically re-queries Proxmox and updates any entries that have drifted
 // (e.g. a VM or LXC migrated to a different node after an HA failover).

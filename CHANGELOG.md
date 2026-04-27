@@ -6,6 +6,16 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v1.27.4
+
+**Support bundle**
+
+New **Settings → Support** tab with a one-click "Generate & Download Support Bundle" button. Clicking it downloads a plain-text diagnostic file containing app version, OS/kernel info, Node.js & npm versions, rclone version, disk & memory usage, systemd service status, the last update result, and the most recent 300 lines of service logs.
+
+No IP addresses, hostnames, notes, credentials, or personal data are included — only system and runtime diagnostics. The Support tab also lists the three manual terminal commands for users who prefer to collect logs that way.
+
+---
+
 ## v1.27.3
 
 **Reassign IP address without losing history**
