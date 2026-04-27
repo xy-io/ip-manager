@@ -5059,8 +5059,19 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
     if (finalLocation && formData.location === '__new__') {
       onAddLocation?.(finalLocation);
     }
+    // Auto-commit any additional IP that's been typed but not yet clicked Add.
+    const pendingIp = addIpInput.trim();
+    let finalAdditionalIPs = formData.additionalIPs || [];
+    if (
+      pendingIp &&
+      /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(pendingIp) &&
+      pendingIp !== item.ip &&
+      !finalAdditionalIPs.includes(pendingIp)
+    ) {
+      finalAdditionalIPs = [...finalAdditionalIPs, pendingIp];
+    }
     onSave(
-      { ...item, ...formData, location: finalLocation, macVendor },
+      { ...item, ...formData, additionalIPs: finalAdditionalIPs, location: finalLocation, macVendor },
       { link: pendingLinks, unlink: pendingUnlinks }
     );
   };
