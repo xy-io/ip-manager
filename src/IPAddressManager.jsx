@@ -4037,7 +4037,7 @@ function HelpModal({ onClose }) {
         <P>A server or VM with multiple network interfaces (multi-NIC or multi-VLAN) can have all its IP entries linked together so they clearly belong to the same host. Each group has one <strong>primary</strong> entry and one or more <strong>secondary</strong> entries.</P>
 
         <H3>Linking IPs</H3>
-        <P>Open the Edit modal for the IP you want to be the primary. Scroll to the <strong>Secondary IPs</strong> section at the bottom of the form. Use the dropdown to pick any other standalone (non-free, non-grouped) entry on the same network, then click <strong>+ Link</strong>. You can link multiple secondaries. Click <strong>Save</strong> — the association is stored immediately.</P>
+        <P>Open the Edit modal for the IP you want to be the primary. Scroll to the <strong>Secondary IPs</strong> section at the bottom of the form. Use the dropdown to pick any other standalone (non-free, non-grouped) entry — including entries from other networks — then click <strong>+ Link</strong>. You can link multiple secondaries. Click <strong>Save</strong> — the association is stored immediately.</P>
 
         <H3>How it looks</H3>
         <div className="space-y-2 mb-3">
@@ -6525,7 +6525,7 @@ export default function IPAddressManager() {
           types={types}
           onAddLocation={(name) => handleRenameLocation(null, name)}
           allTags={allTags}
-          allNetworkEntries={networkIpData}
+          allNetworkEntries={ipData}
         />
       )}
 
