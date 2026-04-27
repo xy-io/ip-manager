@@ -6,6 +6,16 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v1.27.2
+
+**Consolidate Additional IPs — rename Secondary IPs**
+
+The separate lightweight "Additional IPs" field introduced in v1.27.1 has been removed in favour of a single, unified concept. The existing host-linking feature (previously called "Secondary IPs") is renamed to **Additional IPs** throughout the UI and help text.
+
+Each linked IP is a fully tracked entry — pinged independently, searchable, shown on its own card, with its own history. The link can span any network (multi-NIC, multi-VLAN, multi-subnet). The rename makes the intent clearer without changing any underlying behaviour or data.
+
+---
+
 ## v1.27.1
 
 **Additional IPs**

@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 import QRCode from 'qrcode';
 
 // ── App version ───────────────────────────────────────────────────────────────
-const APP_VERSION = 'v1.27.1';
+const APP_VERSION = 'v1.27.2';
 
 // Default network configuration (overridden by Settings modal / localStorage)
 const DEFAULT_NETWORK_CONFIG = {
@@ -4034,24 +4034,24 @@ function HelpModal({ onClose }) {
     hostgroup: (
       <div>
         <H2>Multiple IPs per Host</H2>
-        <P>A server or VM with multiple network interfaces (multi-NIC or multi-VLAN) can have all its IP entries linked together so they clearly belong to the same host. Each group has one <strong>primary</strong> entry and one or more <strong>secondary</strong> entries.</P>
+        <P>A server or VM with multiple network interfaces (multi-NIC or multi-VLAN) can have all its IP entries linked together so they clearly belong to the same host. Each group has one <strong>primary</strong> entry and one or more <strong>additional</strong> entries — each fully tracked and pinged independently.</P>
 
         <H3>Linking IPs</H3>
-        <P>Open the Edit modal for the IP you want to be the primary. Scroll to the <strong>Secondary IPs</strong> section at the bottom of the form. Use the dropdown to pick any other standalone (non-free, non-grouped) entry — including entries from other networks — then click <strong>+ Link</strong>. You can link multiple secondaries. Click <strong>Save</strong> — the association is stored immediately.</P>
+        <P>Open the Edit modal for the IP you want to be the primary. Scroll to the <strong>Additional IPs</strong> section at the bottom of the form. Use the dropdown to pick any other standalone (non-free, non-grouped) entry — including entries from other networks — then click <strong>+ Link</strong>. You can link as many as you need. Click <strong>Save</strong> — the association is stored immediately.</P>
 
         <H3>How it looks</H3>
         <div className="space-y-2 mb-3">
-          <Row label="Primary card / row">Shows small blue chip badges listing each secondary IP address, so you can see all interfaces at a glance.</Row>
+          <Row label="Primary card / row">Shows small blue chip badges listing each additional IP address, so you can see all interfaces at a glance.</Row>
           <div className="mb-1" />
-          <Row label="Secondary card / row">Shows a <span className="font-mono text-xs bg-slate-100 px-1 rounded">↳ Primary name</span> label so you always know which host it belongs to.</Row>
+          <Row label="Additional IP card / row">Shows a <span className="font-mono text-xs bg-slate-100 px-1 rounded">↳ Primary name</span> label so you always know which host it belongs to.</Row>
         </div>
         <P>The same indicators appear in both Cards view and Table view.</P>
 
         <H3>Unlinking IPs</H3>
-        <P>Open the Edit modal for the primary entry. In the Secondary IPs section, each linked entry has an <strong>×</strong> button — click it to remove the association, then save. You can also unlink from the secondary entry's edit modal; it will be detached from the group.</P>
+        <P>Open the Edit modal for the primary entry. In the Additional IPs section, each linked entry has an <strong>×</strong> button — click it to remove the association, then save. You can also unlink from the linked entry's edit modal; it will be detached from the group.</P>
 
         <H3>Proxmox auto-grouping</H3>
-        <P>When you import from Proxmox and a single VM or LXC reports multiple IP addresses (because it has multiple NICs or is connected to multiple VLANs), the importer automatically groups those IPs — the first address becomes the primary and the rest become secondaries. No manual linking required.</P>
+        <P>When you import from Proxmox and a single VM or LXC reports multiple IP addresses (because it has multiple NICs or is connected to multiple VLANs), the importer automatically groups those IPs — the first address becomes the primary and the rest become additional IPs. No manual linking required.</P>
       </div>
     ),
 
@@ -4978,14 +4978,11 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
     healthPath:   item.healthPath   || '/',
     mac: item.mac || '',
     dependencies: item.dependencies || [],
-    additionalIPs: item.additionalIPs || [],
   });
   const [tagInput, setTagInput] = useState('');
   const [showTagSuggestions, setShowTagSuggestions] = useState(false);
   const [depInput, setDepInput] = useState('');
   const [showDepSuggestions, setShowDepSuggestions] = useState(false);
-  const [addIpInput, setAddIpInput] = useState('');
-  const [showAdditionalIPs, setShowAdditionalIPs] = useState((item.additionalIPs || []).length > 0);
   const [macVendor, setMacVendor] = useState(item.macVendor || '');
 
   // Host group linking state
@@ -5032,16 +5029,6 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
 
   const removeTag = (tag) => setFormData(prev => ({ ...prev, tags: prev.tags.filter(t => t !== tag) }));
 
-  const addAdditionalIP = (raw) => {
-    const ip = raw.trim();
-    if (!ip || !/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ip)) return;
-    if (ip === item.ip) return; // can't add own IP
-    if ((formData.additionalIPs || []).includes(ip)) return;
-    setFormData(prev => ({ ...prev, additionalIPs: [...(prev.additionalIPs || []), ip] }));
-    setAddIpInput('');
-  };
-  const removeAdditionalIP = (ip) => setFormData(prev => ({ ...prev, additionalIPs: (prev.additionalIPs || []).filter(a => a !== ip) }));
-
   const addDep = (ip) => {
     if (!ip || (formData.dependencies || []).includes(ip)) return;
     setFormData(prev => ({ ...prev, dependencies: [...(prev.dependencies || []), ip] }));
@@ -5059,19 +5046,8 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
     if (finalLocation && formData.location === '__new__') {
       onAddLocation?.(finalLocation);
     }
-    // Auto-commit any additional IP that's been typed but not yet clicked Add.
-    const pendingIp = addIpInput.trim();
-    let finalAdditionalIPs = formData.additionalIPs || [];
-    if (
-      pendingIp &&
-      /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(pendingIp) &&
-      pendingIp !== item.ip &&
-      !finalAdditionalIPs.includes(pendingIp)
-    ) {
-      finalAdditionalIPs = [...finalAdditionalIPs, pendingIp];
-    }
     onSave(
-      { ...item, ...formData, additionalIPs: finalAdditionalIPs, location: finalLocation, macVendor },
+      { ...item, ...formData, location: finalLocation, macVendor },
       { link: pendingLinks, unlink: pendingUnlinks }
     );
   };
@@ -5119,53 +5095,6 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
             />
           </div>
-
-          {/* Additional IPs — opt-in, for multi-NIC devices */}
-          {!isFree && !isReserved && (
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-sm font-medium text-slate-700">Additional IPs</label>
-                {!showAdditionalIPs && (
-                  <button type="button" onClick={() => setShowAdditionalIPs(true)}
-                    className="text-xs text-emerald-600 hover:text-emerald-700 font-medium">
-                    + Add
-                  </button>
-                )}
-              </div>
-              {!showAdditionalIPs && (formData.additionalIPs || []).length === 0 && (
-                <p className="text-xs text-slate-400">For multi-NIC devices with interfaces on multiple networks. <button type="button" onClick={() => setShowAdditionalIPs(true)} className="underline hover:text-slate-600">Add IPs</button></p>
-              )}
-              {showAdditionalIPs && (
-                <div className="space-y-2">
-                  {(formData.additionalIPs || []).length > 0 && (
-                    <div className="flex flex-wrap gap-1.5">
-                      {(formData.additionalIPs || []).map(ip => (
-                        <span key={ip} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-mono font-medium rounded-full bg-slate-100 text-slate-600 border border-slate-200">
-                          {ip}
-                          <button type="button" onClick={() => removeAdditionalIP(ip)} className="hover:text-slate-900 ml-0.5 leading-none">×</button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={addIpInput}
-                      onChange={e => setAddIpInput(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addAdditionalIP(addIpInput); } }}
-                      placeholder="192.168.10.1"
-                      className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm font-mono"
-                    />
-                    <button type="button" onClick={() => addAdditionalIP(addIpInput)}
-                      className="px-3 py-2 bg-slate-700 hover:bg-slate-800 text-white text-sm font-medium rounded-lg transition-colors">
-                      Add
-                    </button>
-                  </div>
-                  <p className="text-xs text-slate-400">These IPs appear on the card and are included in search. They are not pinged separately.</p>
-                </div>
-              )}
-            </div>
-          )}
 
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">MAC Address</label>
@@ -5482,9 +5411,9 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
           {/* Host Group — only shown for assigned, non-reserved entries */}
           {!isFree && !isReserved && (
             <div className="pt-2 border-t border-slate-200">
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Secondary IPs</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Additional IPs</label>
               <p className="text-xs text-slate-400 mb-2">
-                Link other IPs to this entry to indicate they belong to the same host (e.g. a management NIC, a second VLAN interface).
+                Link other IPs to this entry to indicate they belong to the same host (e.g. a management NIC, a second VLAN interface). Each linked IP is fully tracked and pinged independently.
               </p>
 
               {/* If this entry is itself a secondary, show who the primary is */}
@@ -6080,7 +6009,6 @@ export default function IPAddressManager() {
         (item.apps || '').toLowerCase().includes(searchLower) ||
         (item.location || '').toLowerCase().includes(searchLower) ||
         itemTags.some(t => t.toLowerCase().includes(searchLower)) ||
-        (item.additionalIPs || []).some(ip => ip.includes(searchLower)) ||
         (item.assetName === 'Free' && 'free'.includes(searchLower)) ||
         (item.assetName === 'Free' && 'available'.includes(searchLower));
 
@@ -7354,13 +7282,6 @@ export default function IPAddressManager() {
                           </span>
                         )}
                       </div>
-                      {!isFree && !isReserved && (item.additionalIPs || []).length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {(item.additionalIPs || []).map(ip => (
-                            <span key={ip} className="font-mono text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200" title="Additional IP">{ip}</span>
-                          ))}
-                        </div>
-                      )}
                       {(() => {
                         if (isFree || isReserved) return null;
                         const ptr = dnsStatus[item.ip]?.ptr;
@@ -7414,7 +7335,7 @@ export default function IPAddressManager() {
                           </div>
                         )}
 
-                        {/* Secondary IPs — shown on the primary card */}
+                        {/* Additional IPs — shown on the primary card */}
                         {item.isPrimary && item.hostId && (() => {
                           const secondaries = networkIpData.filter(e => e.hostId === item.hostId && !e.isPrimary);
                           if (!secondaries.length) return null;
@@ -7770,19 +7691,12 @@ export default function IPAddressManager() {
                               </div>
                             );
                           })()}
-                          {!isFree && !isReserved && (item.additionalIPs || []).length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-1">
-                              {(item.additionalIPs || []).map(ip => (
-                                <span key={ip} className="font-mono text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200" title="Additional IP">{ip}</span>
-                              ))}
-                            </div>
-                          )}
                         </td>
                         <td className={`px-4 py-3 text-sm ${
                           isFree ? 'text-emerald-600 font-semibold' : isReserved ? 'text-slate-400 italic' : 'text-slate-700'
                         }`}>
                           {isFree ? '✓ Available' : item.assetName}
-                          {/* Secondary IPs listed under asset name in table */}
+                          {/* Additional IPs listed under asset name in table */}
                           {item.isPrimary && item.hostId && (() => {
                             const secondaries = networkIpData.filter(e => e.hostId === item.hostId && !e.isPrimary);
                             if (!secondaries.length) return null;
