@@ -62,6 +62,24 @@ if ! command -v rclone &>/dev/null; then
   fi
 fi
 
+# ── Ensure sudoers entry exists (self-heal — in-browser updates need this) ────
+# If the entry is missing or wrong, GUI updates silently fail with a sudo auth
+# error. Re-applying it here means one CLI update is enough to fix the issue.
+SUDOERS_FILE="/etc/sudoers.d/ip-manager-update"
+BASH_BIN=$(readlink -f /bin/bash 2>/dev/null || which bash)
+SUDOERS_LINE="www-data ALL=(root) NOPASSWD: ${BASH_BIN} ${APP_DIR}/scripts/update.sh --api-mode"
+if [ ! -f "$SUDOERS_FILE" ] || ! grep -qF "$SUDOERS_LINE" "$SUDOERS_FILE" 2>/dev/null; then
+  [ "$API_MODE" = true ] && echo "LOG:Fixing sudoers entry for in-browser updates…" \
+                         || log "Fixing sudoers entry for in-browser updates…"
+  echo "$SUDOERS_LINE" > "$SUDOERS_FILE"
+  chmod 440 "$SUDOERS_FILE"
+  if ! visudo -cf "$SUDOERS_FILE" &>/dev/null; then
+    rm -f "$SUDOERS_FILE"
+    [ "$API_MODE" = true ] && echo "LOG:Warning: sudoers entry failed validation — in-browser updates may not work." \
+                           || log "Warning: sudoers entry failed validation — in-browser updates may not work."
+  fi
+fi
+
 # ── Save rollback point ───────────────────────────────────────
 ROLLBACK_HASH=$(git -C "$APP_DIR" rev-parse HEAD 2>/dev/null || echo "")
 ERROR_LOG=""
