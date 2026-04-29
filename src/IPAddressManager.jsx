@@ -5108,6 +5108,23 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
   const [macVendor, setMacVendor] = useState(item.macVendor || '');
   const [showIconPicker, setShowIconPicker] = useState(false);
   const [iconSearch, setIconSearch] = useState('');
+  const [iconList, setIconList]     = useState(null); // null=not loaded, 'loading', or [slug,…]
+
+  // Fetch full icon list from selfh.st GitHub when picker is first opened
+  useEffect(() => {
+    if (!showIconPicker || iconList !== null) return;
+    setIconList('loading');
+    fetch('https://api.github.com/repos/selfhst/icons/git/trees/main?recursive=1')
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then(data => {
+        const slugs = (data.tree || [])
+          .filter(f => f.path && f.path.startsWith('svg/') && f.path.endsWith('.svg'))
+          .map(f => f.path.replace('svg/', '').replace('.svg', ''))
+          .sort();
+        setIconList(slugs.length ? slugs : null);
+      })
+      .catch(() => setIconList(null)); // fall back to static map on error
+  }, [showIconPicker]);
 
   // IP change
   const [showIpConflictConfirm, setShowIpConflictConfirm] = useState(false);
@@ -5422,30 +5439,54 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
                   />
                   {(() => {
                     const q = iconSearch.trim().toLowerCase();
-                    const hits = SH_SLUG_MAP.filter(([kw, slug]) =>
-                      !q || kw.includes(q) || slug.includes(q)
-                    ).slice(0, 24);
+
+                    // Loading state
+                    if (iconList === 'loading') return (
+                      <p className="text-xs text-slate-400 text-center py-3">Loading icon library…</p>
+                    );
+
+                    // Build hit list — prefer dynamic list, fall back to static map
+                    let hits;
+                    if (Array.isArray(iconList) && iconList.length) {
+                      // Dynamic list: slugs only; show all that match query, capped at 96
+                      const filtered = q
+                        ? iconList.filter(slug => slug.includes(q))
+                        : iconList;
+                      hits = filtered.slice(0, 96).map(slug => [slug, slug]);
+                    } else {
+                      // Static fallback: [keyword, slug] pairs
+                      hits = SH_SLUG_MAP.filter(([kw, slug]) =>
+                        !q || kw.includes(q) || slug.includes(q)
+                      );
+                    }
+
                     if (!hits.length) return <p className="text-xs text-slate-400 text-center py-2">No icons found</p>;
+                    const totalCount = Array.isArray(iconList) ? iconList.filter(s => !q || s.includes(q)).length : hits.length;
                     return (
-                      <div className="grid grid-cols-4 gap-1.5 max-h-52 overflow-y-auto">
-                        {hits.map(([kw, slug]) => (
-                          <button
-                            key={slug}
-                            type="button"
-                            onClick={() => { setFormData(prev => ({ ...prev, iconSlug: slug })); setShowIconPicker(false); setIconSearch(''); }}
-                            className={`flex flex-col items-center gap-1 p-2 rounded-lg border transition-colors hover:bg-white hover:border-emerald-300 ${formData.iconSlug === slug ? 'bg-emerald-50 border-emerald-400' : 'border-transparent bg-white/60'}`}
-                            title={slug}
-                          >
-                            <img
-                              src={`https://cdn.jsdelivr.net/gh/selfhst/icons/svg/${slug}.svg`}
-                              alt={kw}
-                              className="w-7 h-7 object-contain"
-                              onError={e => { e.currentTarget.style.display = 'none'; }}
-                            />
-                            <span className="text-[10px] text-slate-500 truncate w-full text-center leading-tight">{kw}</span>
-                          </button>
-                        ))}
-                      </div>
+                      <>
+                        {totalCount > hits.length && (
+                          <p className="text-[10px] text-slate-400 text-center">Showing {hits.length} of {totalCount} — type to narrow results</p>
+                        )}
+                        <div className="grid grid-cols-4 gap-1.5 max-h-64 overflow-y-auto">
+                          {hits.map(([label, slug]) => (
+                            <button
+                              key={slug + label}
+                              type="button"
+                              onClick={() => { setFormData(prev => ({ ...prev, iconSlug: slug })); setShowIconPicker(false); setIconSearch(''); }}
+                              className={`flex flex-col items-center gap-1 p-2 rounded-lg border transition-colors hover:bg-white hover:border-emerald-300 ${formData.iconSlug === slug ? 'bg-emerald-50 border-emerald-400' : 'border-transparent bg-white/60'}`}
+                              title={slug}
+                            >
+                              <img
+                                src={`https://cdn.jsdelivr.net/gh/selfhst/icons/svg/${slug}.svg`}
+                                alt={label}
+                                className="w-7 h-7 object-contain"
+                                onError={e => { e.currentTarget.style.display = 'none'; }}
+                              />
+                              <span className="text-[10px] text-slate-500 truncate w-full text-center leading-tight">{label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </>
                     );
                   })()}
                 </div>
