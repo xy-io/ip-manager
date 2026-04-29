@@ -1392,8 +1392,17 @@ const dnsModule = require('dns');
 let dnsCache = { results: {}, timestamp: 0, warning: null };
 const DNS_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours
 
-function getDnsConfig() {
-  return dbGet('dns_config') || { server: '', enabled: true, lastRun: null };
+function getDnsConfigs() {
+  const existing = dbGet('dns_configs');
+  if (existing && typeof existing === 'object') return existing;
+  // Migrate from old single dns_config
+  const old = dbGet('dns_config');
+  if (old && typeof old === 'object') {
+    const migrated = { 'net-1': { server: old.server || '', enabled: old.enabled !== false, lastRun: old.lastRun || null } };
+    dbSet('dns_configs', migrated);
+    return migrated;
+  }
+  return {};
 }
 
 // Build a Resolver pointed at the configured server; fall back to system resolver.
@@ -1421,72 +1430,65 @@ function ptrLookup(resolver, ip) {
 }
 
 async function refreshDnsCache() {
-  const config = getDnsConfig();
-  if (!config.enabled) return;
-
-  const rows = dbGet('ip_data') || [];
-  const ips  = rows.filter(r => r.ip && r.status !== 'free').map(r => r.ip);
-  if (!ips.length) return;
-
-  const resolver = makeResolver(config.server);
+  const configs  = getDnsConfigs();
+  const networks = dbGet('networks') || [];
+  const allRows  = dbGet('ip_data')  || [];
   const results  = {};
+  const updatedConfigs = { ...configs };
 
-  // Run all lookups concurrently — each one silently returns null on failure
   await Promise.all(
-    ips.map(async (ip) => {
-      results[ip] = { ptr: await ptrLookup(resolver, ip) };
+    networks.map(async (network) => {
+      const cfg = configs[network.id] || { server: '', enabled: true };
+      if (!cfg.enabled) return;
+      const ips = allRows
+        .filter(r => r.networkId === network.id && r.ip && r.assetName !== 'Free' && r.assetName !== 'Reserved')
+        .map(r => r.ip);
+      if (!ips.length) return;
+      const resolver = makeResolver(cfg.server);
+      await Promise.all(ips.map(async (ip) => {
+        results[ip] = { ptr: await ptrLookup(resolver, ip) };
+      }));
+      updatedConfigs[network.id] = { ...cfg, lastRun: new Date().toISOString() };
     })
   );
 
-  // Persist last-run timestamp to config
-  const newConfig = { ...config, lastRun: new Date().toISOString() };
-  dbSet('dns_config', newConfig);
-
+  dbSet('dns_configs', updatedConfigs);
   dnsCache = { results, timestamp: Date.now(), warning: null };
-  console.log(`[dns] Reverse lookup complete for ${ips.length} IPs`);
+  console.log(`[dns] Reverse lookup complete for ${Object.keys(results).length} IPs across ${networks.length} network(s)`);
 }
 
 // Background poller — every 24 h; does NOT run immediately at startup
 // (DNS is a slow operation; we fetch cached results on first page load instead)
 setInterval(refreshDnsCache, DNS_INTERVAL);
 
-// GET /api/dns-config
+// GET /api/dns-config — returns per-network config map
 app.get('/api/dns-config', requireAuth, (req, res) => {
-  const config = getDnsConfig();
-  res.json({ server: config.server || '', enabled: config.enabled !== false, lastRun: config.lastRun || null });
+  res.json({ configs: getDnsConfigs() });
 });
 
-// POST /api/dns-config — update DNS server and enable/disable flag
+// POST /api/dns-config — update one network's DNS config
 app.post('/api/dns-config', requireAuth, (req, res) => {
-  const { server, enabled } = req.body || {};
-  const current = getDnsConfig();
-  const updated = { ...current, server: (server || '').trim(), enabled: enabled !== false };
-  dbSet('dns_config', updated);
+  const { networkId, server, enabled } = req.body || {};
+  if (!networkId) return res.status(400).json({ error: 'networkId required' });
+  const configs = getDnsConfigs();
+  configs[networkId] = { ...(configs[networkId] || {}), server: (server || '').trim(), enabled: enabled !== false };
+  dbSet('dns_configs', configs);
   res.json({ ok: true });
 });
 
-// GET /api/dns-status — returns cached results; ?force=1 triggers an immediate refresh
+// GET /api/dns-status
 app.get('/api/dns-status', requireAuth, async (req, res) => {
   const forceParam = req.query.force === '1';
-
-  // Always refresh if:
-  //  a) caller requested force, or
-  //  b) cache is empty (server just started), or
-  //  c) ip_data contains IPs that are not in the cache — i.e. a new network or
-  //     new entries were added since the last run.  Without this check the
-  //     second (and any subsequent) network would never appear in results.
   const trackedIPs = (dbGet('ip_data') || [])
-    .filter(r => r.ip && r.status !== 'free')
+    .filter(r => r.ip && r.assetName !== 'Free' && r.assetName !== 'Reserved')
     .map(r => r.ip);
   const hasUncachedIPs = trackedIPs.some(ip => !(ip in dnsCache.results));
-
   if (forceParam || !dnsCache.timestamp || hasUncachedIPs) await refreshDnsCache();
-  const config = getDnsConfig();
   res.json({
     results:  dnsCache.results,
     warning:  dnsCache.warning,
     cachedAt: dnsCache.timestamp,
-    config:   { server: config.server || '', enabled: config.enabled !== false, lastRun: config.lastRun || null },
+    configs:  getDnsConfigs(),
   });
 });
 

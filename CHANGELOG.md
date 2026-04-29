@@ -6,6 +6,22 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v1.28.0
+
+**DNS resolver per network · Custom icon picker**
+
+### DNS resolver per network
+
+Each network now has its own DNS resolver configuration (Settings → DNS). Previously a single global DNS server was used for all reverse-lookup scans; now you can point each subnet at a different resolver — handy for multi-site or multi-VLAN setups where PTR records live on different nameservers.
+
+Existing installs are migrated automatically: the previous single-server config is preserved and mapped to your first network (`net-1`). No data is lost.
+
+### Custom icon picker
+
+Service icons can now be overridden per entry. When editing an entry the icon preview appears below the Service/Apps field. Clicking **"Pick icon manually"** opens a search panel backed by the [selfh.st](https://selfh.st) icon library — type a keyword, pick from the grid, and the icon is saved with the entry. Auto-detected icons still work as before when no manual override is set; click **"Reset to auto"** to revert.
+
+---
+
 ## v1.27.5
 
 **Fix: GUI updates on LXC — remove sudo dependency**

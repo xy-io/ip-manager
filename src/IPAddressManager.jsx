@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 import QRCode from 'qrcode';
 
 // ── App version ───────────────────────────────────────────────────────────────
-const APP_VERSION = 'v1.27.5';
+const APP_VERSION = 'v1.28.0';
 
 // Default network configuration (overridden by Settings modal / localStorage)
 const DEFAULT_NETWORK_CONFIG = {
@@ -1182,6 +1182,131 @@ function SupportTab({ ipData, networks }) {
   );
 }
 
+function DnsTab({ networks, dnsConfig, dnsStatus, dnsLoading, onSave, onRun }) {
+  const [localCfg, setLocalCfg] = React.useState(() => {
+    const init = {};
+    (networks || []).forEach(n => {
+      const saved = (dnsConfig || {})[n.id] || {};
+      init[n.id] = { server: saved.server || '', enabled: saved.enabled !== false };
+    });
+    return init;
+  });
+  const [saving, setSaving] = React.useState(null); // networkId being saved
+
+  const handleSave = async (networkId) => {
+    setSaving(networkId);
+    const cfg = localCfg[networkId] || { server: '', enabled: true };
+    await onSave({ networkId, server: cfg.server, enabled: cfg.enabled });
+    setSaving(null);
+  };
+
+  const fmtTime = (iso) => {
+    if (!iso) return 'Never';
+    const d = new Date(iso);
+    const diffMin = Math.floor((Date.now() - d) / 60000);
+    if (diffMin < 1) return 'just now';
+    if (diffMin < 60) return `${diffMin}m ago`;
+    const h = Math.floor(diffMin / 60);
+    if (h < 24) return `${h}h ago`;
+    return `${Math.floor(h / 24)}d ago`;
+  };
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h3 className="text-base font-semibold text-slate-800">DNS Reverse Lookup</h3>
+        <p className="text-sm text-slate-500 mt-0.5">
+          Configure a DNS server per network for PTR record lookups. Each network can point to its own resolver (e.g. a local Pi-hole or router).
+        </p>
+      </div>
+
+      {(networks || []).map(network => {
+        const cfg = localCfg[network.id] || { server: '', enabled: true };
+        const saved = (dnsConfig || {})[network.id] || {};
+        return (
+          <div key={network.id} className="border border-slate-200 rounded-xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold text-slate-800">{network.networkName}</p>
+                <p className="text-xs text-slate-400 font-mono">{network.subnet}</p>
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <span className="text-xs text-slate-500">Enabled</span>
+                <div
+                  onClick={() => setLocalCfg(prev => ({ ...prev, [network.id]: { ...cfg, enabled: !cfg.enabled } }))}
+                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors cursor-pointer ${cfg.enabled ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                >
+                  <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${cfg.enabled ? 'translate-x-4' : 'translate-x-1'}`} />
+                </div>
+              </label>
+            </div>
+
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={cfg.server}
+                onChange={e => setLocalCfg(prev => ({ ...prev, [network.id]: { ...cfg, server: e.target.value } }))}
+                placeholder="e.g. 192.168.1.1 (leave blank for system default)"
+                className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm font-mono"
+              />
+              <button
+                type="button"
+                onClick={() => handleSave(network.id)}
+                disabled={saving === network.id}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                {saving === network.id ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+
+            {saved.lastRun && (
+              <p className="text-xs text-slate-400">Last run: {fmtTime(saved.lastRun)}</p>
+            )}
+          </div>
+        );
+      })}
+
+      <button
+        type="button"
+        onClick={onRun}
+        disabled={dnsLoading}
+        className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-800 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+      >
+        {dnsLoading
+          ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Running…</>
+          : '↻ Refresh DNS Now'
+        }
+      </button>
+
+      {dnsStatus && Object.keys(dnsStatus).length > 0 && (
+        <div className="space-y-2">
+          <p className="text-sm font-medium text-slate-700">Cached PTR Records</p>
+          <div className="border border-slate-200 rounded-xl overflow-hidden">
+            <table className="w-full text-xs">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="px-3 py-2 text-left font-medium text-slate-500">IP</th>
+                  <th className="px-3 py-2 text-left font-medium text-slate-500">PTR Record</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {Object.entries(dnsStatus)
+                  .filter(([, v]) => v?.ptr)
+                  .map(([ip, v]) => (
+                    <tr key={ip}>
+                      <td className="px-3 py-2 font-mono text-slate-600">{ip}</td>
+                      <td className="px-3 py-2 font-mono text-slate-500">{v.ptr}</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLocation, onDeleteLocation, tags, onRenameTag, onDeleteTag, canDeleteNetwork, onDeleteNetwork, showFreeInList, onToggleShowFreeInList, ipData, networks, onRestore, dnsConfig, dnsStatus, dnsLoading, onSaveDnsConfig, onRunDns, proxmoxSyncConfig, proxmoxSyncStatus, proxmoxSyncLoading, onSaveProxmoxSyncConfig, onRunProxmoxSync, updateAvailable, initialTab }) {
   const [form, setForm] = useState({
     networkName: config.networkName,
@@ -1205,8 +1330,6 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
   const [confirmRestore, setConfirmRestore] = useState(false);
   const restoreFileRef = useRef(null);
 
-  // DNS config form state (local draft until saved)
-  const [dnsForm, setDnsForm] = useState({ server: dnsConfig?.server || '', enabled: dnsConfig?.enabled !== false });
 
   // Proxmox sync form state (local draft until saved)
   const [proxSyncForm, setProxSyncForm] = useState({
@@ -1553,116 +1676,14 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
 
             {/* ── DNS TAB ── */}
             {activeTab === 'dns' && onSaveDnsConfig && (
-              <div className="space-y-5">
-                <div>
-                  <h3 className="text-base font-semibold text-slate-800 mb-1">DNS Reverse Lookup</h3>
-                  <p className="text-xs text-slate-500 mb-4">Resolves PTR records for all tracked IPs. Runs automatically every 24 hours. Leave the server blank to use the system default resolver.</p>
-                </div>
-                <div>
-                  <label className={labelCls}>DNS Server</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      placeholder="192.168.0.6 or 8.8.8.8 — blank = system default"
-                      value={dnsForm.server}
-                      onChange={e => setDnsForm(p => ({ ...p, server: e.target.value }))}
-                      className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent text-sm"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => onSaveDnsConfig({ server: dnsForm.server, enabled: dnsForm.enabled })}
-                      className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-sm font-medium whitespace-nowrap transition-colors"
-                    >
-                      Save
-                    </button>
-                  </div>
-                </div>
-                <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={dnsForm.enabled}
-                    onChange={e => setDnsForm(p => ({ ...p, enabled: e.target.checked }))}
-                    className="rounded border-slate-300 text-teal-600 focus:ring-teal-500"
-                  />
-                  Enable automatic DNS lookup (every 24 hours)
-                </label>
-
-                <div className="pt-3 border-t border-slate-200">
-                  {/* Run Now row */}
-                  <div className="flex items-center gap-3 mb-3">
-                    <button
-                      type="button"
-                      onClick={onRunDns}
-                      disabled={dnsLoading}
-                      className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-teal-50 hover:text-teal-700 text-slate-600 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {dnsLoading ? (
-                        <><span className="animate-spin text-base">⟳</span> Looking up…</>
-                      ) : (
-                        'Run Now'
-                      )}
-                    </button>
-                    {dnsConfig?.lastRun && (
-                      <span className="text-xs text-slate-400">
-                        Last run: {new Date(dnsConfig.lastRun).toLocaleString()}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* DNS result log */}
-                  {dnsLoading && (
-                    <div className="flex items-center gap-2 px-3 py-2.5 bg-teal-50 border border-teal-200 rounded-lg text-xs text-teal-700">
-                      <span className="animate-spin text-sm">⟳</span>
-                      Resolving PTR records…
-                    </div>
-                  )}
-
-                  {!dnsLoading && dnsConfig?.lastRun && (() => {
-                    const entries = Object.entries(dnsStatus || {});
-                    if (!entries.length) return null;
-                    const resolved   = entries.filter(([, v]) => v?.ptr);
-                    const unresolved = entries.filter(([, v]) => !v?.ptr);
-                    const allOk = unresolved.length === 0;
-                    return (
-                      <div className="border border-slate-200 rounded-lg overflow-hidden">
-                        {/* Summary header */}
-                        <div className={`flex items-center justify-between px-3 py-2 border-b ${allOk ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
-                          <span className={`text-xs font-semibold ${allOk ? 'text-emerald-800' : 'text-amber-800'}`}>
-                            {entries.length} IPs checked — {resolved.length} resolved
-                            {unresolved.length > 0 && <span className="text-amber-600"> · {unresolved.length} unresolved</span>}
-                          </span>
-                          <span className="text-xs text-slate-400">Last run</span>
-                        </div>
-                        {/* Resolved PTR records */}
-                        {resolved.length > 0 && (
-                          <div className="max-h-48 overflow-y-auto divide-y divide-slate-100">
-                            {resolved.map(([ip, v]) => (
-                              <div key={ip} className="flex items-center gap-3 px-3 py-1.5 bg-white text-xs">
-                                <span className="font-mono text-slate-400 w-28 flex-shrink-0">{ip}</span>
-                                <span className="text-slate-700 truncate">{v.ptr}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        {/* Unresolved IPs (shown only if there are any) */}
-                        {unresolved.length > 0 && (
-                          <div className="border-t border-slate-100">
-                            <div className="px-3 py-1.5 bg-slate-50 text-xs text-slate-400 font-medium">No PTR record</div>
-                            <div className="max-h-24 overflow-y-auto divide-y divide-slate-100">
-                              {unresolved.map(([ip]) => (
-                                <div key={ip} className="flex items-center gap-3 px-3 py-1.5 bg-white text-xs">
-                                  <span className="font-mono text-slate-400 w-28 flex-shrink-0">{ip}</span>
-                                  <span className="text-slate-400 italic">—</span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })()}
-                </div>
-              </div>
+              <DnsTab
+                networks={networks}
+                dnsConfig={dnsConfig}
+                dnsStatus={dnsStatus}
+                dnsLoading={dnsLoading}
+                onSave={onSaveDnsConfig}
+                onRun={onRunDns}
+              />
             )}
 
             {/* ── PROXMOX SYNC TAB ── */}
@@ -3382,9 +3403,9 @@ const getHealthSuggest = (apps) => {
 // Tries selfh.st CDN icon first; in dark mode requests the -light variant
 // (white SVG on dark bg), retrying with the standard coloured icon if missing.
 // Falls back to the existing Lucide icon if the CDN has nothing for the slug.
-const ServiceIcon = ({ apps, assetName, darkMode, imgClass, lucideClass }) => {
+const ServiceIcon = ({ apps, assetName, iconSlug, darkMode, imgClass, lucideClass }) => {
   const [failed, setFailed] = React.useState(false);
-  const slug = getServiceSlug(apps, assetName);
+  const slug = iconSlug || getServiceSlug(apps, assetName);
   const FallbackIcon = getServiceIcon(apps, assetName);
 
   if (slug && !failed) {
@@ -5078,12 +5099,15 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
     healthPath:   item.healthPath   || '/',
     mac: item.mac || '',
     dependencies: item.dependencies || [],
+    iconSlug: item.iconSlug || '',
   });
   const [tagInput, setTagInput] = useState('');
   const [showTagSuggestions, setShowTagSuggestions] = useState(false);
   const [depInput, setDepInput] = useState('');
   const [showDepSuggestions, setShowDepSuggestions] = useState(false);
   const [macVendor, setMacVendor] = useState(item.macVendor || '');
+  const [showIconPicker, setShowIconPicker] = useState(false);
+  const [iconSearch, setIconSearch] = useState('');
 
   // IP change
   const [showIpConflictConfirm, setShowIpConflictConfirm] = useState(false);
@@ -5354,6 +5378,80 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
             />
           </div>
+
+          {/* Icon picker */}
+          {!isFree && !isReserved && (
+            <div>
+              <div className="flex items-center gap-2 mt-1">
+                <div className="w-6 h-6 flex-shrink-0">
+                  <ServiceIcon
+                    apps={formData.apps}
+                    assetName={formData.assetName}
+                    iconSlug={formData.iconSlug}
+                    imgClass="w-6 h-6 object-contain"
+                    lucideClass="w-5 h-5 text-slate-400"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowIconPicker(v => !v)}
+                  className="text-xs text-emerald-600 hover:text-emerald-700 font-medium"
+                >
+                  {showIconPicker ? 'Close picker' : formData.iconSlug ? 'Change icon' : 'Pick icon manually'}
+                </button>
+                {formData.iconSlug && (
+                  <button
+                    type="button"
+                    onClick={() => { setFormData(prev => ({ ...prev, iconSlug: '' })); setShowIconPicker(false); }}
+                    className="text-xs text-slate-400 hover:text-slate-600"
+                  >
+                    Reset to auto
+                  </button>
+                )}
+              </div>
+
+              {showIconPicker && (
+                <div className="mt-2 border border-slate-200 rounded-xl p-3 space-y-2 bg-slate-50">
+                  <input
+                    type="text"
+                    value={iconSearch}
+                    onChange={e => setIconSearch(e.target.value)}
+                    placeholder="Search icons… (e.g. pihole, nginx, docker)"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm bg-white"
+                    autoFocus
+                  />
+                  {(() => {
+                    const q = iconSearch.trim().toLowerCase();
+                    const hits = SH_SLUG_MAP.filter(([kw, slug]) =>
+                      !q || kw.includes(q) || slug.includes(q)
+                    ).slice(0, 24);
+                    if (!hits.length) return <p className="text-xs text-slate-400 text-center py-2">No icons found</p>;
+                    return (
+                      <div className="grid grid-cols-4 gap-1.5 max-h-52 overflow-y-auto">
+                        {hits.map(([kw, slug]) => (
+                          <button
+                            key={slug}
+                            type="button"
+                            onClick={() => { setFormData(prev => ({ ...prev, iconSlug: slug })); setShowIconPicker(false); setIconSearch(''); }}
+                            className={`flex flex-col items-center gap-1 p-2 rounded-lg border transition-colors hover:bg-white hover:border-emerald-300 ${formData.iconSlug === slug ? 'bg-emerald-50 border-emerald-400' : 'border-transparent bg-white/60'}`}
+                            title={slug}
+                          >
+                            <img
+                              src={`https://cdn.jsdelivr.net/gh/selfhst/icons/svg/${slug}.svg`}
+                              alt={kw}
+                              className="w-7 h-7 object-contain"
+                              onError={e => { e.currentTarget.style.display = 'none'; }}
+                            />
+                            <span className="text-[10px] text-slate-500 truncate w-full text-center leading-tight">{kw}</span>
+                          </button>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Tags</label>
@@ -5763,7 +5861,7 @@ export default function IPAddressManager() {
   const [dnsStatus,  setDnsStatus]  = useState({});
   const [dnsLoading, setDnsLoading] = useState(false);
   const [dnsLastAt,  setDnsLastAt]  = useState(null); // Date
-  const [dnsConfig,  setDnsConfig]  = useState({ server: '', enabled: true, lastRun: null });
+  const [dnsConfig, setDnsConfig] = useState({}); // keyed by networkId
 
   // Proxmox scheduled sync
   const [proxmoxSyncConfig,  setProxmoxSyncConfig]  = useState({ host: '', token: '', ignoreTLS: true, enabled: false, intervalMinutes: 60, lastRun: null, changesFound: 0 });
@@ -6035,21 +6133,24 @@ export default function IPAddressManager() {
       const data = await res.json();
       setDnsStatus(data.results || {});
       setDnsLastAt(data.cachedAt ? new Date(data.cachedAt) : null);
-      if (data.config) setDnsConfig(data.config);
+      if (data.configs) setDnsConfig(data.configs);
     } catch { /* silently ignore network errors */ } finally {
       setDnsLoading(false);
     }
   };
 
-  const handleSaveDnsConfig = async (cfg) => {
+  const handleSaveDnsConfig = async ({ networkId, server, enabled }) => {
     try {
       await fetch('/api/dns-config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(cfg),
+        body: JSON.stringify({ networkId, server, enabled }),
       });
-      setDnsConfig(prev => ({ ...prev, ...cfg }));
-    } catch { /* ignore */ }
+      setDnsConfig(prev => ({
+        ...prev,
+        [networkId]: { ...(prev[networkId] || {}), server, enabled },
+      }));
+    } catch {}
   };
 
   // Load cached DNS results on mount (no auto-poll — runs every 24h server-side)
@@ -7409,6 +7510,7 @@ export default function IPAddressManager() {
                             <ServiceIcon
                               apps={item.apps}
                               assetName={item.assetName}
+                              iconSlug={item.iconSlug}
                               darkMode={darkMode}
                               imgClass="w-5 h-5 object-contain"
                               lucideClass={`w-5 h-5 ${isReserved ? 'text-slate-300' : 'text-slate-600'}`}
@@ -8003,6 +8105,7 @@ export default function IPAddressManager() {
                               <ServiceIcon
                                 apps={item.apps}
                                 assetName={item.assetName}
+                                iconSlug={item.iconSlug}
                                 darkMode={darkMode}
                                 imgClass="w-4 h-4 object-contain flex-shrink-0"
                                 lucideClass="w-4 h-4 flex-shrink-0 text-slate-400"
