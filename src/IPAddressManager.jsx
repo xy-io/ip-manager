@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 import QRCode from 'qrcode';
 
 // ── App version ───────────────────────────────────────────────────────────────
-const APP_VERSION = 'v1.28.0';
+const APP_VERSION = 'v1.29.0';
 
 // Default network configuration (overridden by Settings modal / localStorage)
 const DEFAULT_NETWORK_CONFIG = {
@@ -1355,8 +1355,8 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
     if (pwForm.newPassword !== pwForm.confirmPassword) {
       return setPwError('New passwords do not match');
     }
-    if (pwForm.newPassword.length < 4) {
-      return setPwError('New password must be at least 4 characters');
+    if (pwForm.newPassword.length < 8) {
+      return setPwError('New password must be at least 8 characters');
     }
     if (!pwForm.newUsername.trim()) {
       return setPwError('Username cannot be blank');
@@ -2075,7 +2075,7 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
                     <label className={labelCls}>New Password</label>
                     <input type="password" autoComplete="new-password" value={pwForm.newPassword}
                       onChange={e => setPwForm(f => ({ ...f, newPassword: e.target.value }))}
-                      className={inputCls} placeholder="New password (min 4 chars)" />
+                      className={inputCls} placeholder="New password (min 8 chars)" />
                   </div>
                   <div>
                     <label className={labelCls}>Confirm New Password</label>
@@ -3183,8 +3183,117 @@ function LoginScreen({ onLogin }) {
         </form>
 
         <div className="mt-6 p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-500 text-center">
-          <span className="font-medium">First time?</span> Sign in with <span className="font-mono bg-white px-1 py-0.5 rounded border border-slate-200">admin</span> / <span className="font-mono bg-white px-1 py-0.5 rounded border border-slate-200">admin</span>, then go to <span className="font-medium">Settings → Account</span> to set your own credentials.
+          <span className="font-medium">First time?</span> Your initial password was printed in the installer output and saved to the service journal. Run <span className="font-mono bg-white px-1 py-0.5 rounded border border-slate-200">journalctl -u ip-manager-api | grep -A5 "initial credentials"</span> to retrieve it.
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Force-change-password screen ──────────────────────────────────────────────
+// Shown when the server reports mustChangePassword (i.e. credentials are still
+// the literal admin/admin default). Non-dismissible — user must set a new
+// password before accessing the app.
+
+function ForceChangePasswordScreen() {
+  const [form, setForm] = useState({ newUsername: 'admin', newPassword: '', confirmPassword: '' });
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    if (form.newPassword !== form.confirmPassword) return setError('Passwords do not match');
+    if (form.newPassword.length < 8) return setError('Password must be at least 8 characters');
+    if (!form.newUsername.trim()) return setError('Username cannot be blank');
+    setLoading(true);
+    try {
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // currentPassword is known to be 'admin' — that's the only way to reach this screen
+        body: JSON.stringify({ currentPassword: 'admin', newUsername: form.newUsername.trim(), newPassword: form.newPassword }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSuccess(true);
+        setTimeout(() => window.location.reload(), 1500);
+      } else {
+        setError(data.error || 'Failed to update credentials');
+      }
+    } catch {
+      setError('Could not reach the server');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-8">
+        <div className="text-center mb-6">
+          <div className="inline-flex items-center justify-center w-14 h-14 bg-amber-100 rounded-2xl mb-4">
+            <AlertTriangle className="w-7 h-7 text-amber-600" />
+          </div>
+          <h1 className="text-xl font-bold text-slate-800">Set Your Password</h1>
+          <p className="text-slate-500 text-sm mt-2">This install is using default credentials. Set a new password to access the app.</p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Username</label>
+            <input
+              type="text"
+              autoComplete="username"
+              value={form.newUsername}
+              onChange={e => setForm(f => ({ ...f, newUsername: e.target.value }))}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">New Password</label>
+            <input
+              type="password"
+              autoFocus
+              autoComplete="new-password"
+              value={form.newPassword}
+              onChange={e => setForm(f => ({ ...f, newPassword: e.target.value }))}
+              placeholder="At least 8 characters"
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Confirm Password</label>
+            <input
+              type="password"
+              autoComplete="new-password"
+              value={form.confirmPassword}
+              onChange={e => setForm(f => ({ ...f, confirmPassword: e.target.value }))}
+              placeholder="Repeat new password"
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+            />
+          </div>
+
+          {error && (
+            <div className="flex items-center gap-2 text-red-600 text-sm bg-red-50 px-3 py-2 rounded-lg">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />{error}
+            </div>
+          )}
+          {success && (
+            <div className="flex items-center gap-2 text-emerald-600 text-sm bg-emerald-50 px-3 py-2 rounded-lg">
+              <CheckCircle className="w-4 h-4 flex-shrink-0" />Password updated — reloading…
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading || success}
+            className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-semibold py-2.5 rounded-lg transition-colors"
+          >
+            {loading ? 'Saving…' : 'Set Password & Continue'}
+          </button>
+        </form>
       </div>
     </div>
   );
@@ -5848,6 +5957,8 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
 export default function IPAddressManager() {
   // Auth state: 'checking' while we verify the session, 'ok' when logged in, 'none' when not.
   const [auth, setAuth] = useState('checking');
+  // True when the server reports credentials are still the default admin/admin.
+  const [mustChangePassword, setMustChangePassword] = useState(false);
 
   // Register the global 401 handler so apiGet/apiPut can signal session expiry.
   useEffect(() => {
@@ -5949,12 +6060,13 @@ export default function IPAddressManager() {
       try {
         const statusRes = await fetch('/api/auth/status');
         if (statusRes.ok) {
-          const { authenticated } = await statusRes.json();
+          const { authenticated, mustChangePassword: mcp } = await statusRes.json();
           if (!authenticated) {
             setAuth('none');
             setPersistMode('local'); // fall back to localStorage while logged out
             return;
           }
+          if (mcp) setMustChangePassword(true);
           setAuth('ok');
         }
       } catch {
@@ -6777,6 +6889,10 @@ export default function IPAddressManager() {
     // Reload the page after login so the full init/data-loading flow reruns
     // with the auth cookie already set — avoids stale-state data wipe issues.
     return <LoginScreen onLogin={() => window.location.reload()} />;
+  }
+  if (mustChangePassword) {
+    // Default credentials detected — block access until the password is changed.
+    return <ForceChangePasswordScreen />;
   }
 
   return (

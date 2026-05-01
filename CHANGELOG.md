@@ -6,6 +6,32 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v1.29.0
+
+**Security: eliminate default-credential window**
+
+Fresh installs no longer ship with a known password. On first start the server generates a unique random password (96-bit, URL-safe), saves it to `credentials.env`, and logs it to the service journal. The installer echoes these credentials at the end of its output — one copy-paste and you're in.
+
+**Two layers of protection:**
+
+- **No shared default** — every install gets its own generated password. There is no `admin/admin` to guess.
+- **Lockout safety net** — if credentials ever match the literal `admin/admin` (old installs, manual edits), the API refuses every route except login and change-password until the password is updated. The app shows a non-dismissible "Set Your Password" screen on login.
+
+**For existing installs with a custom password** — nothing changes. The upgrade deploys silently and the app behaves identically.
+
+**For existing installs still on `admin/admin`** — after upgrading you can still log in, but you'll be required to set a new password before accessing the app. No data is lost.
+
+**Credential recovery** — if you lose the initial password:
+```
+journalctl -u ip-manager-api | grep -A5 "initial credentials"
+```
+
+**Other changes in this release:**
+- `server/credentials.env` removed from git tracking and added to `.gitignore`
+- Minimum password length raised from 4 to 8 characters
+
+---
+
 ## v1.28.0
 
 **DNS resolver per network · Custom icon picker**

@@ -147,11 +147,15 @@ The script will:
 3. Install Node.js 20 LTS
 4. Clone this repository to `/opt/ip-manager`
 5. Run `npm install` and `npm run build`
-6. Set correct file ownership so the service user can write the database and credentials
-7. Configure Nginx to serve the app on **port 80**
-8. Create an `ip-manager-update` command for future updates
+6. Configure Nginx to serve the app on **port 80**
+7. Create an `ip-manager-update` command for future updates
 
-When it finishes, open the container's IP in your browser and you're done.
+When it finishes, **your initial login credentials are printed at the bottom of the installer output**. Open the container's IP in your browser, sign in, and you'll be prompted to set a permanent password before you can access the app.
+
+> **Credential recovery** — if you lose the initial password, run:
+> ```
+> journalctl -u ip-manager-api | grep -A5 "initial credentials"
+> ```
 
 ---
 

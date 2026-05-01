@@ -18,11 +18,11 @@ app.use(express.json({ limit: '2mb' }));
 app.use(cookieParser());
 
 // ── Credentials ───────────────────────────────────────────────────────────────
-// Reads from IP_MANAGER_USERNAME / IP_MANAGER_PASSWORD env vars.
-// If not set, falls back to a credentials.env file.
-// The file path can be overridden with CREDENTIALS_FILE env var (useful when
-// the server directory is read-only, e.g. deployed under /opt).
-// If that doesn't exist either, defaults to admin / admin (with a warning).
+// Priority order:
+//   1. IP_MANAGER_USERNAME / IP_MANAGER_PASSWORD environment variables
+//   2. credentials.env file (path overridable via CREDENTIALS_FILE env var)
+//   3. First-run: generate a random password, persist it, log it to the journal.
+//      There is NO admin/admin fallback — every install gets a unique password.
 
 // Resolve the credentials file path once at startup.
 const CREDENTIALS_FILE = process.env.CREDENTIALS_FILE || path.join(__dirname, 'credentials.env');
@@ -46,8 +46,25 @@ function loadCredentials() {
       return { username: env.IP_MANAGER_USERNAME, password: env.IP_MANAGER_PASSWORD };
     }
   }
-  console.warn(`[auth] No credentials configured — using defaults (admin/admin). Set CREDENTIALS_FILE env var or create ${CREDENTIALS_FILE} to persist your own.`);
-  return { username: 'admin', password: 'admin' };
+  // First run — no credentials file exists yet. Generate a random password,
+  // persist it so it survives restarts, and log it once to the journal.
+  // Recovery: journalctl -u ip-manager-api | grep -A5 "initial credentials"
+  const username = 'admin';
+  const password = crypto.randomBytes(12).toString('base64url'); // 16 URL-safe chars, 96 bits
+  try {
+    fs.writeFileSync(envFile, `IP_MANAGER_USERNAME=${username}\nIP_MANAGER_PASSWORD=${password}\n`, { mode: 0o600 });
+  } catch (e) {
+    console.error(`[auth] Could not write credentials file (${envFile}): ${e.message}`);
+  }
+  console.log('═══════════════════════════════════════════════════════════════');
+  console.log(' IP Manager — initial credentials (change after first login):');
+  console.log(`   username : ${username}`);
+  console.log(`   password : ${password}`);
+  console.log(' Saved to: ' + envFile);
+  console.log(' To retrieve later:');
+  console.log('   journalctl -u ip-manager-api | grep -A5 "initial credentials"');
+  console.log('═══════════════════════════════════════════════════════════════');
+  return { username, password };
 }
 
 let credentials = loadCredentials();
@@ -82,6 +99,25 @@ function requireAuth(req, res, next) {
   res.status(401).json({ error: 'Unauthorised' });
 }
 
+// ── Default-credentials lockout (safety net) ──────────────────────────────────
+// If the live credentials are still admin/admin, every API route except
+// /api/auth/* returns 423 Locked until the password is changed.
+// This catches old installs that haven't yet migrated away from the default.
+
+function isDefaultCreds() {
+  return credentials.username === 'admin' && credentials.password === 'admin';
+}
+
+function requireNotDefault(req, res, next) {
+  if (isDefaultCreds()) {
+    return res.status(423).json({
+      error: 'default-credentials',
+      message: 'Default credentials must be changed before the API is available.',
+    });
+  }
+  next();
+}
+
 // ── Auth routes (unprotected) ─────────────────────────────────────────────────
 
 app.post('/api/auth/login', (req, res) => {
@@ -93,7 +129,7 @@ app.post('/api/auth/login', (req, res) => {
     const token = createSession();
     // httpOnly prevents JS access; sameSite=strict prevents CSRF
     res.cookie(SESSION_COOKIE, token, { httpOnly: true, sameSite: 'strict' });
-    return res.json({ ok: true });
+    return res.json({ ok: true, mustChangePassword: isDefaultCreds() });
   }
   res.status(401).json({ error: 'Invalid username or password' });
 });
@@ -106,7 +142,8 @@ app.post('/api/auth/logout', (req, res) => {
 });
 
 app.get('/api/auth/status', (req, res) => {
-  res.json({ authenticated: isValidSession(req.cookies[SESSION_COOKIE]) });
+  const authenticated = isValidSession(req.cookies[SESSION_COOKIE]);
+  res.json({ authenticated, mustChangePassword: authenticated && isDefaultCreds() });
 });
 
 // Change credentials — requires a valid session AND the current password
@@ -359,6 +396,12 @@ const dbSet = (key, value) => {
 // ── Protected routes ──────────────────────────────────────────────────────────
 // All /api/* routes below this point require a valid session.
 
+// Lockout: block all non-/auth/ routes when default credentials are in use.
+// /auth/ routes are registered above this point and are unaffected.
+app.use('/api', (req, res, next) => {
+  if (req.path.startsWith('/auth/')) return next();
+  return requireNotDefault(req, res, next);
+});
 app.use('/api', requireAuth);
 
 // Health check — used by the React app to detect API mode

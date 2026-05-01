@@ -17,6 +17,9 @@ audit.jsonl
 uploads/
 outputs/
 
+# Credentials — generated on first server start, must never be committed
+server/credentials.env
+
 # Xcode user data
 *.xcuserstate
 xcuserdata/

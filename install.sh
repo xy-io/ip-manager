@@ -116,20 +116,15 @@ cd "$APP_DIR/server"
 npm install 2>&1 | grep -E "error|warn|ERR" || true
 ok "API server packages installed"
 
-# ── 6a. Set permissions so www-data can write the database and credentials ───
+# ── 6a. Set permissions so the service can write the database and credentials ─
 log "Setting permissions on server directory..."
-chown -R www-data:www-data "$APP_DIR/server"
-# Pre-create credentials.env so www-data can write to it later (changing
-# an existing file doesn't require directory write permission, but creating
-# a new file does — so we create it now as root while we still can).
-touch "$APP_DIR/server/credentials.env"
-chown www-data:www-data "$APP_DIR/server/credentials.env"
-chmod 600 "$APP_DIR/server/credentials.env"
-# Pre-create rclone.conf so www-data can write to it when users configure cloud backup
+chown -R root:root "$APP_DIR/server"
+# credentials.env is created automatically on first server start — no need to
+# pre-create it here. The service runs as root so it can write anywhere.
+# Pre-create rclone.conf so the service can write to it when users configure cloud backup
 touch "$APP_DIR/server/rclone.conf"
-chown www-data:www-data "$APP_DIR/server/rclone.conf"
 chmod 600 "$APP_DIR/server/rclone.conf"
-ok "Permissions set — server directory, credentials.env, and rclone.conf owned by www-data"
+ok "Permissions set — server directory owned by root"
 
 # ── 7. Create systemd service for the API ────────────────────
 log "Creating systemd service for the API server..."
@@ -255,4 +250,24 @@ echo -e "  ${BLUE}Nginx log:${NC}    /var/log/nginx/ip-manager.access.log"
 echo ""
 echo -e "  To update the app later, run:"
 echo -e "  ${YELLOW}  ip-manager-update${NC}"
+echo ""
+
+# ── Echo the generated credentials ───────────────────────────────────────────
+# The server generates a random password on first start and logs it to the
+# journal. Pull those lines out now so they appear right in the installer
+# output — one copy-paste and the user is in.
+echo -e "${GREEN}============================================${NC}"
+echo -e "${GREEN}   Initial Login Credentials${NC}"
+echo -e "${GREEN}============================================${NC}"
+echo ""
+CRED_LINES=$(journalctl -u ${SERVICE_NAME} -n 50 --no-pager 2>/dev/null | grep -A5 "initial credentials" | grep -E "username|password" || true)
+if [ -n "$CRED_LINES" ]; then
+  echo -e "$CRED_LINES"
+else
+  echo -e "  ${YELLOW}Could not read credentials from journal yet.${NC}"
+  echo -e "  Run this command to retrieve them:"
+  echo -e "  ${YELLOW}  journalctl -u ${SERVICE_NAME} | grep -A5 'initial credentials'${NC}"
+fi
+echo ""
+echo -e "  ${BLUE}You will be prompted to change this password on first login.${NC}"
 echo ""
