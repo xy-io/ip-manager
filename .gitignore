@@ -20,6 +20,9 @@ outputs/
 # Credentials — generated on first server start, must never be committed
 server/credentials.env
 
+# Cowork / Claude working files
+.claude/
+
 # Xcode user data
 *.xcuserstate
 xcuserdata/
