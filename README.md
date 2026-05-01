@@ -45,17 +45,17 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
-### v1.27 — Dependency mapping
+### v1.29 — Security: no more default passwords
 
-Link any entry to the devices it relies on — a red **dep offline** badge appears automatically on the card when a dependency goes down, so you can see at a glance why something might be misbehaving.
+Fresh installs no longer ship with a known password. On first start the server generates a unique random password, saves it to `credentials.env`, and logs it to the service journal. The installer prints the credentials at the end of its output — one copy-paste and you're in.
 
-**Defining dependencies** — open the edit modal for any entry and use the new Dependencies field. Search by IP, hostname, or device name; selected dependencies appear as removable amber chips. An entry cannot depend on itself.
+If credentials ever match `admin/admin` (old installs), the API locks down and the app shows a non-dismissible password-change screen until new credentials are set.
 
-**Card badge** — when one or more dependencies are offline (ping failure or health check failure), a red ⚠ "dep offline" badge appears in the card's badge row. Hovering shows which devices are down. The badge disappears automatically once all dependencies are back online. Entries that haven't been pinged yet don't trigger a false warning.
+### v1.28 — DNS resolver per network · Custom icon picker
 
-**Expanded card** — expanding a card shows the full dependency list with each linked device's IP, name, and a live status dot (green = up, red = down, grey = not yet checked).
+Each network now has its own DNS reverse-lookup resolver (Settings → DNS), useful for multi-site or multi-VLAN setups where PTR records live on different nameservers.
 
-**Scope** — one level deep (direct dependencies only). Ping or health check failure both count as "down".
+Service icons can now be overridden per entry — open the edit modal, click **Pick icon manually**, and search the [selfh.st](https://selfh.st) library (500+ icons). Auto-detected icons still work as before.
 
 → Full version history: [CHANGELOG.md](./CHANGELOG.md)
 
