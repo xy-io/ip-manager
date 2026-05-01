@@ -355,6 +355,8 @@ function UpdatesTab() {
     setUpdatePhase('running');
     setSteps([]); setLogs([]); setErrorMsg(''); setShowLog(false);
 
+    const updateStartedAt = new Date().toISOString();
+
     const startRes = await fetch('/api/update/start', { method: 'POST', credentials: 'include' });
     if (!startRes.ok) {
       const e = await startRes.json().catch(() => ({}));
@@ -363,8 +365,29 @@ function UpdatesTab() {
 
     const es = new EventSource('/api/update/stream');
 
+    // Start a poll that waits for a result whose timestamp is NEWER than when
+    // this update run started. This prevents the poll from accepting a stale
+    // result from a previous update run if the SSE connection drops early.
+    const startResultPoll = () => {
+      const poll = setInterval(async () => {
+        try {
+          const r = await fetch('/api/update/result', { credentials: 'include' });
+          if (!r.ok) return; // server not up yet — keep polling
+          const result = await r.json();
+          // Only accept a result that belongs to this update run
+          if (!result || !result.timestamp || result.timestamp <= updateStartedAt) return;
+          clearInterval(poll);
+          setSteps(prev => prev.map(s => ({ ...s, status: 'done' })));
+          setUpdatePhase(result.status === 'success' ? 'done' : 'failed');
+          if (result.status !== 'success') setErrorMsg(result.message || 'Update failed');
+          doVersionCheck(true);
+        } catch { /* still restarting — keep polling */ }
+      }, 2000);
+    };
+
     es.onmessage = (e) => {
       const line = e.data;
+      if (line.startsWith(':')) return; // SSE keepalive comment — ignore
       if (line.startsWith('STEP:')) {
         const [, n, total, label] = line.split(':');
         setSteps(prev => {
@@ -380,20 +403,7 @@ function UpdatesTab() {
         setUpdatePhase('restarting');
         setSteps(prev => prev.map((s, i) => i === prev.length - 1 ? { ...s, status: 'active' } : s));
         es.close();
-        // Poll until server comes back up
-        const poll = setInterval(async () => {
-          try {
-            const r = await fetch('/api/update/result', { credentials: 'include' });
-            if (r.ok) {
-              clearInterval(poll);
-              const result = await r.json();
-              setSteps(prev => prev.map(s => ({ ...s, status: 'done' })));
-              setUpdatePhase(result?.status === 'success' ? 'done' : 'failed');
-              if (result?.status !== 'success') setErrorMsg(result?.message || 'Update failed');
-              doVersionCheck(true);
-            }
-          } catch { /* still restarting */ }
-        }, 2000);
+        startResultPoll();
       } else if (line.startsWith('SUCCESS:')) {
         setSteps(prev => prev.map(s => ({ ...s, status: 'done' })));
         setUpdatePhase('done');
@@ -408,24 +418,19 @@ function UpdatesTab() {
         setLogs(prev => [...prev, line.replace('ROLLBACK:', '⟳ ')]);
       } else if (line.startsWith('ROLLBACK_DONE:')) {
         setLogs(prev => [...prev, '✓ Rolled back to previous version']);
-        // Poll for server coming back after rollback restart
-        const poll = setInterval(async () => {
-          try {
-            const r = await fetch('/api/update/result', { credentials: 'include' });
-            if (r.ok) { clearInterval(poll); }
-          } catch {}
-        }, 2000);
+        startResultPoll();
       } else if (line.startsWith('DONE:')) {
         es.close();
       }
     };
 
     es.onerror = () => {
-      // Connection dropped — server may be restarting
+      // Connection dropped — server may be restarting or Nginx timed out
+      es.close();
       if (updatePhase !== 'done' && updatePhase !== 'failed') {
         setUpdatePhase('restarting');
+        startResultPoll();
       }
-      es.close();
     };
   };
 

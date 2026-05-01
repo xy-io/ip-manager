@@ -1102,7 +1102,17 @@ app.get('/api/update/stream', requireAuth, (req, res) => {
   }
 
   updateState.listeners.add(send);
-  req.on('close', () => updateState.listeners.delete(send));
+
+  // Send a comment-line keepalive every 15 s so Nginx's proxy_read_timeout
+  // doesn't cut the connection during long-running steps (e.g. npm install).
+  const keepAlive = setInterval(() => {
+    try { res.write(': ping\n\n'); } catch {}
+  }, 15000);
+
+  req.on('close', () => {
+    clearInterval(keepAlive);
+    updateState.listeners.delete(send);
+  });
 });
 
 app.get('/api/update/result', requireAuth, (req, res) => {

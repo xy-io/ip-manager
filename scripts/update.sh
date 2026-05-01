@@ -76,6 +76,18 @@ fi
 # Remove legacy sudoers entry if present
 rm -f /etc/sudoers.d/ip-manager-update
 
+# ── Migrate: bump Nginx proxy_read_timeout to 300s (changed in v1.29.1) ───────
+# The old default of 30s caused in-browser updates to appear hung because
+# npm install can take 60-120s with no output, triggering a Nginx timeout
+# that cut the SSE stream mid-update.
+NGINX_CONF="/etc/nginx/sites-available/ip-manager"
+if [ -f "$NGINX_CONF" ] && grep -q "proxy_read_timeout 30s" "$NGINX_CONF" 2>/dev/null; then
+  [ "$API_MODE" = true ] && echo "LOG:Patching Nginx proxy_read_timeout 30s → 300s…" \
+                         || log "Patching Nginx proxy_read_timeout…"
+  sed -i 's/proxy_read_timeout 30s/proxy_read_timeout 300s/' "$NGINX_CONF"
+  nginx -t -q 2>/dev/null && systemctl reload nginx || true
+fi
+
 # ── Save rollback point ───────────────────────────────────────
 ROLLBACK_HASH=$(git -C "$APP_DIR" rev-parse HEAD 2>/dev/null || echo "")
 ERROR_LOG=""

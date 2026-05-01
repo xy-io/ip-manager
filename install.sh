@@ -181,7 +181,9 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
-        proxy_read_timeout 30s;
+        # 300 s — in-browser updates stream SSE for the full duration of
+        # npm install, which can take 60-120 s on slower hardware.
+        proxy_read_timeout 300s;
     }
 
     # index.html — never cache so browsers always get the latest entry point
