@@ -21,8 +21,11 @@ app.use(cookieParser());
 // Priority order:
 //   1. IP_MANAGER_USERNAME / IP_MANAGER_PASSWORD environment variables
 //   2. credentials.env file (path overridable via CREDENTIALS_FILE env var)
-//   3. First-run: generate a random password, persist it, log it to the journal.
-//      There is NO admin/admin fallback — every install gets a unique password.
+//   3a. File exists but is empty/invalid → existing install upgrading from old
+//       version — fall back to admin/admin. The lockout middleware (below) will
+//       force the user to set a real password through the UI on next login.
+//   3b. File does not exist at all → fresh install — generate a unique random
+//       password, persist it, and log it to the service journal.
 
 // Resolve the credentials file path once at startup.
 const CREDENTIALS_FILE = process.env.CREDENTIALS_FILE || path.join(__dirname, 'credentials.env');
@@ -45,8 +48,14 @@ function loadCredentials() {
     if (env.IP_MANAGER_USERNAME && env.IP_MANAGER_PASSWORD) {
       return { username: env.IP_MANAGER_USERNAME, password: env.IP_MANAGER_PASSWORD };
     }
+    // File exists but has no valid credentials — this is an existing install
+    // that was set up before v1.29 (install.sh used to touch an empty file).
+    // Return admin/admin so the user can still log in; the lockout middleware
+    // will then require them to set a real password through the app UI.
+    console.warn('[auth] credentials.env exists but contains no credentials — treating as admin/admin. Login will require a password change.');
+    return { username: 'admin', password: 'admin' };
   }
-  // First run — no credentials file exists yet. Generate a random password,
+  // File does not exist — genuine first run. Generate a random password,
   // persist it so it survives restarts, and log it once to the journal.
   // Recovery: journalctl -u ip-manager-api | grep -A5 "initial credentials"
   const username = 'admin';
@@ -125,7 +134,8 @@ app.post('/api/auth/login', (req, res) => {
   // take effect without restarting the server
   credentials = loadCredentials();
   const { username, password } = req.body || {};
-  if (username === credentials.username && password === credentials.password) {
+  // Username comparison is case-insensitive; password remains case-sensitive.
+  if ((username || '').toLowerCase() === credentials.username.toLowerCase() && password === credentials.password) {
     const token = createSession();
     // httpOnly prevents JS access; sameSite=strict prevents CSRF
     res.cookie(SESSION_COOKIE, token, { httpOnly: true, sameSite: 'strict' });

@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 import QRCode from 'qrcode';
 
 // ── App version ───────────────────────────────────────────────────────────────
-const APP_VERSION = 'v1.29.0';
+const APP_VERSION = 'v1.29.1';
 
 // Default network configuration (overridden by Settings modal / localStorage)
 const DEFAULT_NETWORK_CONFIG = {
@@ -3107,6 +3107,9 @@ function LoginScreen({ onLogin }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  // Only show the first-run hint if the user hasn't successfully changed their
+  // password yet. Set by ForceChangePasswordScreen on successful save.
+  const showFirstRunHint = !localStorage.getItem('ip-manager-credentials-set');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -3182,9 +3185,11 @@ function LoginScreen({ onLogin }) {
           </button>
         </form>
 
-        <div className="mt-6 p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-500 text-center">
-          <span className="font-medium">First time?</span> Your initial password was printed in the installer output and saved to the service journal. Run <span className="font-mono bg-white px-1 py-0.5 rounded border border-slate-200">journalctl -u ip-manager-api | grep -A5 "initial credentials"</span> to retrieve it.
-        </div>
+        {showFirstRunHint && (
+          <div className="mt-6 p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-500 text-center">
+            <span className="font-medium">First time?</span> Your initial password was printed in the installer output and saved to the service journal. Run <span className="font-mono bg-white px-1 py-0.5 rounded border border-slate-200">journalctl -u ip-manager-api | grep -A5 "initial credentials"</span> to retrieve it.
+          </div>
+        )}
       </div>
     </div>
   );
@@ -3217,6 +3222,7 @@ function ForceChangePasswordScreen() {
       });
       const data = await res.json();
       if (res.ok) {
+        localStorage.setItem('ip-manager-credentials-set', '1');
         setSuccess(true);
         setTimeout(() => window.location.reload(), 1500);
       } else {

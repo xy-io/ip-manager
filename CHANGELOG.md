@@ -6,6 +6,18 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v1.29.1
+
+**Fix: upgrade path for existing installs + username case sensitivity**
+
+Three issues found during testing of v1.29.0:
+
+- **Upgrade bug** — existing installs that had an empty `credentials.env` (created by older versions of `install.sh` via `touch`) were having a random password generated on first server restart, locking out users who expected to log in with `admin/admin`. Fixed: if `credentials.env` exists but contains no credentials, the server now falls back to `admin/admin` (triggering the password-change lockout screen) rather than generating a new random password. Random generation now only happens when the file doesn't exist at all (genuine first-run).
+- **Username case sensitivity** — usernames are now compared case-insensitively at login (passwords remain case-sensitive). `Admin`, `ADMIN`, and `admin` all match the same account.
+- **"First time?" login hint** — the recovery hint on the login screen is now hidden after the user has successfully set a new password, so it doesn't appear on every subsequent login.
+
+---
+
 ## v1.29.0
 
 **Security: eliminate default-credential window**
