@@ -88,6 +88,21 @@ if [ -f "$NGINX_CONF" ] && grep -q "proxy_read_timeout 30s" "$NGINX_CONF" 2>/dev
   nginx -t -q 2>/dev/null && systemctl reload nginx || true
 fi
 
+# ── Migrate: untrack credentials.env before git pull (changed in v1.29.0) ─────
+# v1.29.0 removed server/credentials.env from git tracking. On installs that
+# haven't pulled that commit yet, git pull aborts with "your local changes
+# would be overwritten by merge" because git still considers the file tracked.
+# Untrack it (preserving the file on disk) before pulling so git pull succeeds.
+CREDS_FILE="$APP_DIR/server/credentials.env"
+if git -C "$APP_DIR" ls-files --error-unmatch server/credentials.env &>/dev/null 2>&1; then
+  [ "$API_MODE" = true ] && echo "LOG:Untracking credentials.env from git (one-time migration)…" \
+                         || log "Untracking credentials.env from git…"
+  git -C "$APP_DIR" rm --cached "$CREDS_FILE" 2>/dev/null || true
+  # Ensure it's in .gitignore so it won't re-appear as untracked
+  grep -qxF 'server/credentials.env' "$APP_DIR/.gitignore" 2>/dev/null || \
+    echo 'server/credentials.env' >> "$APP_DIR/.gitignore"
+fi
+
 # ── Save rollback point ───────────────────────────────────────
 ROLLBACK_HASH=$(git -C "$APP_DIR" rev-parse HEAD 2>/dev/null || echo "")
 ERROR_LOG=""
