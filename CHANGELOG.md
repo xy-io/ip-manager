@@ -6,6 +6,20 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v1.30.0
+
+**Domain Tracker**
+
+New **Domains** section (Globe icon in the header) for tracking domain registrations alongside your IP entries.
+
+Add any domain by typing its name — the app queries the IANA RDAP network to fetch registrar, expiry date, nameservers, and status automatically. No API keys required; works for 1,400+ TLDs via the IANA bootstrap registry.
+
+**Expiry badges** are colour-coded: green (>60 days), amber (30–60 days), red (<30 days), with an "Expired" state for lapsed domains. A red notification dot appears on the Domains button in the header whenever any domain is within 30 days of expiry.
+
+Each domain card shows registrar, nameservers, last-checked time, a manual refresh button, and a delete option. The app automatically re-checks all tracked domains in the background every 24 hours.
+
+---
+
 ## v1.29.1
 
 **Fix: upgrade path for existing installs + username case sensitivity**

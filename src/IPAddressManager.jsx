@@ -1,10 +1,10 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Search, Server, Monitor, Wifi, HardDrive, Camera, Shield, Globe, Filter, X, MapPin, Cpu, Box, CircleDot, ChevronDown, ChevronUp, Copy, Check, Zap, Download, Edit3, Plus, Trash2, Save, AlertCircle, Settings, Upload, FileText, AlertTriangle, CheckCircle, ChevronRight, Tag, ArrowUpDown, ArrowUp, ArrowDown, HelpCircle, LogOut, Moon, Sun, MoreHorizontal, Terminal } from 'lucide-react';
+import { Search, Server, Monitor, Wifi, HardDrive, Camera, Shield, Globe, Filter, X, MapPin, Cpu, Box, CircleDot, ChevronDown, ChevronUp, Copy, Check, Zap, Download, Edit3, Plus, Trash2, Save, AlertCircle, Settings, Upload, FileText, AlertTriangle, CheckCircle, ChevronRight, Tag, ArrowUpDown, ArrowUp, ArrowDown, HelpCircle, LogOut, Moon, Sun, MoreHorizontal, Terminal, RotateCw } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import QRCode from 'qrcode';
 
 // ── App version ───────────────────────────────────────────────────────────────
-const APP_VERSION = 'v1.29.1';
+const APP_VERSION = 'v1.30.0';
 
 // Default network configuration (overridden by Settings modal / localStorage)
 const DEFAULT_NETWORK_CONFIG = {
@@ -5964,6 +5964,315 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
   );
 }
 
+// ── Domains View Component ────────────────────────────────────────────────────
+function DomainsView({ onClose }) {
+  const [domains, setDomains] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [adding, setAdding] = useState(false);
+  const [addInput, setAddInput] = useState('');
+  const [addError, setAddError] = useState('');
+  const [refreshing, setRefreshing] = useState(new Set());
+
+  // Fetch domains on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await apiGet('/api/domains');
+        if (res && res.data) setDomains(res.data);
+      } catch (err) {
+        console.error('Failed to fetch domains:', err);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const handleAddDomain = async () => {
+    const domain = addInput.trim();
+    if (!domain) {
+      setAddError('Domain cannot be empty');
+      return;
+    }
+    setAddError('');
+
+    try {
+      const res = await apiPost('/api/domains', { domain });
+      if (res) {
+        setDomains(prev => [...prev, res]);
+        setAddInput('');
+        setAdding(false);
+      }
+    } catch (err) {
+      setAddError(err.message || 'Failed to add domain');
+    }
+  };
+
+  const handleDeleteDomain = async (id) => {
+    if (!confirm('Delete this domain?')) return;
+    try {
+      await apiPost(`/api/domains/${id}`, null, 'DELETE');
+      setDomains(prev => prev.filter(d => d.id !== id));
+    } catch (err) {
+      console.error('Failed to delete domain:', err);
+    }
+  };
+
+  const handleRefreshDomain = async (id) => {
+    setRefreshing(prev => new Set(prev).add(id));
+    try {
+      const res = await apiPost(`/api/domains/${id}/refresh`, {});
+      if (res) {
+        setDomains(prev =>
+          prev.map(d => d.id === id ? res : d)
+        );
+      }
+    } catch (err) {
+      console.error('Failed to refresh domain:', err);
+    } finally {
+      setRefreshing(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  };
+
+  const getDaysUntilExpiry = (expiryDate) => {
+    if (!expiryDate) return null;
+    const expiry = new Date(expiryDate);
+    const now = new Date();
+    const days = Math.ceil((expiry - now) / (1000 * 60 * 60 * 24));
+    return days;
+  };
+
+  const getExpiryBadgeColor = (days) => {
+    if (days === null) return 'bg-slate-100 text-slate-600';
+    if (days < 0) return 'bg-red-100 text-red-700';
+    if (days < 30) return 'bg-red-100 text-red-700';
+    if (days < 60) return 'bg-amber-100 text-amber-700';
+    return 'bg-emerald-100 text-emerald-700';
+  };
+
+  const getExpiryText = (days) => {
+    if (days === null) return 'Unknown';
+    if (days < 0) return 'Expired';
+    if (days === 0) return 'Today';
+    if (days === 1) return '1 day';
+    return `${days} days`;
+  };
+
+  const getRelativeTime = (isoDate) => {
+    if (!isoDate) return 'Never';
+    const date = new Date(isoDate);
+    const now = new Date();
+    const seconds = Math.floor((now - date) / 1000);
+
+    if (seconds < 60) return 'Just now';
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    if (days < 7) return `${days}d ago`;
+    return date.toLocaleDateString();
+  };
+
+  const domainsWithExpiry = domains.map(d => ({
+    ...d,
+    daysUntilExpiry: getDaysUntilExpiry(d.expiry),
+  })).sort((a, b) => {
+    // Sort by expiry: expired/soon first, then by days remaining
+    if (a.daysUntilExpiry === null && b.daysUntilExpiry === null) return 0;
+    if (a.daysUntilExpiry === null) return 1;
+    if (b.daysUntilExpiry === null) return -1;
+    return a.daysUntilExpiry - b.daysUntilExpiry;
+  });
+
+  const expiringSoonCount = domainsWithExpiry.filter(
+    d => d.daysUntilExpiry !== null && d.daysUntilExpiry <= 30
+  ).length;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="border-b border-slate-100 px-6 py-4 flex items-center justify-between flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <Globe className="w-6 h-6 text-slate-600" />
+            <h2 className="text-xl font-bold text-slate-900">Domains</h2>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+            title="Close (Esc)"
+          >
+            <X className="w-5 h-5 text-slate-500" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto px-6 py-6">
+          {/* Add Domain Form */}
+          {adding ? (
+            <div className="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-100">
+              <div className="flex gap-2 mb-2">
+                <input
+                  type="text"
+                  placeholder="e.g. example.com"
+                  value={addInput}
+                  onChange={e => setAddInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleAddDomain()}
+                  className="flex-1 px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                  autoFocus
+                />
+                <button
+                  onClick={handleAddDomain}
+                  className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors font-medium"
+                >
+                  Add
+                </button>
+                <button
+                  onClick={() => { setAdding(false); setAddError(''); setAddInput(''); }}
+                  className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 transition-colors font-medium"
+                >
+                  Cancel
+                </button>
+              </div>
+              {addError && (
+                <div className="flex items-center gap-2 text-sm text-red-700 bg-red-50 p-2 rounded">
+                  <AlertCircle className="w-4 h-4" />
+                  {addError}
+                </div>
+              )}
+            </div>
+          ) : (
+            <button
+              onClick={() => setAdding(true)}
+              className="mb-6 flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors font-medium"
+            >
+              <Plus className="w-4 h-4" />
+              Add Domain
+            </button>
+          )}
+
+          {/* Loading State */}
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="text-slate-500">Loading domains...</div>
+            </div>
+          ) : domainsWithExpiry.length === 0 ? (
+            <div className="text-center py-12">
+              <Globe className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+              <p className="text-slate-500">No domains tracked yet</p>
+              <p className="text-sm text-slate-400 mt-1">Add one to get started</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {domainsWithExpiry.map(domain => (
+                <div
+                  key={domain.id}
+                  className="bg-white border border-slate-100 rounded-xl p-4 hover:shadow-md transition-shadow"
+                >
+                  {/* Domain name + expiry badge */}
+                  <div className="flex items-start justify-between mb-3">
+                    <h3 className="text-lg font-bold text-slate-900 break-all">
+                      {domain.domain}
+                    </h3>
+                    <span className={`ml-2 flex-shrink-0 inline-block px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap ${
+                      getExpiryBadgeColor(domain.daysUntilExpiry)
+                    }`}>
+                      {domain.daysUntilExpiry !== null && domain.daysUntilExpiry < 0 ? (
+                        <span className="flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3" />
+                          Expired
+                        </span>
+                      ) : (
+                        getExpiryText(domain.daysUntilExpiry)
+                      )}
+                    </span>
+                  </div>
+
+                  {/* Error message if RDAP failed */}
+                  {domain.error && (
+                    <div className="mb-3 p-2 bg-amber-50 border border-amber-200 rounded flex items-start gap-2 text-xs text-amber-700">
+                      <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-medium">Could not fetch data</p>
+                        <p className="text-amber-600 text-xs mt-0.5">{domain.error}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Registrar */}
+                  {domain.registrar && (
+                    <div className="mb-2">
+                      <p className="text-xs text-slate-500 font-medium">Registrar</p>
+                      <p className="text-sm text-slate-700">{domain.registrar}</p>
+                    </div>
+                  )}
+
+                  {/* Nameservers */}
+                  {domain.nameservers && domain.nameservers.length > 0 && (
+                    <div className="mb-3">
+                      <p className="text-xs text-slate-500 font-medium mb-1">Nameservers</p>
+                      <div className="flex flex-wrap gap-1">
+                        {domain.nameservers.slice(0, 2).map((ns, idx) => (
+                          <span
+                            key={idx}
+                            className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded"
+                            title={ns}
+                          >
+                            {ns.length > 20 ? ns.substring(0, 17) + '...' : ns}
+                          </span>
+                        ))}
+                        {domain.nameservers.length > 2 && (
+                          <span className="text-xs text-slate-500 px-2 py-0.5">
+                            +{domain.nameservers.length - 2}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Last checked + actions */}
+                  <div className="flex items-center justify-between text-xs text-slate-500 border-t border-slate-100 pt-3 mt-3">
+                    <span>Checked {getRelativeTime(domain.lastChecked)}</span>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => handleRefreshDomain(domain.id)}
+                        disabled={refreshing.has(domain.id)}
+                        className={`p-1.5 rounded-lg transition-colors ${
+                          refreshing.has(domain.id)
+                            ? 'text-slate-300 cursor-not-allowed'
+                            : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
+                        }`}
+                        title="Refresh"
+                      >
+                        {refreshing.has(domain.id) ? (
+                          <RotateCw className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <RotateCw className="w-4 h-4" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => handleDeleteDomain(domain.id)}
+                        className="p-1.5 hover:bg-red-50 hover:text-red-600 text-slate-500 rounded-lg transition-colors"
+                        title="Delete"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Main Component
 export default function IPAddressManager() {
   // Auth state: 'checking' while we verify the session, 'ok' when logged in, 'none' when not.
@@ -6001,6 +6310,8 @@ export default function IPAddressManager() {
   const [showHelp, setShowHelp] = useState(false);
   const [showCIDR, setShowCIDR] = useState(false);
   const [showSubnet, setShowSubnet] = useState(false);
+  const [showDomains, setShowDomains] = useState(false);
+  const [domains, setDomains] = useState([]);
   const [showToolsMenu, setShowToolsMenu] = useState(false);
   const [qrItem, setQrItem] = useState(null); // entry to show QR for
   const toolsMenuRef = useRef(null);
@@ -6178,6 +6489,7 @@ export default function IPAddressManager() {
         if (showHelp)          { setShowHelp(false);          return; }
         if (showCIDR)          { setShowCIDR(false);          return; }
         if (showSubnet)        { setShowSubnet(false);        return; }
+        if (showDomains)       { setShowDomains(false);       return; }
         if (qrItem)            { setQrItem(null);             return; }
         if (showToolsMenu)     { setShowToolsMenu(false);     return; }
         if (expandedCard !== null) { setExpandedCard(null); return; }
@@ -6190,7 +6502,7 @@ export default function IPAddressManager() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [editingItem, showSettings, showImport, showProxmoxImport, showARPScan, showHelp, showCIDR, showSubnet, qrItem, showToolsMenu, expandedCard, searchTerm]);
+  }, [editingItem, showSettings, showImport, showProxmoxImport, showARPScan, showHelp, showCIDR, showSubnet, showDomains, qrItem, showToolsMenu, expandedCard, searchTerm]);
 
   // Close tools menu on outside click
   useEffect(() => {
@@ -6321,6 +6633,37 @@ export default function IPAddressManager() {
   useEffect(() => {
     if (persistMode !== 'api') return;
     fetchDnsStatus(false);
+  }, [persistMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Domain Tracker ───────────────────────────────────────────────────────────
+
+  const fetchDomains = async () => {
+    if (persistMode !== 'api') return;
+    try {
+      const res = await apiGet('/api/domains');
+      if (res && res.data) setDomains(res.data);
+    } catch { /* silently ignore */ }
+  };
+
+  const getDaysUntilExpiry = (expiryDate) => {
+    if (!expiryDate) return null;
+    const expiry = new Date(expiryDate);
+    const now = new Date();
+    const days = Math.ceil((expiry - now) / (1000 * 60 * 60 * 24));
+    return days;
+  };
+
+  const domainsExpiringWithin30Days = useMemo(() => {
+    return domains.filter(d => {
+      const days = getDaysUntilExpiry(d.expiry);
+      return days !== null && days <= 30;
+    }).length;
+  }, [domains]);
+
+  // Load domains on mount
+  useEffect(() => {
+    if (persistMode !== 'api') return;
+    fetchDomains();
   }, [persistMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Proxmox scheduled sync ───────────────────────────────────────────────────
@@ -7005,6 +7348,9 @@ export default function IPAddressManager() {
       {/* Subnet Visualiser */}
       {showSubnet && <SubnetVisuiserModal network={networkConfig} ipData={networkIpData} onClose={() => setShowSubnet(false)} />}
 
+      {/* Domains View */}
+      {showDomains && <DomainsView onClose={() => setShowDomains(false)} />}
+
       {/* QR Code Modal */}
       {qrItem && <QRModal item={qrItem} onClose={() => setQrItem(null)} />}
 
@@ -7193,6 +7539,14 @@ export default function IPAddressManager() {
                 <button onClick={() => setDarkMode(d => !d)} className="p-1.5 hover:bg-slate-100 text-slate-500 rounded-lg transition-colors" title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}>
                   {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
                 </button>
+                {persistMode === 'api' && (
+                  <button onClick={() => setShowDomains(true)} className="relative p-1.5 hover:bg-slate-100 text-slate-500 rounded-lg transition-colors" title="Domain Expiry Tracker">
+                    <Globe className="w-4 h-4" />
+                    {domainsExpiringWithin30Days > 0 && (
+                      <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-red-400 rounded-full" />
+                    )}
+                  </button>
+                )}
                 <button onClick={() => setShowHelp(true)} className="p-1.5 hover:bg-slate-100 text-slate-500 rounded-lg transition-colors" title="Help & Reference">
                   <HelpCircle className="w-4 h-4" />
                 </button>
@@ -7355,6 +7709,17 @@ export default function IPAddressManager() {
                 </div>
                 <div><p className="text-sm font-medium text-slate-700">{darkMode ? 'Light mode' : 'Dark mode'}</p><p className="text-xs text-slate-400">Toggle display theme</p></div>
               </button>
+              {persistMode === 'api' && (
+                <button onClick={() => { setShowDomains(true); setShowMobileTools(false); }} className="relative w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 transition-colors text-left">
+                  <div className="relative w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
+                    <Globe className="w-4 h-4 text-slate-600" />
+                    {domainsExpiringWithin30Days > 0 && (
+                      <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-red-400 rounded-full" />
+                    )}
+                  </div>
+                  <div><p className="text-sm font-medium text-slate-700">Domains</p><p className="text-xs text-slate-400">Track domain expirations</p></div>
+                </button>
+              )}
               <button onClick={() => { setShowHelp(true); setShowMobileTools(false); }} className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 transition-colors text-left">
                 <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
                   <HelpCircle className="w-4 h-4 text-slate-600" />
