@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>IP Manager — Home Lab Network Control Centre</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -50,12 +51,26 @@
     .nav-cta { background: var(--emerald); color: #fff; padding: .45rem 1.1rem; border-radius: 8px; font-size: .875rem; font-weight: 600; text-decoration: none; transition: background .2s; }
     .nav-cta:hover { background: var(--emerald-d); }
 
+    /* ── WHAT'S NEW BANNER ── */
+    .whats-new-bar {
+      background: linear-gradient(90deg, rgba(16,185,129,.1), rgba(13,148,136,.1));
+      border-bottom: 1px solid rgba(16,185,129,.2);
+      padding: .55rem 1.5rem;
+      text-align: center;
+      margin-top: 60px;
+      font-size: .8rem;
+      color: var(--slate-300);
+    }
+    .whats-new-bar strong { color: #34d399; }
+    .whats-new-bar a { color: var(--emerald); text-decoration: none; font-weight: 600; }
+    .whats-new-bar a:hover { text-decoration: underline; }
+
     /* ── HERO ── */
     .hero {
-      min-height: 100vh;
+      min-height: calc(100vh - 60px);
       display: flex; flex-direction: column; align-items: center; justify-content: center;
       text-align: center;
-      padding: 6rem 1.5rem 4rem;
+      padding: 4rem 1.5rem 4rem;
       position: relative;
       overflow: hidden;
     }
@@ -67,7 +82,6 @@
         radial-gradient(ellipse 40% 30% at 80% 80%, rgba(13,148,136,.12) 0%, transparent 60%);
       pointer-events: none;
     }
-    /* animated grid lines */
     .hero-grid {
       position: absolute; inset: 0; pointer-events: none;
       background-image:
@@ -93,9 +107,9 @@
     h1 span { background: linear-gradient(135deg, var(--emerald), #34d399, var(--teal)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
     .hero-sub {
       font-size: clamp(1rem, 2vw, 1.2rem); color: var(--slate-300);
-      max-width: 600px; margin: 0 auto 2.5rem; line-height: 1.7;
+      max-width: 620px; margin: 0 auto 2.5rem; line-height: 1.7;
     }
-    .hero-actions { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; margin-bottom: 4rem; }
+    .hero-actions { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; margin-bottom: 3rem; }
     .btn-primary {
       background: var(--emerald); color: #fff; padding: .85rem 2rem;
       border-radius: 12px; font-weight: 700; font-size: 1rem; text-decoration: none;
@@ -162,6 +176,34 @@
     .stat-item-num { font-size: 2rem; font-weight: 800; color: var(--emerald); line-height: 1; margin-bottom: .25rem; }
     .stat-item-label { font-size: .8rem; color: var(--slate-300); }
 
+    /* ── RELEASE CALLOUT ── */
+    .release-callout {
+      background: var(--slate-800);
+      border: 1px solid rgba(16,185,129,.2);
+      border-radius: 16px;
+      padding: 1.75rem 2rem;
+      margin-bottom: 3.5rem;
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 1.25rem;
+      align-items: start;
+    }
+    .release-callout-icon {
+      width: 48px; height: 48px; border-radius: 14px;
+      background: linear-gradient(135deg, rgba(16,185,129,.2), rgba(13,148,136,.2));
+      border: 1px solid rgba(16,185,129,.25);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.4rem; flex-shrink: 0;
+    }
+    .release-callout h3 { font-size: 1rem; font-weight: 700; color: #fff; margin-bottom: .3rem; }
+    .release-callout p { font-size: .83rem; color: var(--slate-300); line-height: 1.65; }
+    .release-tag {
+      display: inline-block; background: rgba(16,185,129,.12);
+      border: 1px solid rgba(16,185,129,.25); color: #34d399;
+      border-radius: 6px; padding: .1rem .45rem; font-size: .7rem;
+      font-weight: 700; font-family: monospace; margin-right: .4rem; vertical-align: middle;
+    }
+
     /* ── FEATURES ── */
     .features-bg { background: var(--slate-800); }
     .features-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 1.25rem; margin-top: 3rem; }
@@ -171,6 +213,8 @@
       transition: border-color .2s, transform .2s;
     }
     .feat-card:hover { border-color: rgba(16,185,129,.25); transform: translateY(-2px); }
+    .feat-card.new-card { border-color: rgba(16,185,129,.2); }
+    .feat-card.new-card:hover { border-color: rgba(16,185,129,.4); }
     .feat-icon {
       width: 44px; height: 44px; border-radius: 12px; margin-bottom: 1rem;
       display: flex; align-items: center; justify-content: center; font-size: 1.2rem;
@@ -184,8 +228,16 @@
     .feat-icon.indigo { background: rgba(99,102,241,.12); }
     .feat-icon.cyan   { background: rgba(6,182,212,.12); }
     .feat-icon.pink   { background: rgba(236,72,153,.1); }
-    .feat-card h3 { font-size: .95rem; font-weight: 700; color: #fff; margin-bottom: .4rem; }
+    .feat-icon.sky    { background: rgba(14,165,233,.12); }
+    .feat-card h3 { font-size: .95rem; font-weight: 700; color: #fff; margin-bottom: .4rem; display: flex; align-items: center; gap: .4rem; }
     .feat-card p  { font-size: .82rem; color: var(--slate-300); line-height: 1.6; }
+    .new-badge {
+      display: inline-block; background: rgba(16,185,129,.15);
+      border: 1px solid rgba(16,185,129,.3); color: #34d399;
+      border-radius: 4px; padding: .05rem .35rem;
+      font-size: .65rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+      flex-shrink: 0;
+    }
 
     /* ── HOW IT WORKS ── */
     .steps { display: flex; flex-direction: column; gap: 3rem; margin-top: 3rem; max-width: 720px; }
@@ -198,6 +250,11 @@
     }
     .step h3 { font-size: 1.05rem; font-weight: 700; color: #fff; margin-bottom: .35rem; }
     .step p  { font-size: .875rem; color: var(--slate-300); line-height: 1.7; }
+    .step code {
+      font-family: 'SF Mono', 'Fira Code', monospace; font-size: .8rem;
+      background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.1);
+      border-radius: 5px; padding: .15rem .4rem; color: #34d399;
+    }
 
     /* ── TECH STACK ── */
     .tech-bg { background: var(--slate-800); }
@@ -223,6 +280,17 @@
     .integ-card h3 { font-size: .9rem; font-weight: 700; color: #fff; margin-bottom: .3rem; }
     .integ-card p  { font-size: .78rem; color: var(--slate-300); line-height: 1.6; }
 
+    /* ── ACTIVELY MAINTAINED STRIP ── */
+    .changelog-strip {
+      background: var(--slate-900);
+      border-top: 1px solid rgba(255,255,255,.06);
+      border-bottom: 1px solid rgba(255,255,255,.06);
+      padding: 4rem 1.5rem;
+    }
+    @media (max-width: 640px) {
+      .changelog-strip .two-col { grid-template-columns: 1fr !important; }
+    }
+
     /* ── CTA FOOTER ── */
     .cta-section {
       text-align: center; padding: 6rem 1.5rem 5rem;
@@ -244,6 +312,7 @@
       .features-grid { grid-template-columns: 1fr; }
       .integrations-grid { grid-template-columns: 1fr; }
       .screenshot-toggle { flex-wrap: wrap; }
+      .release-callout { grid-template-columns: 1fr; }
     }
     @media (max-width: 500px) {
       .stats-grid { grid-template-columns: 1fr 1fr; }
@@ -263,10 +332,17 @@
     <a href="#features">Features</a>
     <a href="#how">How it works</a>
     <a href="#integrations">Integrations</a>
-    <a href="#stack">Tech stack</a>
+    <a href="#changelog">What's new</a>
+    <a href="https://github.com/xy-io/ip-manager/wiki" target="_blank" rel="noopener" style="color:#34d399;font-weight:600">Docs</a>
   </div>
   <a href="https://github.com/xy-io/ip-manager" class="nav-cta">View on GitHub →</a>
 </nav>
+
+<!-- WHAT'S NEW BANNER -->
+<div class="whats-new-bar">
+  <strong>v1.31</strong> just landed — Domain Tracker with RDAP, service health checks, QR codes &amp; more.
+  <a href="#changelog">See what's new →</a>
+</div>
 
 
 <!-- HERO -->
@@ -281,11 +357,7 @@
   <h1>Know every IP<br/>on your <span>network</span></h1>
 
   <p class="hero-sub">
-    A full-stack web app that replaces your sprawling IP spreadsheet with a beautiful, real-time dashboard — built for home labs, deployed as a lightweight LXC container.
-  </p>
-
-  <p style="font-size:.8rem;color:#64748b;margin-top:-1.5rem;margin-bottom:2.5rem;letter-spacing:.01em">
-    Made for home labs, by people who actually run them.
+    A full-stack web app that replaces your sprawling IP spreadsheet with a beautiful, real-time dashboard — built for home labs, deployed as a lightweight LXC container. Track IPs, services, domains, and health all in one place.
   </p>
 
   <div class="hero-actions">
@@ -301,18 +373,18 @@
   <!-- App Screenshots -->
   <div class="screenshot-wrap">
     <div class="screenshot-toggle">
-      <button class="ss-tab active" onclick="showSS('light')">☀ Cards view</button>
-      <button class="ss-tab" onclick="showSS('dark')">☽ Table view</button>
+      <button class="ss-tab active" onclick="showSS('light', this)">☀ Cards view</button>
+      <button class="ss-tab" onclick="showSS('dark', this)">☽ Table view</button>
     </div>
     <div class="screenshot-frame">
       <div id="ss-light" class="ss-img active">
         <img src="screenshots/screenshot-light.jpg"
-             alt="IP Address Manager — light mode cards view showing IP entries with status, type, and tag badges"
+             alt="IP Address Manager — cards view showing IP entries with live status, type, and tag badges"
              width="1280" height="600" loading="eager">
       </div>
       <div id="ss-dark" class="ss-img">
         <img src="screenshots/screenshot-dark.jpg"
-             alt="IP Address Manager — dark mode table view with sortable columns"
+             alt="IP Address Manager — table view with sortable columns"
              width="1280" height="740" loading="lazy">
       </div>
     </div>
@@ -324,20 +396,20 @@
 <div class="stats-band">
   <div class="stats-grid container">
     <div>
-      <div class="stat-item-num">16+</div>
-      <div class="stat-item-label">Features shipped</div>
+      <div class="stat-item-num">512 MB</div>
+      <div class="stat-item-label">Minimum container RAM</div>
     </div>
     <div>
-      <div class="stat-item-num">/16</div>
-      <div class="stat-item-label">Max subnet support</div>
+      <div class="stat-item-num">500+</div>
+      <div class="stat-item-label">Built-in service icons</div>
     </div>
     <div>
-      <div class="stat-item-num">~5MB</div>
-      <div class="stat-item-label">RAM footprint</div>
+      <div class="stat-item-num">60s</div>
+      <div class="stat-item-label">Live ping refresh cycle</div>
     </div>
     <div>
-      <div class="stat-item-num">∞</div>
-      <div class="stat-item-label">Networks & VLANs</div>
+      <div class="stat-item-num">Zero</div>
+      <div class="stat-item-label">Cloud deps or sign-ups</div>
     </div>
   </div>
 </div>
@@ -348,19 +420,31 @@
   <div class="container">
     <div class="section-label">Everything you need</div>
     <h2 class="section-title">A proper tool for a proper lab</h2>
-    <p class="section-body">No more hunting through spreadsheets. IP Manager gives your home network the visibility it deserves — live status, smart search, and Proxmox integration all in one place.</p>
+    <p class="section-body">No more hunting through spreadsheets. IP Manager gives your home network the visibility it deserves — live status, smart search, domain tracking, and Proxmox integration all in one place.</p>
 
     <div class="features-grid">
 
       <div class="feat-card">
         <div class="feat-icon green">🟢</div>
         <h3>Live Ping Monitoring</h3>
-        <p>Every card shows a real-time reachability dot. The server runs fping against all tracked IPs every 60 seconds — green means online, red means gone.</p>
+        <p>Every card shows a real-time reachability dot. The server runs fping against all tracked IPs every 60 seconds — green means online, red means gone. No client-side polling required.</p>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon sky">💙</div>
+        <h3>Service Health Checks</h3>
+        <p>Opt-in HTTP/HTTPS probe per entry. A sky-blue dot means the service is responding; orange means it's down. Ports are auto-suggested for 60+ common services. Self-signed TLS certs are handled gracefully.</p>
+      </div>
+
+      <div class="feat-card new-card">
+        <div class="feat-icon teal">🌐</div>
+        <h3>Domain Tracker <span class="new-badge">New</span></h3>
+        <p>Track domain registrations alongside your IP entries. Add any domain and the app fetches registrar, expiry date, and nameservers via IANA RDAP — no API keys needed, 1,400+ TLDs supported. Colour-coded expiry badges and daily auto-refresh.</p>
       </div>
 
       <div class="feat-card">
         <div class="feat-icon teal">🔍</div>
-        <h3>ARP Scan & Discovery</h3>
+        <h3>ARP Scan &amp; Discovery</h3>
         <p>One-click subnet sweep finds every device on your network — even the ones you forgot about. Cross-references against existing entries and pre-selects new ones for easy import.</p>
       </div>
 
@@ -371,9 +455,9 @@
       </div>
 
       <div class="feat-card">
-        <div class="feat-icon blue">🌐</div>
+        <div class="feat-icon blue">📡</div>
         <h3>DNS Reverse Lookup</h3>
-        <p>Resolves PTR records for every IP against your own DNS server (Pi-hole, Unbound, or any resolver). Flags mismatches so you can spot stale records fast.</p>
+        <p>Resolves PTR records for every IP against your own DNS server (Pi-hole, Unbound, or any resolver). Each network has its own configurable resolver. Flags mismatches so you can spot stale records fast.</p>
       </div>
 
       <div class="feat-card">
@@ -384,26 +468,50 @@
 
       <div class="feat-card">
         <div class="feat-icon indigo">🗂</div>
-        <h3>Multi-Network & VLANs</h3>
+        <h3>Multi-Network &amp; VLANs</h3>
         <p>Manage every subnet independently — /24s, /16s, management VLANs, IoT segments. Switch between networks instantly from the top bar.</p>
       </div>
 
       <div class="feat-card">
+        <div class="feat-icon amber">🖼</div>
+        <h3>Service Icons</h3>
+        <p>Cards automatically display the real logo for 500+ self-hosted services — Home Assistant, Proxmox, Sonarr, Pi-hole, Vaultwarden, Nextcloud, and many more — via the selfh.st icon library. Assign any icon to any entry from the full searchable picker.</p>
+      </div>
+
+      <div class="feat-card">
         <div class="feat-icon cyan">📤</div>
-        <h3>Import & Export</h3>
-        <p>Migrate from an existing spreadsheet in seconds. CSV and Excel import with merge or replace modes. Export to formatted .xlsx at any time.</p>
+        <h3>Import &amp; Export</h3>
+        <p>Migrate from an existing spreadsheet in seconds. CSV and Excel import with merge or replace modes, intelligent column mapping, and validation. Export to formatted .xlsx at any time.</p>
       </div>
 
       <div class="feat-card">
         <div class="feat-icon green">💾</div>
-        <h3>Backup & Restore</h3>
+        <h3>Backup &amp; Restore</h3>
         <p>One click downloads a full JSON backup — all entries, all networks, all tags, change history, everything. Restore to a new machine instantly.</p>
       </div>
 
       <div class="feat-card">
+        <div class="feat-icon green">📱</div>
+        <h3>QR Code Generator</h3>
+        <p>Generate a QR code for any IP entry — useful for sharing WiFi credentials, service URLs, or quickly connecting a phone to a local service without typing an IP address.</p>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon indigo">🧮</div>
+        <h3>CIDR &amp; Subnet Calculators</h3>
+        <p>Built-in tools for calculating subnets, broadcast addresses, host ranges, and CIDR notation — right inside the app without switching to an external tool.</p>
+      </div>
+
+      <div class="feat-card">
         <div class="feat-icon amber">🔒</div>
-        <h3>Login & Authentication</h3>
-        <p>Protect your data with username/password auth. Configurable credentials, session cookies, and safe to deploy on a shared subdomain or internal DNS name.</p>
+        <h3>Secure by Default</h3>
+        <p>Fresh installs generate a unique random password on first start — never ships with a known default. The installer prints credentials at the end of setup. If an install still has default credentials, the API locks down until the password is changed.</p>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon pink">⌨️</div>
+        <h3>Keyboard Shortcuts</h3>
+        <p><code style="font-family:monospace;font-size:.8rem;background:rgba(255,255,255,.08);padding:.1rem .3rem;border-radius:4px">/</code> to search, <code style="font-family:monospace;font-size:.8rem;background:rgba(255,255,255,.08);padding:.1rem .3rem;border-radius:4px">Esc</code> to clear/close, <code style="font-family:monospace;font-size:.8rem;background:rgba(255,255,255,.08);padding:.1rem .3rem;border-radius:4px">t</code>/<code style="font-family:monospace;font-size:.8rem;background:rgba(255,255,255,.08);padding:.1rem .3rem;border-radius:4px">c</code> to switch views. Mobile-friendly — toolbar collapses to a compact Tools dropdown on narrow screens.</p>
       </div>
 
     </div>
@@ -423,28 +531,28 @@
         <div class="step-num">1</div>
         <div>
           <h3>Deploy to an LXC container</h3>
-          <p>Create an Ubuntu 24.04 LXC on Proxmox, SSH in, and run the one-line install script. It sets up Node.js, Nginx, and the app automatically. A single LXC with 512 MB RAM is all you need — all data lives in a local SQLite database with no external services required.</p>
+          <p>Create an Ubuntu 24.04 LXC on Proxmox, SSH in, and run the one-line install script. It sets up Node.js, Nginx, and the app automatically. A single LXC with 512 MB RAM is all you need — all data lives in a local SQLite database with no external services required. The installer prints your unique auto-generated credentials at the end; no passwords to choose upfront.</p>
         </div>
       </div>
       <div class="step">
         <div class="step-num">2</div>
         <div>
           <h3>Configure your network</h3>
-          <p>Open Settings and tell the app your subnet prefix, DHCP pool range, and static range. The live preview shows the calculated CIDR before you save. Add as many networks and VLANs as you need.</p>
+          <p>Open Settings and tell the app your subnet prefix, DHCP pool range, and static range. The live preview shows the calculated CIDR before you save. Add as many networks and VLANs as you need. Each network gets its own DNS resolver setting.</p>
         </div>
       </div>
       <div class="step">
         <div class="step-num">3</div>
         <div>
           <h3>Import or discover your devices</h3>
-          <p>Run an ARP scan to discover everything currently on the network, import your existing spreadsheet via CSV/Excel, or pull all VMs and LXC containers straight from Proxmox. Mix and match all three.</p>
+          <p>Run an ARP scan to discover everything currently on the network, import your existing spreadsheet via CSV/Excel, or pull all VMs and LXC containers straight from Proxmox. Mix and match all three. Assign service icons, add notes, link secondary IPs, and enable per-entry health checks as you go.</p>
         </div>
       </div>
       <div class="step">
         <div class="step-num">4</div>
         <div>
           <h3>Let it run</h3>
-          <p>The server pings every tracked IP every 60 seconds using fping — status dots update automatically with no action needed. Reverse DNS lookups run in the background every 24 hours, with an on-demand button if you want an immediate result. Proxmox sync keeps new VMs and containers in sync on your chosen schedule.</p>
+          <p>The server pings every tracked IP every 60 seconds using fping — status dots update automatically. Service health checks probe HTTP/HTTPS endpoints on the same cycle. Reverse DNS lookups run every 24 hours in the background. Proxmox sync keeps new VMs in sync on your chosen schedule. Add domains to the Domain Tracker and expiry dates are fetched and refreshed automatically.</p>
         </div>
       </div>
     </div>
@@ -473,7 +581,7 @@
         <div class="integ-icon" style="background:rgba(99,102,241,.12)">🌐</div>
         <div>
           <h3>Pi-hole / Unbound / Any DNS</h3>
-          <p>Point IP Manager at any resolver — your Pi-hole, an Unbound instance, or even 8.8.8.8. PTR lookups run against that server and mismatches show as amber warnings on every affected card.</p>
+          <p>Point IP Manager at any resolver — your Pi-hole, an Unbound instance, or even 8.8.8.8. PTR lookups run against that server per-network and mismatches show as amber warnings on every affected card.</p>
         </div>
       </div>
 
@@ -481,7 +589,7 @@
         <div class="integ-icon" style="background:rgba(16,185,129,.12)">📡</div>
         <div>
           <h3>arp-scan</h3>
-          <p>Discovers every device broadcasting on your subnet using one lightweight ARP broadcast packet per IP. Completes a /24 in under a second. Automatically detects and surfaces new or untracked devices.</p>
+          <p>Discovers every device broadcasting on your subnet using one lightweight ARP broadcast packet per IP. Completes a /24 in under a second. Automatically surfaces new or untracked devices for easy import.</p>
         </div>
       </div>
 
@@ -493,9 +601,85 @@
         </div>
       </div>
 
+      <div class="integ-card">
+        <div class="integ-icon" style="background:rgba(14,165,233,.12)">🌍</div>
+        <div>
+          <h3>IANA RDAP (Domain Tracker)</h3>
+          <p>Domain expiry data is fetched directly from the IANA bootstrap registry — no third-party APIs, no API keys, no rate limits. Supports all 1,400+ registered TLDs including newer ones like .dev, .app, .io, .watch, and .online.</p>
+        </div>
+      </div>
+
+      <div class="integ-card">
+        <div class="integ-icon" style="background:rgba(168,85,247,.12)">🖼</div>
+        <div>
+          <h3>selfh.st Icon Library</h3>
+          <p>Service icons are pulled from the community-maintained selfh.st library — 500+ logos for popular self-hosted apps, with dark-mode variants and automatic Lucide fallback for anything not in the library.</p>
+        </div>
+      </div>
+
     </div>
   </div>
 </section>
+
+
+<!-- ACTIVELY MAINTAINED -->
+<div class="changelog-strip" id="changelog">
+  <div class="container">
+    <div class="section-label">Actively maintained</div>
+    <h2 class="section-title">Kept up to date</h2>
+    <p class="section-body">IP Manager is under continuous development — new features, fixes, and improvements ship regularly. Every release is a real improvement, shipped when it's ready rather than on a fixed schedule.</p>
+
+    <!-- Latest release highlight -->
+    <div style="margin-top:2.5rem;display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;max-width:860px;">
+
+      <div style="background:var(--slate-900);border:1px solid rgba(16,185,129,.3);border-radius:14px;padding:1.5rem;">
+        <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--emerald);margin-bottom:.6rem">Latest release</div>
+        <div style="font-size:1.6rem;font-weight:800;color:#fff;margin-bottom:.35rem;">v1.31</div>
+        <div style="font-size:.85rem;font-weight:600;color:#e2e8f0;margin-bottom:.5rem;">Domain Tracker — RDAP fixes &amp; UI refresh</div>
+        <p style="font-size:.78rem;color:var(--slate-300);line-height:1.6;margin-bottom:1.1rem;">Accurate registrar names, redirect-following RDAP lookups for .online / .watch / .pro, lowercase nameservers, and a redesigned domain card layout with colour-coded status borders.</p>
+        <a href="https://github.com/xy-io/ip-manager/releases/latest" target="_blank" rel="noopener"
+           style="display:inline-flex;align-items:center;gap:.4rem;font-size:.8rem;font-weight:600;color:var(--emerald);text-decoration:none;">
+          View release notes
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M8.636 3.5a.5.5 0 0 0-.5-.5H1.5A1.5 1.5 0 0 0 0 4.5v10A1.5 1.5 0 0 0 1.5 16h10a1.5 1.5 0 0 0 1.5-1.5V7.864a.5.5 0 0 0-1 0V14.5a.5.5 0 0 1-.5.5h-10a.5.5 0 0 1-.5-.5v-10a.5.5 0 0 1 .5-.5h6.636a.5.5 0 0 0 .5-.5z"/><path d="M16 .5a.5.5 0 0 0-.5-.5h-5a.5.5 0 0 0 0 1h3.793L6.146 9.146a.5.5 0 1 0 .708.708L15 1.707V5.5a.5.5 0 0 0 1 0v-5z"/></svg>
+        </a>
+      </div>
+
+      <div style="background:var(--slate-900);border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:1.5rem;display:flex;flex-direction:column;justify-content:space-between;">
+        <div>
+          <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--slate-500);margin-bottom:.6rem">Recent highlights</div>
+          <ul style="list-style:none;display:flex;flex-direction:column;gap:.55rem;">
+            <li style="display:flex;align-items:center;gap:.6rem;font-size:.8rem;color:var(--slate-300);">
+              <span style="width:6px;height:6px;border-radius:50%;background:var(--emerald);flex-shrink:0"></span>
+              <span><strong style="color:#e2e8f0">v1.30</strong> — Domain Tracker with RDAP &amp; expiry alerts</span>
+            </li>
+            <li style="display:flex;align-items:center;gap:.6rem;font-size:.8rem;color:var(--slate-300);">
+              <span style="width:6px;height:6px;border-radius:50%;background:var(--emerald);flex-shrink:0"></span>
+              <span><strong style="color:#e2e8f0">v1.29</strong> — Secure-by-default, no more admin/admin</span>
+            </li>
+            <li style="display:flex;align-items:center;gap:.6rem;font-size:.8rem;color:var(--slate-300);">
+              <span style="width:6px;height:6px;border-radius:50%;background:var(--emerald);flex-shrink:0"></span>
+              <span><strong style="color:#e2e8f0">v1.28</strong> — Per-network DNS &amp; 500+ icon picker</span>
+            </li>
+            <li style="display:flex;align-items:center;gap:.6rem;font-size:.8rem;color:var(--slate-300);">
+              <span style="width:6px;height:6px;border-radius:50%;background:var(--emerald);flex-shrink:0"></span>
+              <span><strong style="color:#e2e8f0">v1.27</strong> — HTTP/HTTPS service health checks</span>
+            </li>
+            <li style="display:flex;align-items:center;gap:.6rem;font-size:.8rem;color:var(--slate-300);">
+              <span style="width:6px;height:6px;border-radius:50%;background:var(--emerald);flex-shrink:0"></span>
+              <span><strong style="color:#e2e8f0">v1.26</strong> — QR codes, CIDR &amp; subnet calculators</span>
+            </li>
+          </ul>
+        </div>
+        <a href="https://github.com/xy-io/ip-manager/releases" target="_blank" rel="noopener"
+           style="display:inline-flex;align-items:center;gap:.4rem;font-size:.8rem;font-weight:600;color:var(--slate-300);text-decoration:none;margin-top:1.25rem;">
+          Full release history on GitHub
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M8.636 3.5a.5.5 0 0 0-.5-.5H1.5A1.5 1.5 0 0 0 0 4.5v10A1.5 1.5 0 0 0 1.5 16h10a1.5 1.5 0 0 0 1.5-1.5V7.864a.5.5 0 0 0-1 0V14.5a.5.5 0 0 1-.5.5h-10a.5.5 0 0 1-.5-.5v-10a.5.5 0 0 1 .5-.5h6.636a.5.5 0 0 0 .5-.5z"/><path d="M16 .5a.5.5 0 0 0-.5-.5h-5a.5.5 0 0 0 0 1h3.793L6.146 9.146a.5.5 0 1 0 .708.708L15 1.707V5.5a.5.5 0 0 0 1 0v-5z"/></svg>
+        </a>
+      </div>
+
+    </div>
+  </div>
+</div>
 
 
 <!-- TECH STACK -->
@@ -510,10 +694,11 @@
       <div class="tech-pill"><span class="tech-pill-dot" style="background:#61dafb"></span> React 18</div>
       <div class="tech-pill"><span class="tech-pill-dot" style="background:#38bdf8"></span> Tailwind CSS</div>
       <div class="tech-pill"><span class="tech-pill-dot" style="background:#f5a623"></span> SQLite</div>
-      <div class="tech-pill"><span class="tech-pill-dot" style="background:#646cff"></span> Vite</div>
+      <div class="tech-pill"><span class="tech-pill-dot" style="background:#646cff"></span> Vite 5</div>
       <div class="tech-pill"><span class="tech-pill-dot" style="background:#10b981"></span> Express.js</div>
       <div class="tech-pill"><span class="tech-pill-dot" style="background:#e5534b"></span> Lucide Icons</div>
       <div class="tech-pill"><span class="tech-pill-dot" style="background:#f59e0b"></span> Proxmox API</div>
+      <div class="tech-pill"><span class="tech-pill-dot" style="background:#0ea5e9"></span> IANA RDAP</div>
       <div class="tech-pill"><span class="tech-pill-dot" style="background:#818cf8"></span> PolyForm License</div>
     </div>
 
@@ -521,7 +706,7 @@
     <div style="margin-top:2.5rem;background:var(--slate-800);border-radius:14px;border:1px solid rgba(255,255,255,.07);padding:1.75rem;display:flex;gap:2.5rem;flex-wrap:wrap;">
       <div style="flex:1;min-width:200px;">
         <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--emerald);margin-bottom:.5rem">Deployment</div>
-        <div style="font-size:.875rem;color:#e2e8f0;line-height:1.7">Runs as a single LXC container or plain Node.js process. No reverse proxy required for internal use — point your browser at the IP and port.</div>
+        <div style="font-size:.875rem;color:#e2e8f0;line-height:1.7">Runs as a single LXC container behind Nginx. 512 MB RAM, one CPU core — that's all it needs. Nginx handles reverse proxying so you can put it on a subdomain with your existing setup.</div>
       </div>
       <div style="flex:1;min-width:200px;">
         <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--teal);margin-bottom:.5rem">Storage</div>
@@ -529,9 +714,29 @@
       </div>
       <div style="flex:1;min-width:200px;">
         <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--amber);margin-bottom:.5rem">License</div>
-        <div style="font-size:.875rem;color:#e2e8f0;line-height:1.7">PolyForm Noncommercial — free for personal and home lab use. Source available on GitHub.</div>
+        <div style="font-size:.875rem;color:#e2e8f0;line-height:1.7">PolyForm Noncommercial — free for personal and home lab use. Source available on GitHub. No telemetry, no phone-home, nothing leaves your network.</div>
       </div>
     </div>
+  </div>
+</section>
+
+
+<!-- DOCS CALLOUT -->
+<section style="padding:3.5rem 1.5rem;background:var(--slate-800);border-top:1px solid rgba(255,255,255,.06);border-bottom:1px solid rgba(255,255,255,.06);">
+  <div class="container" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:2rem;">
+    <div style="display:flex;align-items:center;gap:1.25rem;">
+      <div style="width:52px;height:52px;border-radius:14px;background:linear-gradient(135deg,rgba(16,185,129,.2),rgba(13,148,136,.2));border:1px solid rgba(16,185,129,.25);display:flex;align-items:center;justify-content:center;font-size:1.5rem;flex-shrink:0;">📖</div>
+      <div>
+        <h3 style="font-size:1.1rem;font-weight:700;color:#fff;margin-bottom:.25rem;">Full documentation</h3>
+        <p style="font-size:.875rem;color:var(--slate-300);line-height:1.5;">Installation, configuration, troubleshooting, and feature guides — all in the wiki.</p>
+      </div>
+    </div>
+    <a href="https://github.com/xy-io/ip-manager/wiki" target="_blank" rel="noopener"
+       style="display:inline-flex;align-items:center;gap:.5rem;background:var(--emerald);color:#fff;padding:.75rem 1.5rem;border-radius:10px;font-weight:700;font-size:.9rem;text-decoration:none;white-space:nowrap;transition:background .2s;"
+       onmouseover="this.style.background='#059669'" onmouseout="this.style.background='#10b981'">
+      <svg width="15" height="15" fill="currentColor" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+      Browse the Wiki
+    </a>
   </div>
 </section>
 
@@ -552,15 +757,15 @@
 </section>
 
 <footer>
-  <p>IP Manager · Built for home labs · <span>PolyForm Noncommercial License</span></p>
+  <p>IP Manager v1.31 · Built for home labs · <span>PolyForm Noncommercial License</span></p>
 </footer>
 
 <script>
-function showSS(mode) {
+function showSS(mode, btn) {
   document.querySelectorAll('.ss-img').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.ss-tab').forEach(el => el.classList.remove('active'));
   document.getElementById('ss-' + mode).classList.add('active');
-  event.currentTarget.classList.add('active');
+  btn.classList.add('active');
 }
 </script>
 </body>
