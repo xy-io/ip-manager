@@ -32,3 +32,4 @@ xcschememanagement.plist
 # a different OS causes optional native modules (e.g. rollup binaries) to
 # be missing on the target platform.
 package-lock.json
+/wiki/Untitled
