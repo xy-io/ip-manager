@@ -5989,19 +5989,19 @@ function DomainsView({ onClose }) {
 
   const handleAddDomain = async () => {
     const domain = addInput.trim();
-    if (!domain) {
-      setAddError('Domain cannot be empty');
-      return;
-    }
+    if (!domain) { setAddError('Domain cannot be empty'); return; }
     setAddError('');
-
     try {
-      const res = await apiPost('/api/domains', { domain });
-      if (res) {
-        setDomains(prev => [...prev, res]);
-        setAddInput('');
-        setAdding(false);
-      }
+      const res = await fetch('/api/domains', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setAddError(data.error || 'Failed to add domain'); return; }
+      setDomains(prev => [...prev, data]);
+      setAddInput('');
+      setAdding(false);
     } catch (err) {
       setAddError(err.message || 'Failed to add domain');
     }
@@ -6010,7 +6010,7 @@ function DomainsView({ onClose }) {
   const handleDeleteDomain = async (id) => {
     if (!confirm('Delete this domain?')) return;
     try {
-      await apiPost(`/api/domains/${id}`, null, 'DELETE');
+      await fetch(`/api/domains/${id}`, { method: 'DELETE' });
       setDomains(prev => prev.filter(d => d.id !== id));
     } catch (err) {
       console.error('Failed to delete domain:', err);
@@ -6020,20 +6020,13 @@ function DomainsView({ onClose }) {
   const handleRefreshDomain = async (id) => {
     setRefreshing(prev => new Set(prev).add(id));
     try {
-      const res = await apiPost(`/api/domains/${id}/refresh`, {});
-      if (res) {
-        setDomains(prev =>
-          prev.map(d => d.id === id ? res : d)
-        );
-      }
+      const res = await fetch(`/api/domains/${id}/refresh`, { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) setDomains(prev => prev.map(d => d.id === id ? data : d));
     } catch (err) {
       console.error('Failed to refresh domain:', err);
     } finally {
-      setRefreshing(prev => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
+      setRefreshing(prev => { const next = new Set(prev); next.delete(id); return next; });
     }
   };
 
@@ -7528,6 +7521,19 @@ export default function IPAddressManager() {
                         </div>
                         <div><p className="text-sm font-medium text-slate-700">Subnet Visualiser</p><p className="text-xs text-slate-400">Heat-map grid + planned blocks</p></div>
                       </button>
+                      {persistMode === 'api' && <>
+                        <div className="h-px bg-slate-100 mx-3 my-1" />
+                        <button onClick={() => { setShowDomains(true); setShowToolsMenu(false); }} className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 transition-colors text-left">
+                          <div className="relative w-8 h-8 rounded-lg bg-sky-100 flex items-center justify-center flex-shrink-0">
+                            <Globe className="w-4 h-4 text-sky-600" />
+                            {domainsExpiringWithin30Days > 0 && <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-red-400 rounded-full" />}
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-slate-700">Domains {domainsExpiringWithin30Days > 0 && <span className="ml-1 text-xs text-red-500 font-semibold">{domainsExpiringWithin30Days} expiring</span>}</p>
+                            <p className="text-xs text-slate-400">Track domain registrations &amp; expiry</p>
+                          </div>
+                        </button>
+                      </>}
                       <div className="pb-1.5" />
                     </div>
                   )}
@@ -7539,14 +7545,6 @@ export default function IPAddressManager() {
                 <button onClick={() => setDarkMode(d => !d)} className="p-1.5 hover:bg-slate-100 text-slate-500 rounded-lg transition-colors" title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}>
                   {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
                 </button>
-                {persistMode === 'api' && (
-                  <button onClick={() => setShowDomains(true)} className="relative p-1.5 hover:bg-slate-100 text-slate-500 rounded-lg transition-colors" title="Domain Expiry Tracker">
-                    <Globe className="w-4 h-4" />
-                    {domainsExpiringWithin30Days > 0 && (
-                      <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-red-400 rounded-full" />
-                    )}
-                  </button>
-                )}
                 <button onClick={() => setShowHelp(true)} className="p-1.5 hover:bg-slate-100 text-slate-500 rounded-lg transition-colors" title="Help & Reference">
                   <HelpCircle className="w-4 h-4" />
                 </button>
