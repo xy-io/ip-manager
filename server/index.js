@@ -1599,24 +1599,49 @@ async function getRdapEndpoint(domain) {
   throw new Error(`No RDAP endpoint found for TLD: ${tld}`);
 }
 
+// Fetch a URL following redirects, returning parsed JSON
+function rdapFetch(url, maxRedirects = 5) {
+  return new Promise((resolve, reject) => {
+    if (maxRedirects <= 0) return reject(new Error('Too many redirects'));
+    const lib = url.startsWith('http://') ? http : https;
+    lib.get(url, { headers: { 'Accept': 'application/rdap+json, application/json' } }, (res) => {
+      // Follow redirects
+      if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
+        res.resume();
+        const redirectUrl = res.headers.location.startsWith('http')
+          ? res.headers.location
+          : new URL(res.headers.location, url).href;
+        return resolve(rdapFetch(redirectUrl, maxRedirects - 1));
+      }
+      if (res.statusCode === 404) {
+        res.resume();
+        return reject(new Error(`Domain not found in registry (404)`));
+      }
+      if (res.statusCode !== 200) {
+        res.resume();
+        return reject(new Error(`HTTP ${res.statusCode} from RDAP server`));
+      }
+      let body = '';
+      res.on('data', chunk => body += chunk);
+      res.on('end', () => {
+        const trimmed = body.trim();
+        if (!trimmed) return reject(new Error('Empty response from RDAP server'));
+        try {
+          resolve(JSON.parse(trimmed));
+        } catch (e) {
+          reject(new Error('Invalid JSON from RDAP server'));
+        }
+      });
+    }).on('error', reject);
+  });
+}
+
 async function rdapLookup(domain) {
   try {
     const endpoint = await getRdapEndpoint(domain);
-    const url = `${endpoint}/domain/${domain.toLowerCase()}`;
+    const url = `${endpoint.replace(/\/?$/, '/')}domain/${domain.toLowerCase()}`;
 
-    const data = await new Promise((resolve, reject) => {
-      https.get(url, (res) => {
-        let body = '';
-        res.on('data', chunk => body += chunk);
-        res.on('end', () => {
-          try {
-            resolve(JSON.parse(body));
-          } catch (e) {
-            reject(e);
-          }
-        });
-      }).on('error', reject);
-    });
+    const data = await rdapFetch(url);
 
     // Parse RDAP response
     let expiry = null;
@@ -1635,16 +1660,28 @@ async function rdapLookup(domain) {
     }
 
     if (data.nameservers) {
-      nameservers = data.nameservers.map(ns => ns.ldhName || ns.unicodeName).filter(Boolean);
+      // Normalize to lowercase
+      nameservers = data.nameservers
+        .map(ns => (ns.ldhName || ns.unicodeName || '').toLowerCase())
+        .filter(Boolean);
     }
 
     if (data.entities) {
       const registrarEntity = data.entities.find(e => e.roles && e.roles.includes('registrar'));
       if (registrarEntity) {
-        registrar = registrarEntity.handle || registrarEntity.legalName || 'Unknown';
-        if (registrarEntity.vcardArray && registrarEntity.vcardArray[1]) {
-          const urls = registrarEntity.vcardArray[1].filter(item => Array.isArray(item) && item[0] === 'url');
-          if (urls.length > 0 && urls[0][3]) registrarUrl = urls[0][3];
+        // Parse vcardArray for human-readable name (fn) and URL first
+        if (registrarEntity.vcardArray && Array.isArray(registrarEntity.vcardArray[1])) {
+          const vcard = registrarEntity.vcardArray[1];
+          const fnEntry = vcard.find(item => Array.isArray(item) && item[0] === 'fn');
+          if (fnEntry && fnEntry[3]) registrar = fnEntry[3];
+          const urlEntry = vcard.find(item => Array.isArray(item) && item[0] === 'url');
+          if (urlEntry && urlEntry[3]) registrarUrl = urlEntry[3];
+        }
+        // Fall back to legalName, then handle (which may be a numeric IANA ID)
+        if (!registrar) registrar = registrarEntity.legalName || null;
+        // Only use handle if it looks like a name (not a pure number)
+        if (!registrar && registrarEntity.handle && !/^\d+$/.test(registrarEntity.handle)) {
+          registrar = registrarEntity.handle;
         }
       }
     }

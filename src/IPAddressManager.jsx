@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 import QRCode from 'qrcode';
 
 // ── App version ───────────────────────────────────────────────────────────────
-const APP_VERSION = 'v1.30.0';
+const APP_VERSION = 'v1.31.0';
 
 // Default network configuration (overridden by Settings modal / localStorage)
 const DEFAULT_NETWORK_CONFIG = {
@@ -6039,19 +6039,33 @@ function DomainsView({ onClose }) {
   };
 
   const getExpiryBadgeColor = (days) => {
-    if (days === null) return 'bg-slate-100 text-slate-600';
+    if (days === null) return 'bg-slate-100 text-slate-500';
     if (days < 0) return 'bg-red-100 text-red-700';
     if (days < 30) return 'bg-red-100 text-red-700';
     if (days < 60) return 'bg-amber-100 text-amber-700';
     return 'bg-emerald-100 text-emerald-700';
   };
 
+  const getCardBorderColor = (days, hasError) => {
+    if (hasError) return 'border-l-amber-400';
+    if (days === null) return 'border-l-slate-300';
+    if (days < 0) return 'border-l-red-500';
+    if (days < 30) return 'border-l-red-400';
+    if (days < 60) return 'border-l-amber-400';
+    return 'border-l-emerald-400';
+  };
+
   const getExpiryText = (days) => {
     if (days === null) return 'Unknown';
-    if (days < 0) return 'Expired';
-    if (days === 0) return 'Today';
+    if (days < 0) return `Expired ${Math.abs(days)}d ago`;
+    if (days === 0) return 'Expires today';
     if (days === 1) return '1 day';
     return `${days} days`;
+  };
+
+  const formatExpiryDate = (isoDate) => {
+    if (!isoDate) return null;
+    return new Date(isoDate).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
   };
 
   const getRelativeTime = (isoDate) => {
@@ -6091,8 +6105,20 @@ function DomainsView({ onClose }) {
         {/* Header */}
         <div className="border-b border-slate-100 px-6 py-4 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-3">
-            <Globe className="w-6 h-6 text-slate-600" />
-            <h2 className="text-xl font-bold text-slate-900">Domains</h2>
+            <Globe className="w-5 h-5 text-slate-500" />
+            <div>
+              <h2 className="text-xl font-bold text-slate-900">Domain Tracker</h2>
+              {!loading && domains.length > 0 && (
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {domains.length} domain{domains.length !== 1 ? 's' : ''}
+                  {expiringSoonCount > 0 && (
+                    <span className="ml-2 text-red-600 font-medium">
+                      · {expiringSoonCount} expiring within 30 days
+                    </span>
+                  )}
+                </p>
+              )}
+            </div>
           </div>
           <button
             onClick={onClose}
@@ -6160,99 +6186,102 @@ function DomainsView({ onClose }) {
               <p className="text-sm text-slate-400 mt-1">Add one to get started</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
               {domainsWithExpiry.map(domain => (
                 <div
                   key={domain.id}
-                  className="bg-white border border-slate-100 rounded-xl p-4 hover:shadow-md transition-shadow"
+                  className={`bg-white border border-slate-200 border-l-4 rounded-xl overflow-hidden hover:shadow-md transition-shadow ${
+                    getCardBorderColor(domain.daysUntilExpiry, !!domain.error)
+                  }`}
                 >
-                  {/* Domain name + expiry badge */}
-                  <div className="flex items-start justify-between mb-3">
-                    <h3 className="text-lg font-bold text-slate-900 break-all">
-                      {domain.domain}
-                    </h3>
-                    <span className={`ml-2 flex-shrink-0 inline-block px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap ${
-                      getExpiryBadgeColor(domain.daysUntilExpiry)
-                    }`}>
-                      {domain.daysUntilExpiry !== null && domain.daysUntilExpiry < 0 ? (
-                        <span className="flex items-center gap-1">
-                          <AlertCircle className="w-3 h-3" />
-                          Expired
-                        </span>
-                      ) : (
-                        getExpiryText(domain.daysUntilExpiry)
+                  {/* Card header: domain name + expiry badge */}
+                  <div className="px-4 pt-4 pb-3 flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <h3 className="text-base font-bold text-slate-900 truncate">{domain.domain}</h3>
+                      {domain.registrar && (
+                        <p className="text-xs text-slate-500 mt-0.5 truncate">
+                          {domain.registrarUrl ? (
+                            <a
+                              href={domain.registrarUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="hover:text-emerald-600 hover:underline"
+                            >
+                              {domain.registrar}
+                            </a>
+                          ) : (
+                            domain.registrar
+                          )}
+                        </p>
                       )}
-                    </span>
+                    </div>
+                    <div className="flex-shrink-0 text-right">
+                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${
+                        getExpiryBadgeColor(domain.daysUntilExpiry)
+                      }`}>
+                        {domain.daysUntilExpiry !== null && domain.daysUntilExpiry < 0 && (
+                          <AlertCircle className="w-3 h-3" />
+                        )}
+                        {getExpiryText(domain.daysUntilExpiry)}
+                      </span>
+                      {domain.expiry && (
+                        <p className="text-xs text-slate-400 mt-1">{formatExpiryDate(domain.expiry)}</p>
+                      )}
+                    </div>
                   </div>
 
-                  {/* Error message if RDAP failed */}
-                  {domain.error && (
-                    <div className="mb-3 p-2 bg-amber-50 border border-amber-200 rounded flex items-start gap-2 text-xs text-amber-700">
-                      <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-                      <div>
-                        <p className="font-medium">Could not fetch data</p>
-                        <p className="text-amber-600 text-xs mt-0.5">{domain.error}</p>
+                  {/* Error state */}
+                  {domain.error ? (
+                    <div className="mx-4 mb-3 px-3 py-2 bg-amber-50 border border-amber-100 rounded-lg flex items-center gap-2">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                      <span className="text-xs text-amber-700 font-medium">Could not fetch RDAP data</span>
+                    </div>
+                  ) : (
+                    /* Nameservers */
+                    domain.nameservers && domain.nameservers.length > 0 && (
+                      <div className="px-4 pb-3">
+                        <div className="flex flex-wrap gap-1">
+                          {domain.nameservers.slice(0, 2).map((ns, idx) => (
+                            <span
+                              key={idx}
+                              className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-mono"
+                              title={ns}
+                            >
+                              {ns.length > 22 ? ns.substring(0, 19) + '…' : ns}
+                            </span>
+                          ))}
+                          {domain.nameservers.length > 2 && (
+                            <span className="text-xs text-slate-400 px-1 py-0.5">
+                              +{domain.nameservers.length - 2} more
+                            </span>
+                          )}
+                        </div>
                       </div>
-                    </div>
+                    )
                   )}
 
-                  {/* Registrar */}
-                  {domain.registrar && (
-                    <div className="mb-2">
-                      <p className="text-xs text-slate-500 font-medium">Registrar</p>
-                      <p className="text-sm text-slate-700">{domain.registrar}</p>
-                    </div>
-                  )}
-
-                  {/* Nameservers */}
-                  {domain.nameservers && domain.nameservers.length > 0 && (
-                    <div className="mb-3">
-                      <p className="text-xs text-slate-500 font-medium mb-1">Nameservers</p>
-                      <div className="flex flex-wrap gap-1">
-                        {domain.nameservers.slice(0, 2).map((ns, idx) => (
-                          <span
-                            key={idx}
-                            className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded"
-                            title={ns}
-                          >
-                            {ns.length > 20 ? ns.substring(0, 17) + '...' : ns}
-                          </span>
-                        ))}
-                        {domain.nameservers.length > 2 && (
-                          <span className="text-xs text-slate-500 px-2 py-0.5">
-                            +{domain.nameservers.length - 2}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Last checked + actions */}
-                  <div className="flex items-center justify-between text-xs text-slate-500 border-t border-slate-100 pt-3 mt-3">
+                  {/* Footer: last checked + actions */}
+                  <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border-t border-slate-100 text-xs text-slate-400">
                     <span>Checked {getRelativeTime(domain.lastChecked)}</span>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-0.5">
                       <button
                         onClick={() => handleRefreshDomain(domain.id)}
                         disabled={refreshing.has(domain.id)}
                         className={`p-1.5 rounded-lg transition-colors ${
                           refreshing.has(domain.id)
                             ? 'text-slate-300 cursor-not-allowed'
-                            : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
+                            : 'text-slate-400 hover:bg-slate-200 hover:text-slate-600'
                         }`}
                         title="Refresh"
                       >
-                        {refreshing.has(domain.id) ? (
-                          <RotateCw className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <RotateCw className="w-4 h-4" />
-                        )}
+                        <RotateCw className={`w-3.5 h-3.5 ${refreshing.has(domain.id) ? 'animate-spin' : ''}`} />
                       </button>
                       <button
                         onClick={() => handleDeleteDomain(domain.id)}
-                        className="p-1.5 hover:bg-red-50 hover:text-red-600 text-slate-500 rounded-lg transition-colors"
+                        className="p-1.5 hover:bg-red-100 hover:text-red-500 text-slate-400 rounded-lg transition-colors"
                         title="Delete"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>

@@ -45,6 +45,10 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
+### v1.31 — Domain Tracker: RDAP fixes and UI refresh
+
+Fixed registrar names showing as numeric IANA IDs — the parser now reads the human-readable name from the vCard data. Fixed RDAP lookups for `.online`, `.watch`, `.pro` and other TLDs whose servers issue HTTP redirects; these now resolve correctly. Nameservers normalised to lowercase. Domain cards refreshed with colour-coded left borders, expiry date shown alongside the days badge, registrar as a hyperlink, and a cleaner error state.
+
 ### v1.30 — Domain Tracker
 
 New **Domains** section for tracking domain registrations. Add any domain and the app fetches registrar, expiry date, and nameservers automatically via IANA RDAP — no API keys needed, supports 1,400+ TLDs. Colour-coded expiry badges (green → amber → red) and a notification dot in the header when a renewal is coming up. Background auto-refresh every 24 hours.

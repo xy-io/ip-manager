@@ -6,6 +6,18 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v1.31.0
+
+**Domain Tracker — RDAP fixes and UI refresh**
+
+- **Fixed registrar names** — registrar was previously shown as a numeric IANA ID (e.g. "1068", "1910"). The RDAP parser now reads the human-readable name from the vCard `fn` field first, falling back to `legalName`; numeric-only handles are suppressed.
+- **Fixed .online / .watch / .pro and other TLDs** — RDAP servers for some TLDs issue HTTP redirects before returning data. The lookup now follows 301/302/307/308 redirects automatically, checks the HTTP status code before parsing, and handles empty responses gracefully instead of throwing "Unexpected end of JSON input".
+- **Normalised nameserver case** — nameservers are now stored and displayed entirely in lowercase (RDAP sources return inconsistent casing).
+- **Improved domain card design** — colour-coded left border indicates urgency at a glance; registrar shown directly below domain name (with hyperlink if available); expiry date displayed alongside the days-remaining badge; nameservers styled in monospace; error state shows a clean "Could not fetch RDAP data" message without exposing raw error text; footer row with last-checked time and action buttons separated into its own shaded area.
+- **Modal header** — retitled "Domain Tracker", shows total domain count and an inline "expiring within 30 days" warning when relevant.
+
+---
+
 ## v1.30.0
 
 **Domain Tracker**
