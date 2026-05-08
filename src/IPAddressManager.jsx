@@ -5217,6 +5217,7 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
     healthScheme: item.healthScheme || 'http',
     healthPort:   item.healthPort   || '',
     healthPath:   item.healthPath   || '/',
+    sshUser: item.sshUser || '',
     mac: item.mac || '',
     dependencies: item.dependencies || [],
     iconSlug: item.iconSlug || '',
@@ -5824,6 +5825,28 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
               {formData.healthPort && (
                 <p className="text-xs text-slate-400 mt-1 font-mono">
                   → {formData.healthScheme}://{item.ip}:{formData.healthPort}{formData.healthPath || '/'}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* SSH User — only shown for assigned, non-reserved entries */}
+          {!isFree && !isReserved && (
+            <div className="pt-2 border-t border-slate-200">
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">SSH User</label>
+              <p className="text-xs text-slate-400 mb-2">
+                Optional. Sets the username for the SSH quick-launch button. Leave blank to use your OS default.
+              </p>
+              <input
+                type="text"
+                value={formData.sshUser}
+                onChange={(e) => setFormData({ ...formData, sshUser: e.target.value })}
+                placeholder="e.g. root, admin, jay"
+                className="w-48 px-2 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm font-mono"
+              />
+              {formData.sshUser && formData.hostname && (
+                <p className="text-xs text-slate-400 mt-1 font-mono">
+                  → ssh://{formData.sshUser}@{formData.hostname}
                 </p>
               )}
             </div>
@@ -8398,9 +8421,9 @@ export default function IPAddressManager() {
                           )}
                           {item.hostname && (
                             <a
-                              href={`ssh://${item.hostname}`}
+                              href={`ssh://${item.sshUser ? `${item.sshUser}@` : ''}${item.hostname}`}
                               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors"
-                              title={`SSH to ${item.hostname}`}
+                              title={`SSH to ${item.sshUser ? `${item.sshUser}@` : ''}${item.hostname}`}
                             >
                               <Terminal className="w-3.5 h-3.5" />
                               SSH
