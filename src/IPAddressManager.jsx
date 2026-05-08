@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 import QRCode from 'qrcode';
 
 // ── App version ───────────────────────────────────────────────────────────────
-const APP_VERSION = 'v1.31.0';
+const APP_VERSION = 'v1.32.0';
 
 // Default network configuration (overridden by Settings modal / localStorage)
 const DEFAULT_NETWORK_CONFIG = {
@@ -5841,7 +5841,7 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
                 type="text"
                 value={formData.sshUser}
                 onChange={(e) => setFormData({ ...formData, sshUser: e.target.value })}
-                placeholder="e.g. root, admin, jay"
+                placeholder="e.g. root, admin"
                 className="w-48 px-2 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm font-mono"
               />
               {formData.sshUser && formData.hostname && (

@@ -6,6 +6,14 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v1.32.0
+
+**SSH username per entry**
+
+The SSH quick-launch button now supports a per-entry username. Set it in the Edit modal under **SSH User** (e.g. `root` for Proxmox, `admin` for a router) and the button will open `ssh://user@hostname` instead of relying on your OS default. A live preview in the edit form shows the exact URL before you save. Leaving the field blank preserves the previous behaviour.
+
+---
+
 ## v1.31.0
 
 **Domain Tracker — RDAP fixes and UI refresh**
