@@ -222,16 +222,44 @@ systemctl restart nginx
 ok "Nginx configured and running"
 
 # ── 9. Create update wrapper ──────────────────────────────────
-# The real update logic lives in scripts/update.sh inside the repo so it
-# stays current after every git pull. The wrapper here is intentionally
-# minimal — it never needs to change.
+# The wrapper lives outside the repo at /usr/local/bin so it survives
+# git operations. It backs up credentials.env before delegating to the
+# repo script, then restores them if git deleted or altered the file.
+# update.sh re-writes this wrapper after every pull so it stays current.
 log "Creating update wrapper at /usr/local/bin/ip-manager-update..."
 cat > /usr/local/bin/ip-manager-update <<'WRAPPER'
 #!/bin/bash
-exec bash /opt/ip-manager/scripts/update.sh "$@"
+# ============================================================
+#  IP Address Manager — update wrapper
+#  Lives at /usr/local/bin/ip-manager-update (outside the repo).
+#  Protects credentials.env before delegating to the repo script,
+#  then restores them if git pull deleted or altered the file.
+#  This wrapper is re-written by update.sh after every pull so it
+#  is always one version ahead of whatever the repo script does.
+# ============================================================
+APP_DIR="/opt/ip-manager"
+CREDS_FILE="$APP_DIR/server/credentials.env"
+
+# Snapshot live credentials before anything touches the repo
+CREDS_BACKUP=""
+if [ -f "$CREDS_FILE" ]; then
+  CREDS_BACKUP=$(cat "$CREDS_FILE")
+fi
+
+# Run the real update logic
+bash "$APP_DIR/scripts/update.sh" "$@"
+EXIT_CODE=$?
+
+# Restore credentials if git pull deleted or overwrote them
+if [ -n "$CREDS_BACKUP" ] && { [ ! -f "$CREDS_FILE" ] || [ "$(cat "$CREDS_FILE")" != "$CREDS_BACKUP" ]; }; then
+  printf '%s' "$CREDS_BACKUP" > "$CREDS_FILE"
+  chmod 600 "$CREDS_FILE"
+fi
+
+exit $EXIT_CODE
 WRAPPER
 chmod +x /usr/local/bin/ip-manager-update
-ok "Update wrapper created — logic lives in scripts/update.sh (always current)"
+ok "Update wrapper created — credentials protected across all future updates"
 
 # ── 10. Clean up legacy sudoers entry (no longer needed) ───────
 # The API service now runs as root inside the LXC container, so the

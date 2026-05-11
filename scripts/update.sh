@@ -148,6 +148,19 @@ if [ -n "$CREDS_BACKUP" ] && { [ ! -f "$CREDS_FILE" ] || [ "$(cat "$CREDS_FILE")
 fi
 succeed "Code updated"
 
+# ── Refresh system wrapper (/usr/local/bin/ip-manager-update) ─────────────────
+# Re-write the wrapper from install.sh so it stays current on every update.
+# This is what protects credentials.env for all future updates — including on
+# installs that predate this mechanism and have only the old thin wrapper.
+WRAPPER_SRC=$(grep -A50 "cat > /usr/local/bin/ip-manager-update <<'WRAPPER'" \
+  "$APP_DIR/install.sh" 2>/dev/null | tail -n +2 | sed "/^WRAPPER$/q" | head -n -1)
+if [ -n "$WRAPPER_SRC" ]; then
+  printf '#!/bin/bash\n%s\n' "$WRAPPER_SRC" > /usr/local/bin/ip-manager-update
+  chmod +x /usr/local/bin/ip-manager-update
+  [ "$API_MODE" = true ] && echo "LOG:System wrapper updated." \
+                         || log "System wrapper updated"
+fi
+
 # ── Step 2: npm install (frontend) ────────────────────────────
 step "Installing frontend dependencies"
 cd "$APP_DIR"
