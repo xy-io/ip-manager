@@ -88,17 +88,23 @@ if [ -f "$NGINX_CONF" ] && grep -q "proxy_read_timeout 30s" "$NGINX_CONF" 2>/dev
   nginx -t -q 2>/dev/null && systemctl reload nginx || true
 fi
 
-# ── Migrate: untrack credentials.env before git pull (changed in v1.29.0) ─────
-# v1.29.0 removed server/credentials.env from git tracking. On installs that
-# haven't pulled that commit yet, git pull aborts with "your local changes
-# would be overwritten by merge" because git still considers the file tracked.
-# Untrack it (preserving the file on disk) before pulling so git pull succeeds.
+# ── Protect credentials.env across git pull ───────────────────────────────────
+# credentials.env must never be lost during an update:
+#  - v1.29.0 removed it from git tracking; older installs still have it tracked
+#    so git pull would abort ("local changes would be overwritten").
+#  - Even on up-to-date installs, git pull can delete the file if an ancestor
+#    commit had it tracked and a later commit removed it — wiping live creds.
+# Fix: stash a copy before pulling, restore it afterwards if missing/changed.
 CREDS_FILE="$APP_DIR/server/credentials.env"
+CREDS_BACKUP=""
+if [ -f "$CREDS_FILE" ]; then
+  CREDS_BACKUP=$(cat "$CREDS_FILE")
+fi
+# Untrack if still in git index (one-time migration for pre-v1.29.0 installs)
 if git -C "$APP_DIR" ls-files --error-unmatch server/credentials.env &>/dev/null 2>&1; then
   [ "$API_MODE" = true ] && echo "LOG:Untracking credentials.env from git (one-time migration)…" \
                          || log "Untracking credentials.env from git…"
-  git -C "$APP_DIR" rm --cached "$CREDS_FILE" 2>/dev/null || true
-  # Ensure it's in .gitignore so it won't re-appear as untracked
+  git -C "$APP_DIR" rm --cached server/credentials.env 2>/dev/null || true
   grep -qxF 'server/credentials.env' "$APP_DIR/.gitignore" 2>/dev/null || \
     echo 'server/credentials.env' >> "$APP_DIR/.gitignore"
 fi
@@ -132,6 +138,13 @@ log "$PULL_OUT"
 if [ $PULL_EXIT -ne 0 ]; then
   fail_out "git pull failed"; ERROR_LOG="git pull failed:\n$PULL_OUT\n"
   rollback "git pull failed"
+fi
+# Restore credentials.env if git pull deleted or altered it
+if [ -n "$CREDS_BACKUP" ] && { [ ! -f "$CREDS_FILE" ] || [ "$(cat "$CREDS_FILE")" != "$CREDS_BACKUP" ]; }; then
+  [ "$API_MODE" = true ] && echo "LOG:Restoring credentials.env (preserved across pull)…" \
+                         || log "Restoring credentials.env…"
+  printf '%s' "$CREDS_BACKUP" > "$CREDS_FILE"
+  chmod 600 "$CREDS_FILE"
 fi
 succeed "Code updated"
 
