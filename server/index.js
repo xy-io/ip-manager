@@ -2263,13 +2263,12 @@ app.delete('/api/ha/key', requireAuth, (req, res) => {
 app.get('/api/ha/summary', requireHaKey, (req, res) => {
   const networks = dbGet('networks') || [];
   const allEntries = dbGet('ip_data') || [];
-  const assigned = allEntries.filter(e => e.state === 'assigned');
   const ping = pingCache.results || {};
   const health = serviceHealthCache.results || {};
   const domains = getDomains();
 
   let online = 0, offline = 0, unknown = 0;
-  for (const e of assigned) {
+  for (const e of allEntries) {
     const s = ping[e.ip];
     if (s === 'alive') online++;
     else if (s === 'unreachable') offline++;
@@ -2288,7 +2287,7 @@ app.get('/api/ha/summary', requireHaKey, (req, res) => {
   }).length;
 
   res.json({
-    devices_total:   assigned.length,
+    devices_total:   allEntries.length,
     devices_online:  online,
     devices_offline: offline,
     devices_unknown: unknown,
@@ -2310,7 +2309,6 @@ app.get('/api/ha/devices', requireHaKey, (req, res) => {
   const networkMap = Object.fromEntries(networks.map(n => [n.id, n.name]));
 
   const devices = allEntries
-    .filter(e => e.state === 'assigned')
     .map(e => {
       const p = ping[e.ip];
       const h = health[e.ip];
