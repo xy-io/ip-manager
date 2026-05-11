@@ -410,9 +410,14 @@ const dbSet = (key, value) => {
 // /auth/ routes are registered above this point and are unaffected.
 app.use('/api', (req, res, next) => {
   if (req.path.startsWith('/auth/')) return next();
+  if (req.path.startsWith('/ha/')) return next(); // HA API uses its own key auth
   return requireNotDefault(req, res, next);
 });
-app.use('/api', requireAuth);
+app.use('/api', (req, res, next) => {
+  if (req.path.startsWith('/auth/')) return next();
+  if (req.path.startsWith('/ha/')) return next(); // HA API uses its own key auth
+  return requireAuth(req, res, next);
+});
 
 // Health check — used by the React app to detect API mode
 app.get('/api/health', (req, res) => {
