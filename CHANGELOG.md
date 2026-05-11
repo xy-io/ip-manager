@@ -6,6 +6,18 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v1.33.0
+
+**Home Assistant JSON API**
+
+New read-only REST API for pulling network data into Home Assistant (or any other automation platform).
+
+- **Three endpoints** — `GET /api/ha/summary` (total/online/offline counts, domain expiry stats), `GET /api/ha/devices` (per-device detail: IP, name, type, network, tags, ping status, health check), `GET /api/ha/domains` (domain list with expiry dates and status).
+- **API key authentication** — generate a dedicated HA API key in **Settings → Home Assistant**; pass it as an `X-API-Key` header or `?api_key=` query parameter. Keys are independent of your login credentials and can be revoked at any time.
+- **Settings tab** — the new Home Assistant tab shows the available endpoints, lets you generate/copy/revoke the key, and provides a ready-to-paste Home Assistant `rest:` YAML snippet auto-configured with your server's URL.
+
+---
+
 ## v1.32.0
 
 **SSH username per entry**

@@ -2219,6 +2219,142 @@ app.post('/api/backup/test', requireAuth, (req, res) => {
 // Restore backup schedule on server startup
 scheduleBackup();
 
+// ── Home Assistant API ────────────────────────────────────────────────────────
+// Read-only JSON API authenticated by a static API key.
+// No session cookie required — designed for polling by HA REST sensors.
+
+function getHaApiKey() {
+  return dbGet('ha_api_key') || null;
+}
+
+function requireHaKey(req, res, next) {
+  const key = req.headers['x-api-key'] || req.query.api_key;
+  const stored = getHaApiKey();
+  if (!stored) return res.status(503).json({ error: 'HA API not enabled — generate a key in Settings' });
+  if (key !== stored) return res.status(401).json({ error: 'Invalid API key' });
+  next();
+}
+
+// GET /api/ha/key — return whether a key exists (auth required)
+app.get('/api/ha/key', requireAuth, (req, res) => {
+  const key = getHaApiKey();
+  res.json({ enabled: !!key, key: key || null });
+});
+
+// POST /api/ha/key — generate (or regenerate) API key (auth required)
+app.post('/api/ha/key', requireAuth, (req, res) => {
+  const key = crypto.randomBytes(24).toString('base64url');
+  dbSet('ha_api_key', key);
+  res.json({ key });
+});
+
+// DELETE /api/ha/key — revoke API key (auth required)
+app.delete('/api/ha/key', requireAuth, (req, res) => {
+  dbSet('ha_api_key', null);
+  res.json({ ok: true });
+});
+
+// GET /api/ha/summary — network overview for HA dashboard sensors
+app.get('/api/ha/summary', requireHaKey, (req, res) => {
+  const networks = dbGet('networks') || [];
+  const allEntries = dbGet('ip_data') || [];
+  const assigned = allEntries.filter(e => e.state === 'assigned');
+  const ping = pingCache.results || {};
+  const health = serviceHealthCache.results || {};
+  const domains = getDomains();
+
+  let online = 0, offline = 0, unknown = 0;
+  for (const e of assigned) {
+    const s = ping[e.ip];
+    if (s === 'alive') online++;
+    else if (s === 'unreachable') offline++;
+    else unknown++;
+  }
+
+  const now = new Date();
+  const domainsExpiringSoon = domains.filter(d => {
+    if (!d.expiry) return false;
+    const days = Math.ceil((new Date(d.expiry) - now) / 86400000);
+    return days >= 0 && days <= 30;
+  }).length;
+  const domainsExpired = domains.filter(d => {
+    if (!d.expiry) return false;
+    return new Date(d.expiry) < now;
+  }).length;
+
+  res.json({
+    devices_total:   assigned.length,
+    devices_online:  online,
+    devices_offline: offline,
+    devices_unknown: unknown,
+    networks:        networks.length,
+    domains_total:   domains.length,
+    domains_expiring_soon: domainsExpiringSoon,
+    domains_expired: domainsExpired,
+    updated: new Date().toISOString(),
+  });
+});
+
+// GET /api/ha/devices — per-device status list
+app.get('/api/ha/devices', requireHaKey, (req, res) => {
+  const allEntries = dbGet('ip_data') || [];
+  const networks   = dbGet('networks') || [];
+  const ping       = pingCache.results || {};
+  const health     = serviceHealthCache.results || {};
+
+  const networkMap = Object.fromEntries(networks.map(n => [n.id, n.name]));
+
+  const devices = allEntries
+    .filter(e => e.state === 'assigned')
+    .map(e => {
+      const p = ping[e.ip];
+      const h = health[e.ip];
+      return {
+        ip:       e.ip,
+        name:     e.assetName || e.hostname || e.ip,
+        hostname: e.hostname  || null,
+        type:     e.type      || null,
+        network:  networkMap[e.networkId] || null,
+        tags:     e.tags      || [],
+        ping:     p === 'alive' ? 'online' : p === 'unreachable' ? 'offline' : 'unknown',
+        health:   h ? h.status : null,
+        health_code: h ? (h.code || null) : null,
+      };
+    });
+
+  res.json({ devices, count: devices.length, updated: new Date().toISOString() });
+});
+
+// GET /api/ha/domains — domain expiry status
+app.get('/api/ha/domains', requireHaKey, (req, res) => {
+  const domains = getDomains();
+  const now = new Date();
+
+  const result = domains.map(d => {
+    const days = d.expiry
+      ? Math.ceil((new Date(d.expiry) - now) / 86400000)
+      : null;
+    let status = 'unknown';
+    if (days !== null) {
+      if (days < 0)  status = 'expired';
+      else if (days <= 30) status = 'critical';
+      else if (days <= 60) status = 'warning';
+      else status = 'ok';
+    }
+    return {
+      domain:    d.domain,
+      registrar: d.registrar || null,
+      expiry:    d.expiry    || null,
+      days_until_expiry: days,
+      status,
+      nameservers: d.nameservers || [],
+      last_checked: d.lastChecked || null,
+    };
+  });
+
+  res.json({ domains: result, count: result.length, updated: new Date().toISOString() });
+});
+
 // ── Start ─────────────────────────────────────────────────────────────────────
 
 const PORT = 3001;

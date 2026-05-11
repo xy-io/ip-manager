@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 import QRCode from 'qrcode';
 
 // ── App version ───────────────────────────────────────────────────────────────
-const APP_VERSION = 'v1.32.0';
+const APP_VERSION = 'v1.33.0';
 
 // Default network configuration (overridden by Settings modal / localStorage)
 const DEFAULT_NETWORK_CONFIG = {
@@ -314,6 +314,163 @@ function ArpPresenceTab() {
           <span className={`text-sm ${msg.type === 'ok' ? 'text-emerald-600' : 'text-red-500'}`}>{msg.text}</span>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Home Assistant Tab ────────────────────────────────────────────────────────
+function HomeAssistantTab() {
+  const [apiKey, setApiKey] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [copied, setCopied] = useState(false);
+  const [revoking, setRevoking] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/ha/key').then(r => r.json()).then(d => {
+      setApiKey(d.key);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, []);
+
+  const generate = async () => {
+    const r = await fetch('/api/ha/key', { method: 'POST' });
+    const d = await r.json();
+    setApiKey(d.key);
+  };
+
+  const revoke = async () => {
+    if (!confirm('Revoke the API key? Any Home Assistant sensors using it will stop updating.')) return;
+    setRevoking(true);
+    await fetch('/api/ha/key', { method: 'DELETE' });
+    setApiKey(null);
+    setRevoking(false);
+  };
+
+  const copy = (text) => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const baseUrl = window.location.origin;
+
+  const yamlExample = apiKey ? `# Add to configuration.yaml or a sensor package file
+rest:
+  - resource: "${baseUrl}/api/ha/summary"
+    headers:
+      X-API-Key: "${apiKey}"
+    scan_interval: 60
+    sensor:
+      - name: "Network Devices Online"
+        value_template: "{{ value_json.devices_online }}"
+        unit_of_measurement: "devices"
+        icon: mdi:lan-check
+      - name: "Network Devices Offline"
+        value_template: "{{ value_json.devices_offline }}"
+        unit_of_measurement: "devices"
+        icon: mdi:lan-disconnect
+      - name: "Domains Expiring Soon"
+        value_template: "{{ value_json.domains_expiring_soon }}"
+        unit_of_measurement: "domains"
+        icon: mdi:domain
+
+  - resource: "${baseUrl}/api/ha/devices"
+    headers:
+      X-API-Key: "${apiKey}"
+    scan_interval: 60
+    sensor:
+      - name: "Network Device List"
+        value_template: "{{ value_json.count }}"
+        unit_of_measurement: "devices"
+        json_attributes:
+          - devices
+
+  - resource: "${baseUrl}/api/ha/domains"
+    headers:
+      X-API-Key: "${apiKey}"
+    scan_interval: 3600
+    sensor:
+      - name: "Domain List"
+        value_template: "{{ value_json.count }}"
+        unit_of_measurement: "domains"
+        json_attributes:
+          - domains` : '';
+
+  if (loading) return <div className="text-sm text-slate-500 py-8 text-center">Loading…</div>;
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-base font-semibold text-slate-800 mb-1">Home Assistant API</h3>
+        <p className="text-xs text-slate-500">A read-only JSON API for use with Home Assistant REST sensors. Secured by an API key — no session cookie required.</p>
+      </div>
+
+      {/* Available endpoints */}
+      <div className="bg-slate-50 rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs font-mono">
+        {[
+          { path: '/api/ha/summary', desc: 'Device counts, domain expiry summary' },
+          { path: '/api/ha/devices', desc: 'Per-device ping & health status' },
+          { path: '/api/ha/domains', desc: 'Domain expiry details' },
+        ].map(({ path, desc }) => (
+          <div key={path} className="flex items-center gap-3 px-3 py-2">
+            <span className="text-emerald-600 font-semibold">GET</span>
+            <span className="text-slate-800">{path}</span>
+            <span className="text-slate-400 font-sans ml-auto text-right">{desc}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Key management */}
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-2">API Key</label>
+        {apiKey ? (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <code className="flex-1 px-3 py-2 bg-slate-100 border border-slate-200 rounded-lg text-xs font-mono text-slate-700 truncate">
+                {apiKey}
+              </code>
+              <button
+                onClick={() => copy(apiKey)}
+                className="px-3 py-2 bg-slate-100 border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-200 transition-colors whitespace-nowrap"
+              >
+                {copied ? '✓ Copied' : 'Copy'}
+              </button>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={generate} className="px-3 py-1.5 bg-amber-50 border border-amber-200 text-amber-700 rounded-lg text-xs font-medium hover:bg-amber-100 transition-colors">
+                Regenerate key
+              </button>
+              <button onClick={revoke} disabled={revoking} className="px-3 py-1.5 bg-red-50 border border-red-200 text-red-600 rounded-lg text-xs font-medium hover:bg-red-100 transition-colors">
+                Revoke
+              </button>
+            </div>
+            <p className="text-xs text-slate-400">Pass as <code className="font-mono bg-slate-100 px-1 rounded">X-API-Key</code> header or <code className="font-mono bg-slate-100 px-1 rounded">?api_key=</code> query parameter.</p>
+          </div>
+        ) : (
+          <div>
+            <p className="text-xs text-slate-500 mb-3">No API key set. Generate one to enable the HA API.</p>
+            <button onClick={generate} className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors">
+              Generate API Key
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* YAML example */}
+      {apiKey && (
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-sm font-medium text-slate-700">Example configuration.yaml</label>
+            <button onClick={() => copy(yamlExample)} className="text-xs text-emerald-600 hover:text-emerald-700 font-medium">
+              {copied ? '✓ Copied' : 'Copy YAML'}
+            </button>
+          </div>
+          <pre className="bg-slate-900 text-emerald-300 text-xs rounded-xl p-4 overflow-x-auto leading-relaxed whitespace-pre font-mono max-h-64 overflow-y-auto">
+            {yamlExample}
+          </pre>
+          <p className="text-xs text-slate-400 mt-2">After adding to Home Assistant, restart HA and the sensors will appear. Use them in dashboards, automations, and alerts.</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -1496,6 +1653,7 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
     { id: 'backup',   label: 'Backup' },
     { id: 'manage',   label: 'Locations & Tags' },
     { id: 'presence', label: 'ARP & Presence' },
+    { id: 'ha',       label: 'Home Assistant' },
     { id: 'account',  label: 'Account' },
     { id: 'updates',  label: 'Updates' },
     { id: 'support',  label: 'Support' },
@@ -2165,6 +2323,11 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
             {/* ── ARP & PRESENCE TAB ── */}
             {activeTab === 'presence' && (
               <ArpPresenceTab />
+            )}
+
+            {/* ── HOME ASSISTANT TAB ── */}
+            {activeTab === 'ha' && (
+              <HomeAssistantTab />
             )}
 
             {/* ── UPDATES TAB ── */}
