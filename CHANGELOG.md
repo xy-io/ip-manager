@@ -10,6 +10,8 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 **Home Assistant JSON API**
 
+> **Note:** if upgrading from an earlier build of v1.33.0, re-run `ip-manager-update` — a fix was applied so the `/api/ha/*` endpoints are correctly exempt from session-cookie auth.
+
 New read-only REST API for pulling network data into Home Assistant (or any other automation platform).
 
 - **Three endpoints** — `GET /api/ha/summary` (total/online/offline counts, domain expiry stats), `GET /api/ha/devices` (per-device detail: IP, name, type, network, tags, ping status, health check), `GET /api/ha/domains` (domain list with expiry dates and status).
