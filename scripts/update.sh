@@ -139,10 +139,13 @@ if [ $PULL_EXIT -ne 0 ]; then
   fail_out "git pull failed"; ERROR_LOG="git pull failed:\n$PULL_OUT\n"
   rollback "git pull failed"
 fi
-# Restore credentials.env if git pull deleted or altered it
-if [ -n "$CREDS_BACKUP" ] && { [ ! -f "$CREDS_FILE" ] || [ "$(cat "$CREDS_FILE")" != "$CREDS_BACKUP" ]; }; then
-  [ "$API_MODE" = true ] && echo "LOG:Restoring credentials.env (preserved across pull)…" \
-                         || log "Restoring credentials.env…"
+# Restore credentials.env ONLY if git pull deleted it.
+# Do NOT restore if the content merely changed — the bcrypt migration
+# (v2.0.0+) intentionally rewrites the file to replace plaintext with a
+# hash. Blindly restoring the plaintext backup would undo that migration.
+if [ -n "$CREDS_BACKUP" ] && [ ! -f "$CREDS_FILE" ]; then
+  [ "$API_MODE" = true ] && echo "LOG:Restoring credentials.env (deleted by git pull)…" \
+                         || log "Restoring credentials.env (deleted by git pull)…"
   printf '%s' "$CREDS_BACKUP" > "$CREDS_FILE"
   chmod 600 "$CREDS_FILE"
 fi

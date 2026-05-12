@@ -250,8 +250,10 @@ fi
 bash "$APP_DIR/scripts/update.sh" "$@"
 EXIT_CODE=$?
 
-# Restore credentials if git pull deleted or overwrote them
-if [ -n "$CREDS_BACKUP" ] && { [ ! -f "$CREDS_FILE" ] || [ "$(cat "$CREDS_FILE")" != "$CREDS_BACKUP" ]; }; then
+# Restore credentials ONLY if git pull deleted the file.
+# Do NOT restore on content change — the bcrypt migration (v2.0.0+)
+# intentionally rewrites the file; restoring the backup would undo it.
+if [ -n "$CREDS_BACKUP" ] && [ ! -f "$CREDS_FILE" ]; then
   printf '%s' "$CREDS_BACKUP" > "$CREDS_FILE"
   chmod 600 "$CREDS_FILE"
 fi
