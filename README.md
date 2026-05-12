@@ -45,6 +45,18 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
+### v2.0 — Bcrypt password hashing
+
+Passwords are no longer stored in plaintext. From v2.0.0 `credentials.env` holds a bcrypt hash (cost factor 12) — even with read access to the file, the password cannot be recovered. **Existing users are migrated automatically on first restart after upgrading** — no action needed, same login credentials as before. First-run generated passwords are hashed before being written to disk; the plaintext is only ever shown once in the service journal. See [ROADMAP.md](./ROADMAP.md) for what's coming next, including passkey support.
+
+### v1.33 — Home Assistant JSON API
+
+New read-only REST API for pulling network data into Home Assistant or any automation platform. Three endpoints: `/api/ha/summary` (device counts and domain expiry stats), `/api/ha/devices` (per-device ping and health status), `/api/ha/domains` (expiry dates and urgency status). Authenticated by a dedicated API key generated in **Settings → Home Assistant** — independent of your login credentials and revokable at any time.
+
+### v1.32 — SSH username per entry
+
+The SSH quick-launch button now supports a per-entry username. Set it in the edit modal (e.g. `root` for Proxmox, `admin` for a router) and the button opens `ssh://user@hostname`. A live preview shows the exact URL before saving.
+
 ### v1.31 — Domain Tracker: RDAP fixes and UI refresh
 
 Fixed registrar names showing as numeric IANA IDs — the parser now reads the human-readable name from the vCard data. Fixed RDAP lookups for `.online`, `.watch`, `.pro` and other TLDs whose servers issue HTTP redirects; these now resolve correctly. Nameservers normalised to lowercase. Domain cards refreshed with colour-coded left borders, expiry date shown alongside the days badge, registrar as a hyperlink, and a cleaner error state.

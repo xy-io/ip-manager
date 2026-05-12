@@ -6,12 +6,15 @@
 const express = require('express');
 const Database = require('better-sqlite3');
 const cookieParser = require('cookie-parser');
+const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const https = require('https');
 const http  = require('http');
 const path = require('path');
 const fs = require('fs');
 const { exec, execFile } = require('child_process');
+
+const BCRYPT_ROUNDS = 12; // cost factor — ~300ms per hash on modest hardware
 
 const app = express();
 app.use(express.json({ limit: '2mb' }));
@@ -31,49 +34,79 @@ app.use(cookieParser());
 const CREDENTIALS_FILE = process.env.CREDENTIALS_FILE || path.join(__dirname, 'credentials.env');
 
 function loadCredentials() {
+  // ── 1. Environment variable override (highest priority) ──────────────────────
   if (process.env.IP_MANAGER_USERNAME && process.env.IP_MANAGER_PASSWORD) {
     return {
       username: process.env.IP_MANAGER_USERNAME,
       password: process.env.IP_MANAGER_PASSWORD,
     };
   }
+
   const envFile = CREDENTIALS_FILE;
+
+  // ── 2. credentials.env exists ─────────────────────────────────────────────────
   if (fs.existsSync(envFile)) {
     const lines = fs.readFileSync(envFile, 'utf8').split('\n');
     const env = {};
     lines.forEach(line => {
+      if (line.startsWith('#')) return; // skip comment lines
       const [k, ...rest] = line.split('=');
       if (k && rest.length) env[k.trim()] = rest.join('=').trim();
     });
+
     if (env.IP_MANAGER_USERNAME && env.IP_MANAGER_PASSWORD) {
-      return { username: env.IP_MANAGER_USERNAME, password: env.IP_MANAGER_PASSWORD };
+      const username = env.IP_MANAGER_USERNAME;
+      const storedPassword = env.IP_MANAGER_PASSWORD;
+
+      // ── Bcrypt migration (v2.0.0+) ──────────────────────────────────────────
+      // If the password is plaintext (not a bcrypt hash), hash it now and
+      // rewrite the file. Runs once per install on first start after upgrade.
+      // The user logs in with the same password — nothing changes for them.
+      if (!storedPassword.startsWith('$2b$')) {
+        console.log('[auth] Migrating plaintext password to bcrypt hash (one-time upgrade to v2.0.0)…');
+        const hashed = bcrypt.hashSync(storedPassword, BCRYPT_ROUNDS);
+        const content = `# IP Manager credentials — password is bcrypt-hashed (v2.0.0+)\nIP_MANAGER_USERNAME=${username}\nIP_MANAGER_PASSWORD=${hashed}\n`;
+        try {
+          fs.writeFileSync(envFile, content, { mode: 0o600 });
+          console.log('[auth] Password hashed and saved successfully.');
+        } catch (e) {
+          console.error(`[auth] Could not write hashed credentials (${envFile}): ${e.message}`);
+        }
+        return { username, password: hashed };
+      }
+
+      return { username, password: storedPassword };
     }
-    // File exists but has no valid credentials — this is an existing install
-    // that was set up before v1.29 (install.sh used to touch an empty file).
-    // Return admin/admin so the user can still log in; the lockout middleware
-    // will then require them to set a real password through the app UI.
+
+    // File exists but contains no valid credentials — pre-v1.29 install that
+    // had an empty file created by install.sh. Fall back to admin/admin so the
+    // lockout middleware can prompt the user to set a real password.
     console.warn('[auth] credentials.env exists but contains no credentials — treating as admin/admin. Login will require a password change.');
     return { username: 'admin', password: 'admin' };
   }
-  // File does not exist — genuine first run. Generate a random password,
-  // persist it so it survives restarts, and log it once to the journal.
+
+  // ── 3. No file — genuine first run ───────────────────────────────────────────
+  // Generate a unique random password, hash it before writing to disk, and
+  // log the plaintext once to the journal for the user to retrieve.
   // Recovery: journalctl -u ip-manager-api | grep -A5 "initial credentials"
   const username = 'admin';
-  const password = crypto.randomBytes(12).toString('base64url'); // 16 URL-safe chars, 96 bits
+  const plainPassword = crypto.randomBytes(12).toString('base64url'); // 96-bit, URL-safe
+  const hashedPassword = bcrypt.hashSync(plainPassword, BCRYPT_ROUNDS);
   try {
-    fs.writeFileSync(envFile, `IP_MANAGER_USERNAME=${username}\nIP_MANAGER_PASSWORD=${password}\n`, { mode: 0o600 });
+    const content = `# IP Manager credentials — password is bcrypt-hashed (v2.0.0+)\nIP_MANAGER_USERNAME=${username}\nIP_MANAGER_PASSWORD=${hashedPassword}\n`;
+    fs.writeFileSync(envFile, content, { mode: 0o600 });
   } catch (e) {
     console.error(`[auth] Could not write credentials file (${envFile}): ${e.message}`);
   }
   console.log('═══════════════════════════════════════════════════════════════');
   console.log(' IP Manager — initial credentials (change after first login):');
   console.log(`   username : ${username}`);
-  console.log(`   password : ${password}`);
-  console.log(' Saved to: ' + envFile);
+  console.log(`   password : ${plainPassword}`);
+  console.log(' Saved to: ' + envFile + ' (password stored as bcrypt hash)');
   console.log(' To retrieve later:');
   console.log('   journalctl -u ip-manager-api | grep -A5 "initial credentials"');
   console.log('═══════════════════════════════════════════════════════════════');
-  return { username, password };
+  return { username, password: hashedPassword };
 }
 
 let credentials = loadCredentials();
@@ -114,7 +147,11 @@ function requireAuth(req, res, next) {
 // This catches old installs that haven't yet migrated away from the default.
 
 function isDefaultCreds() {
-  return credentials.username === 'admin' && credentials.password === 'admin';
+  // Handles both plaintext 'admin' (pre-v2.0 fallback path) and bcrypt hash of 'admin'
+  if (credentials.username !== 'admin') return false;
+  if (credentials.password === 'admin') return true;
+  if (credentials.password.startsWith('$2b$')) return bcrypt.compareSync('admin', credentials.password);
+  return false;
 }
 
 function requireNotDefault(req, res, next) {
@@ -135,7 +172,10 @@ app.post('/api/auth/login', (req, res) => {
   credentials = loadCredentials();
   const { username, password } = req.body || {};
   // Username comparison is case-insensitive; password remains case-sensitive.
-  if ((username || '').toLowerCase() === credentials.username.toLowerCase() && password === credentials.password) {
+  const passwordMatch = credentials.password.startsWith('$2b$')
+    ? bcrypt.compareSync(password, credentials.password)
+    : password === credentials.password; // fallback for admin/admin pre-migration path
+  if ((username || '').toLowerCase() === credentials.username.toLowerCase() && passwordMatch) {
     const token = createSession();
     // httpOnly prevents JS access; sameSite=strict prevents CSRF
     res.cookie(SESSION_COOKIE, token, { httpOnly: true, sameSite: 'strict' });
@@ -167,15 +207,19 @@ app.post('/api/auth/change-password', (req, res) => {
   }
   // Reload to pick up any manual edits to credentials.env
   credentials = loadCredentials();
-  if (currentPassword !== credentials.password) {
+  const currentMatch = credentials.password.startsWith('$2b$')
+    ? bcrypt.compareSync(currentPassword, credentials.password)
+    : currentPassword === credentials.password; // fallback for admin/admin pre-migration path
+  if (!currentMatch) {
     return res.status(401).json({ error: 'Current password is incorrect' });
   }
-  // Write the new credentials to credentials.env (or CREDENTIALS_FILE if set)
+  // Hash the new password before writing — disk never stores plaintext from v2.0.0 onwards
+  const hashedNew = bcrypt.hashSync(newPassword, BCRYPT_ROUNDS);
   const envFile = CREDENTIALS_FILE;
-  const content = `IP_MANAGER_USERNAME=${newUsername}\nIP_MANAGER_PASSWORD=${newPassword}\n`;
+  const content = `# IP Manager credentials — password is bcrypt-hashed (v2.0.0+)\nIP_MANAGER_USERNAME=${newUsername}\nIP_MANAGER_PASSWORD=${hashedNew}\n`;
   try {
     fs.writeFileSync(envFile, content, 'utf8');
-    credentials = { username: newUsername, password: newPassword };
+    credentials = { username: newUsername, password: hashedNew };
     // Invalidate all existing sessions so everyone must re-login
     sessions.clear();
     res.clearCookie(SESSION_COOKIE);

@@ -4,6 +4,41 @@ For the full release history see the [CHANGELOG](https://github.com/xy-io/ip-man
 
 ---
 
+## v2.0 — Bcrypt password hashing *(major release)*
+
+Passwords are no longer stored in plaintext on disk.
+
+- `credentials.env` now stores a **bcrypt hash** (cost factor 12) instead of the raw password — the hash cannot be reversed to recover your password
+- **Zero action required from existing users** — the server automatically migrates your plaintext password to a hash on first restart after upgrading; you log in with the same credentials as always
+- First-run generated passwords are hashed before being written to disk; the one-time plaintext is only ever shown in the service journal
+- Password changes via Settings also hash the new password immediately — plaintext never touches disk from v2.0 onwards
+- Uses `bcryptjs` (pure JavaScript) — no native compilation, works on all architectures
+
+See the [Roadmap](https://github.com/xy-io/ip-manager/blob/main/ROADMAP.md) for what's coming next, including passkey authentication.
+
+---
+
+## v1.33 — Home Assistant JSON API
+
+New read-only REST API for integrating with Home Assistant or any automation platform.
+
+- **`GET /api/ha/summary`** — device totals (online/offline/unknown), network count, domain expiry stats
+- **`GET /api/ha/devices`** — per-device list with IP, name, type, tags, ping status, and health check result
+- **`GET /api/ha/domains`** — all tracked domains with expiry dates and urgency status
+- API key authentication — generate a key in **Settings → Home Assistant**, pass it as `X-API-Key` header or `?api_key=` parameter
+- Ready-to-paste Home Assistant YAML snippet auto-generated in the Settings tab
+
+---
+
+## v1.32 — SSH username per entry
+
+- Set a per-entry SSH username in the edit modal (e.g. `root` for Proxmox, `admin` for a router)
+- SSH quick-launch button opens `ssh://user@hostname` using the configured user
+- Live preview in the edit form shows the exact URL before saving
+- Leaving the field blank preserves previous behaviour (OS default user)
+
+---
+
 ## v1.31 — Domain Tracker: RDAP fixes & UI refresh
 
 - **Fixed registrar names** — previously showed as numeric IANA IDs (e.g. "1068", "1910"). Now reads the human-readable name from vCard data.

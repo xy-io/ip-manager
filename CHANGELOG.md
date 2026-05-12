@@ -6,6 +6,24 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v2.0.0
+
+**Bcrypt password hashing — passwords no longer stored in plaintext**
+
+This is a security-focused major release. Your login credentials and all existing data are fully preserved — no action is required from existing users.
+
+**What changed:**
+
+- **Passwords are now hashed on disk.** `credentials.env` previously stored your password in plaintext. From v2.0.0 it stores a bcrypt hash (cost factor 12, ~300ms to compute). Even if someone gains read access to the file, your password cannot be recovered from it.
+- **Automatic migration on first start.** When the server restarts after upgrading, it reads your existing plaintext password, hashes it, rewrites the file, and continues. You log in with the same password as always — you will not notice anything has changed.
+- **First-run generated passwords** are now hashed before being written to disk. The plaintext version is still logged once to the service journal so you can retrieve it via `journalctl`.
+- **Password changes** hash the new password immediately at the point of change — plaintext never touches the disk.
+- **Pure JavaScript bcrypt** (`bcryptjs`) — no native compilation required, works on all architectures including ARM-based Proxmox hosts.
+
+**Upgrading from any previous version:** just run `ip-manager-update` as normal. The migration is fully automatic.
+
+---
+
 ## v1.33.0
 
 **Home Assistant JSON API**

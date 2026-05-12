@@ -1,6 +1,6 @@
 {
   "name": "ip-manager",
-  "version": "1.33.0",
+  "version": "2.0.0",
   "description": "Home Network IP Address Manager",
   "type": "module",
   "scripts": {
