@@ -62,7 +62,7 @@ function loadCredentials() {
       // If the password is plaintext (not a bcrypt hash), hash it now and
       // rewrite the file. Runs once per install on first start after upgrade.
       // The user logs in with the same password — nothing changes for them.
-      if (!storedPassword.startsWith('$2b$')) {
+      if (!storedPassword.startsWith('$2')) {
         console.log('[auth] Migrating plaintext password to bcrypt hash (one-time upgrade to v2.0.0)…');
         const hashed = bcrypt.hashSync(storedPassword, BCRYPT_ROUNDS);
         const content = `# IP Manager credentials — password is bcrypt-hashed (v2.0.0+)\nIP_MANAGER_USERNAME=${username}\nIP_MANAGER_PASSWORD=${hashed}\n`;
@@ -73,6 +73,32 @@ function loadCredentials() {
           console.error(`[auth] Could not write hashed credentials (${envFile}): ${e.message}`);
         }
         return { username, password: hashed };
+      }
+
+      // ── Double-hash recovery (v2.0.1) ────────────────────────────────────────
+      // A bug in v2.0.0 caused bcryptjs's $2a$ hashes to be mistaken for
+      // plaintext and re-hashed on every login attempt, producing a hash-of-hash
+      // that no real password can ever match. Detect this by checking whether the
+      // stored hash is itself a bcrypt hash of another bcrypt hash — i.e. the
+      // 60-char $2... value starts with the prefix bcrypt uses for its own output.
+      // We can't reverse a hash-of-hash, so generate a fresh password and log it.
+      if (bcrypt.getRounds(storedPassword) && bcrypt.compareSync(storedPassword.substring(0, 72), storedPassword)) {
+        // The stored "hash" successfully verifies against the first 72 chars of
+        // itself — a hallmark of a hash-of-hash. Generate fresh credentials.
+        console.error('[auth] WARNING: double-hashed password detected (v2.0.0 bug). Generating new credentials…');
+        const newPlain = crypto.randomBytes(12).toString('base64url');
+        const newHash  = bcrypt.hashSync(newPlain, BCRYPT_ROUNDS);
+        const content  = `# IP Manager credentials — password is bcrypt-hashed (v2.0.0+)\nIP_MANAGER_USERNAME=${username}\nIP_MANAGER_PASSWORD=${newHash}\n`;
+        try { fs.writeFileSync(envFile, content, { mode: 0o600 }); } catch (e) { /* best effort */ }
+        console.log('═══════════════════════════════════════════════════════════════');
+        console.log(' IP Manager — NEW credentials generated (v2.0.0 double-hash recovery)');
+        console.log(`   username : ${username}`);
+        console.log(`   password : ${newPlain}`);
+        console.log(' Log in with these credentials, then change your password in Settings.');
+        console.log(' To retrieve later:');
+        console.log('   journalctl -u ip-manager-api | grep -A5 "double-hash recovery"');
+        console.log('═══════════════════════════════════════════════════════════════');
+        return { username, password: newHash };
       }
 
       return { username, password: storedPassword };
@@ -150,7 +176,7 @@ function isDefaultCreds() {
   // Handles both plaintext 'admin' (pre-v2.0 fallback path) and bcrypt hash of 'admin'
   if (credentials.username !== 'admin') return false;
   if (credentials.password === 'admin') return true;
-  if (credentials.password.startsWith('$2b$')) return bcrypt.compareSync('admin', credentials.password);
+  if (credentials.password.startsWith('$2')) return bcrypt.compareSync('admin', credentials.password);
   return false;
 }
 
@@ -172,7 +198,7 @@ app.post('/api/auth/login', (req, res) => {
   credentials = loadCredentials();
   const { username, password } = req.body || {};
   // Username comparison is case-insensitive; password remains case-sensitive.
-  const passwordMatch = credentials.password.startsWith('$2b$')
+  const passwordMatch = credentials.password.startsWith('$2')
     ? bcrypt.compareSync(password, credentials.password)
     : password === credentials.password; // fallback for admin/admin pre-migration path
   if ((username || '').toLowerCase() === credentials.username.toLowerCase() && passwordMatch) {
@@ -207,7 +233,7 @@ app.post('/api/auth/change-password', (req, res) => {
   }
   // Reload to pick up any manual edits to credentials.env
   credentials = loadCredentials();
-  const currentMatch = credentials.password.startsWith('$2b$')
+  const currentMatch = credentials.password.startsWith('$2')
     ? bcrypt.compareSync(currentPassword, credentials.password)
     : currentPassword === credentials.password; // fallback for admin/admin pre-migration path
   if (!currentMatch) {

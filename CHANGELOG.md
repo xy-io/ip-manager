@@ -6,6 +6,22 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v2.0.1
+
+**Hotfix: bcrypt hash detection and double-hash recovery**
+
+> **If you updated to v2.0.0 and can no longer log in:** run `ip-manager-update` to get this fix. On next server restart, the double-hash is automatically detected and new credentials are generated and logged to the service journal. Retrieve them with:
+> ```
+> journalctl -u ip-manager-api | grep -A5 "double-hash recovery"
+> ```
+> Log in with those credentials, then change your password in Settings.
+
+- **Fixed hash detection** — `bcryptjs` generates `$2a$` prefixed hashes; the v2.0.0 check incorrectly only matched `$2b$`, causing the migration to re-run on every login and produce a hash-of-hash that no real password could match.
+- **Automatic double-hash recovery** — on startup, if a hash-of-hash is detected (a symptom of the v2.0.0 bug), the server generates fresh credentials and logs them to the journal. No manual file editing required.
+- **Safer credentials restore** — the update script no longer restores a backed-up `credentials.env` when the file content merely changed (e.g. via bcrypt migration); it only restores if git pull deleted the file entirely.
+
+---
+
 ## v2.0.0
 
 **Bcrypt password hashing — passwords no longer stored in plaintext**
