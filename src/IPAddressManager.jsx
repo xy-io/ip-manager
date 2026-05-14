@@ -468,6 +468,9 @@ rest:
           <pre className="bg-slate-900 text-emerald-300 text-xs rounded-xl p-4 overflow-x-auto leading-relaxed whitespace-pre font-mono max-h-64 overflow-y-auto">
             {yamlExample}
           </pre>
+          <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-2 flex items-center gap-1.5">
+            <span>⚠</span> This YAML contains your live API key — treat it like a password and do not share it publicly.
+          </p>
           <p className="text-xs text-slate-400 mt-2">After adding to Home Assistant, restart HA and the sensors will appear. Use them in dashboards, automations, and alerts.</p>
         </div>
       )}
