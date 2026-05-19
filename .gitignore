@@ -17,6 +17,9 @@ audit.jsonl
 uploads/
 outputs/
 
+# Marketing site — managed separately, not part of the distributed app
+marketing/
+
 # Credentials — generated on first server start, must never be committed
 server/credentials.env
 
