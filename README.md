@@ -233,6 +233,9 @@ ip-manager/
 │   └── ip-manager.db          # SQLite database (created on first run)
 ├── public/
 │   └── favicon.svg
+├── scripts/
+│   ├── update.sh              # Update logic (run via ip-manager-update)
+│   └── smoke-test.cjs         # End-to-end verification (see Testing below)
 ├── index.html
 ├── vite.config.js
 ├── tailwind.config.js
@@ -241,6 +244,35 @@ ip-manager/
 ├── install.sh                 # LXC one-line install script
 └── IP_Manager_Roadmap.docx    # Feature roadmap
 ```
+
+---
+
+## Testing
+
+`scripts/smoke-test.cjs` verifies a running install end-to-end: authentication, every API route's status code and response shape, the ping and health caches, the Home Assistant API, and a set of known security regressions. It is **read-only** — it makes no writes and mutates no data, so it is safe to run against a live server.
+
+Run it from the repo root on the server:
+
+```bash
+SMOKE_USER=yourname SMOKE_PASS='yourpassword' node scripts/smoke-test.cjs
+```
+
+Optional:
+
+| Variable / flag | Purpose |
+|---|---|
+| `SMOKE_HA_KEY` | Home Assistant API key — enables the HA endpoint tests (skipped without it) |
+| `--url <base>` | Target a different host (default `http://127.0.0.1:3001`) |
+| `--build` | Also run `npm run build` and fail if the frontend build breaks |
+| `--verbose` | Print response bodies for failing checks |
+
+Exit code is `0` when everything passes and `1` on any failure, so it can gate a deployment:
+
+```bash
+node scripts/smoke-test.cjs --build && ip-manager-update
+```
+
+**Run it before and after any update** — particularly before asking anyone else to update. Comparing the two runs is the quickest way to catch a regression before it reaches a user.
 
 ---
 
