@@ -4,6 +4,28 @@ For the full release history see the [CHANGELOG](https://github.com/xy-io/ip-man
 
 ---
 
+## v2.0.2 — Security fix & Home Assistant status fix
+
+- **`/api/proxmox/discover` required no authentication.** The route sat above the blanket auth middleware, so anyone able to reach the server could invoke it — and it connects to whatever host it is given. It now applies the auth middleware directly. No stored data was exposed, but an unauthenticated caller could use the server to probe other hosts on your network. **Update if your instance is reachable beyond your LAN.**
+- **Home Assistant reported every device as "unknown".** The ping cache stores `up`/`down` while the HA endpoints compared against `alive`/`unreachable`, which never matched — so `devices_online` and `devices_offline` have read `0` on every install since the API shipped in v1.33.0. Both endpoints now share one translation helper that accepts either spelling. If you built automations on these sensors, **they will start reporting real values after this update.**
+- **New smoke-test script** (`scripts/smoke-test.cjs`) — read-only end-to-end verification of authentication, every API route, the status caches, the Home Assistant API, and known security regressions. Both defects above were found by it. See [Testing](Testing).
+
+---
+
+## v2.0.1 — Hotfix: bcrypt hash detection
+
+> **If you updated to v2.0.0 and cannot log in**, run `ip-manager-update`. On the next restart the problem is detected automatically and fresh credentials are written to the service journal:
+> ```
+> journalctl -u ip-manager-api | grep -A5 "double-hash recovery"
+> ```
+> Log in with those, then change your password in Settings.
+
+- **Fixed hash detection** — `bcryptjs` produces `$2a$`-prefixed hashes but v2.0.0 only recognised `$2b$`, so the migration re-ran on every login attempt and hashed the hash. No password could then match.
+- **Automatic recovery** — a double-hashed password is now detected on startup and replaced with fresh generated credentials, logged to the journal. No manual file editing needed.
+- **Safer credential restore during updates** — the update script only restores a backed-up `credentials.env` if git deleted the file outright, not when its contents merely changed. Restoring on any change was undoing the bcrypt migration.
+
+---
+
 ## v2.0 — Bcrypt password hashing *(major release)*
 
 Passwords are no longer stored in plaintext on disk.

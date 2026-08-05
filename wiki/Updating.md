@@ -37,7 +37,7 @@ This command is installed globally by the install script. It will:
 2. Run any database migrations
 3. Install updated dependencies (`npm install`)
 4. Rebuild the frontend (`npm run build`)
-5. Restart the `ip-manager` service
+5. Restart the `ip-manager-api` service
 
 The update takes 1–3 minutes depending on connection speed.
 
@@ -47,15 +47,54 @@ The update takes 1–3 minutes depending on connection speed.
 
 - ✅ All your IP entries, networks, tags, notes
 - ✅ Domain Tracker data
-- ✅ Your credentials (`credentials.env` is not touched by git)
+- ✅ Your credentials — `credentials.env` is gitignored, and the update script snapshots it before pulling and restores it if git removes it
 - ✅ App settings and Proxmox configuration
-- ✅ The SQLite database
+- ✅ The SQLite database (`server/ip-manager.db` is never tracked by git)
 
 ---
 
 ## Before updating
 
 It's good practice to [create a backup](Backup-and-Restore) before updating, especially for major version bumps.
+
+---
+
+## Verifying an update
+
+From v2.0.2 the repo includes a read-only smoke test that checks authentication, every API route, the status caches, and the Home Assistant API in one run:
+
+```bash
+cd /opt/ip-manager
+SMOKE_USER=yourname SMOKE_PASS='yourpassword' node scripts/smoke-test.cjs
+```
+
+Run it **before and after** an update and compare. Anything that passed before and fails afterwards is a regression worth reporting. See [Testing](Testing) for details.
+
+---
+
+## Never use `git pull` directly
+
+Always update with `ip-manager-update`. Running `git pull`, `git reset --hard` or `git checkout` by hand in `/opt/ip-manager` can delete `credentials.env`, locking you out of the app — the update script exists precisely to protect against that.
+
+If a manual git command has already left you locked out, the server generates fresh credentials on its next restart and logs them:
+
+```bash
+systemctl restart ip-manager-api
+journalctl -u ip-manager-api | grep -A5 "initial credentials"
+```
+
+---
+
+## If an update fails
+
+The update script saves a rollback point before it starts. If dependency installation or the build fails, it automatically reverts to the previous version, rebuilds it, and restarts the service — so a failed update leaves you on the last working version rather than a broken one.
+
+To see what happened:
+
+```bash
+journalctl -u ip-manager-api -n 100 --no-pager
+cat /opt/ip-manager/server/.update-result.json
+```
 
 ---
 
@@ -77,12 +116,12 @@ Older installs had Nginx configured with a 30-second proxy timeout, which could 
 ## Troubleshooting updates
 
 **Update appears to hang in the GUI**
-- The update may still be running in the background — check via CLI: `journalctl -u ip-manager -f`
+- The update may still be running in the background — check via CLI: `journalctl -u ip-manager-api -f`
 - If it genuinely stalled, run `ip-manager-update` from the CLI instead
 
 **Service won't start after update**
 ```bash
-journalctl -u ip-manager -n 50 --no-pager
+journalctl -u ip-manager-api -n 50 --no-pager
 ```
 This shows the last 50 lines of service logs. Common causes: missing dependency, port conflict, syntax error in a config file.
 
@@ -92,5 +131,5 @@ cd /opt/ip-manager
 git log --oneline -10          # find the commit you want to revert to
 git checkout <commit-hash>
 npm run build
-systemctl restart ip-manager
+systemctl restart ip-manager-api
 ```

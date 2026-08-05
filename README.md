@@ -45,6 +45,14 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
+### v2.0.2 — Security fix & Home Assistant status fix
+
+`/api/proxmox/discover` was reachable without authentication — it sat above the auth middleware, so anyone able to reach the server could ask it to connect to an arbitrary host. Now fixed. Separately, the Home Assistant API had reported every device as `unknown` since it shipped in v1.33.0: the ping cache stores `up`/`down` while the endpoints compared against `alive`/`unreachable`. Both now share one translation helper. **If you have Home Assistant automations built on these sensors, they will start reporting real values.** Also adds `scripts/smoke-test.cjs` — see [Testing](#testing) — which is how both defects were found.
+
+### v2.0.1 — Hotfix: bcrypt hash detection
+
+`bcryptjs` produces `$2a$`-prefixed hashes, but v2.0.0 only recognised `$2b$` — so the migration treated an existing hash as plaintext and re-hashed it on every login attempt, locking users out. Fixed, plus automatic recovery: a double-hashed password is now detected on startup and replaced with fresh credentials logged to the service journal. **If you are stuck on v2.0.0**, run `ip-manager-update` and retrieve the new credentials with `journalctl -u ip-manager-api | grep -A5 "double-hash recovery"`.
+
 ### v2.0 — Bcrypt password hashing
 
 Passwords are no longer stored in plaintext. From v2.0.0 `credentials.env` holds a bcrypt hash (cost factor 12) — even with read access to the file, the password cannot be recovered. **Existing users are migrated automatically on first restart after upgrading** — no action needed, same login credentials as before. First-run generated passwords are hashed before being written to disk; the plaintext is only ever shown once in the service journal. See [ROADMAP.md](./ROADMAP.md) for what's coming next, including passkey support.
@@ -278,53 +286,14 @@ node scripts/smoke-test.cjs --build && ip-manager-update
 
 ## Roadmap
 
-**Phase 1 — foundation (shipped):**
-- ✅ Tag support, sort controls, last modified date, keyboard shortcuts — shipped
-- ✅ Bulk selection & bulk edit, Location management, Free IPs in main list — shipped in v1.7
-- ✅ Change history / audit log — shipped in v1.7
-- ✅ Multi-network / VLAN support, Full backup & restore, Hide free IP cards toggle — shipped in v1.8
-- ✅ Login screen & credential management — shipped in v1.9
-- ✅ Proxmox one-shot import — discover all VMs and LXCs from a Proxmox host and import in one click — shipped in v1.10
-- ✅ Tag management in Settings — add, rename, delete tags; suggestions dropdown on edit modal — shipped in v1.10
-- ✅ ARP network scan — one-shot subnet sweep, cross-references against manager, import untracked devices — shipped in v1.11
-- ✅ DHCP toggle — disable DHCP pool per network for fully static setups — shipped in v1.11
+Planned work and ideas under consideration live in **[ROADMAP.md](./ROADMAP.md)**. The full history of what has shipped is in **[CHANGELOG.md](./CHANGELOG.md)**.
 
-**Phase 2 — live data & integrations (shipped):**
-- ✅ **Ping / reachability** — live green/red status dots on every IP, auto-poll every 60 s, manual refresh button — shipped in v1.12
-- ✅ **Help & Reference modal** — full in-app reference guide with 11 sections — shipped in v1.13
-- ✅ **DNS reverse lookup** — PTR lookup for all tracked IPs, mismatch detection, configurable DNS server — shipped in v1.14
-- ✅ **Proxmox scheduled sync** — background sync with HA failover detection, configurable interval, change history — shipped in v1.15
-- ✅ **Multiple IPs per host** — link secondary IPs to a primary entry; chips on cards and table rows; Proxmox auto-groups multi-NIC VMs — shipped in v1.16
-- ✅ **selfh.st service icons** — auto-matched logos for 100+ self-hosted services; dark-mode variants; Lucide fallback — shipped in v1.17
-- ✅ **Mobile responsive UI** — collapsible Tools dropdown, scaled header, horizontal tag chips — shipped in v1.17
-- ✅ **Sync result logs** — last-run result panels in Proxmox and DNS settings with per-entry diffs — shipped in v1.17
-- ✅ **Service health checks** — opt-in HTTP/HTTPS probe per entry; sky-blue/orange dot alongside ping dot; 60+ service auto-suggest; TLS errors ignored — shipped in v1.18
-- ✅ **Proxmox live status** — power-state badge (▶ running / ■ stopped / ⏸ paused) on Proxmox-tagged entries; reuses existing sync credentials; read-only — shipped in v1.19
-- ✅ **Proxmox dedicated metadata fields** — VMID, node, kind stored separately from user notes; auto-migration on startup; read-only info panel in Edit modal; version number in Settings and Help modals — shipped in v1.20
-- ✅ **In-browser updates** — version check against GitHub, live progress bar, automatic rollback on failure, release log in Settings — shipped in v1.21
-- ✅ **Last seen timestamps** — opt-in; piggybacks on the existing ping cycle, zero extra traffic; clock icon + relative timestamp on cards and table; stale indicator after 25 h — shipped in v1.22
-- ✅ **Background discovery scan** — opt-in scheduled ARP sweep scoped to static range; subnet-aware defaults (/24: 15 min / 1000 Kbps, /16: 60 min / 200 Kbps); user-configurable interval and bandwidth cap; untracked devices surfaced in Settings → ARP & Presence — shipped in v1.22
+Currently next up:
 
-**Phase 3 — inventory depth & planning tools:**
-- ✅ **Tools dropdown** — scalable toolbar utility menu (wrench icon); replaces ad-hoc action bar buttons — shipped in v1.23
-- ✅ **CIDR calculator** — enter any CIDR block, get back usable range, broadcast address, host count, wildcard mask, and binary representation; entirely client-side — shipped in v1.23
-- ✅ **QR codes** — generate a QR code for any entry's management URL or bare IP; toggle encode target, download as PNG or copy to clipboard — shipped in v1.23
-- ✅ **MAC address + vendor lookup** — optional MAC address field per entry; auto-resolves manufacturer from bundled IEEE OUI database (no internet required); displayed on cards and in table — shipped in v1.24
-- ✅ **SSH / HTTP quick-launch** — one-click HTTP/HTTPS and SSH buttons on expanded cards; HTTP/HTTPS uses the service health check config; SSH opens via OS handler — shipped in v1.24
-- ✅ **Subnet Visualiser + Planned Blocks** — 16×16 heat-map grid of the full address space; colour-coded free/static/DHCP/reserved cells with row labels and usage summary; overlay named planned blocks (e.g. "IoT .200–.220") stored per network — shipped in v1.24
-- ✅ **Two-zone header + app logo** — Subnet Grid logo; left identity zone (logo, network pill/switcher) and right actions zone (Import, Export, unified Tools menu); standalone Proxmox/ARP Scan/Ping/DNS buttons consolidated into Tools; SQLite badge and view toggle move to a quiet sub-bar — shipped in v1.25
-- ✅ **Scheduled cloud backup** — GUI-configured backup to S3-compatible storage, SFTP, local paths, Dropbox, or Google Drive (via rclone); daily/weekly schedule; configurable retention; manual trigger; no cron setup required — shipped in v1.26
-- ✅ **Dependency mapping** — link entries to the devices they depend on; a red "dep offline" badge appears on the card when any dependency goes down (ping or health check); expanded card shows the full dependency list with live status dots — shipped in v1.27
-- **Per-entry audit log** (v1.27) — drill down from any card into the full change history for that specific entry; filters the existing global audit log by IP
-- **Bulk add from Proxmox sync** (v1.28) — opt-in toggle to auto-add newly discovered Proxmox VMs/LXCs rather than only updating existing entries
-- **Custom fields** (v1.28) — user-definable key/value pairs per entry (e.g. "Serial number", "VLAN ID", "Purchase date"); searchable and importable via CSV
-- **Entry templates** (v1.29) — pre-define common entry configurations (type, location, tags, health port) in Settings; apply a template when claiming a new IP to skip repetitive form filling
-- **Topology view** (v1.29) — interactive graph derived from existing relationships (Proxmox host → VMs/LXCs, primary → secondary IPs, dependency links); no manual wiring required
-
-**Phase 4 — longer-term:**
-- **Multi-user auth** — per-user accounts with role-based access (read-only vs admin)
-- **iOS native app** — native iPhone/iPad app for at-a-glance network status and quick IP lookups on the go
-- REST API for external integrations
+- Remaining security hardening — argument-safe shell invocation, support-bundle redaction, login rate limiting, session expiry
+- Correctness fixes — Proxmox sync refresh, card expansion state, and a read-modify-write race on save
+- Performance — memoised list rows and virtualisation for large networks
+- Then: outbound webhooks / ntfy notifications, an audit log, and multi-user access
 
 ---
 

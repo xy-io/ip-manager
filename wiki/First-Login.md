@@ -53,7 +53,7 @@ IP_MANAGER_PASSWORD=yournewpassword
 Then restart the service:
 
 ```bash
-systemctl restart ip-manager
+systemctl restart ip-manager-api
 ```
 
 Log in with the new credentials and change the password via Settings.

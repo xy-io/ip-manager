@@ -8,12 +8,36 @@ Common issues and how to fix them.
 
 **"Invalid username or password"**
 - Usernames are case-insensitive but passwords are case-sensitive — double-check the password
-- Retrieve your credentials: `cat /opt/ip-manager/server/credentials.env`
-- If the file is empty, see [Retrieving a lost password](First-Login#retrieving-a-lost-password)
+- Check your **username** with `cat /opt/ip-manager/server/credentials.env`. From v2.0.0 onwards the password in that file is a bcrypt hash (`$2a$12$…`) and **cannot be read back** — that is deliberate. Only the username is legible.
+- If you have lost the password, see [Retrieving a lost password](First-Login#retrieving-a-lost-password)
+
+**Can't log in immediately after upgrading to v2.0.0**
+- This is a known defect in v2.0.0 only, fixed in v2.0.1. The upgrade hashed an already-hashed password, so no password could match.
+- Fix: run `ip-manager-update` to get v2.0.1 or later. On the next restart the problem is detected and fresh credentials are generated and written to the journal:
+  ```bash
+  journalctl -u ip-manager-api | grep -A5 "double-hash recovery"
+  ```
+- Log in with those credentials, then set your own password in **Settings**.
 
 **Stuck on Change Password screen**
 - This appears when the server detects `admin`/`admin` credentials. Enter `admin` as the current password and set a new one.
 - If you've already changed your password but still see this screen, check `credentials.env` — the file may be empty or malformed.
+
+---
+
+## Home Assistant sensors show 0 or "unknown"
+
+**Every device reports `unknown`, and `devices_online` / `devices_offline` are always `0`**
+- A defect present from v1.33.0 to v2.0.1: the HA endpoints compared ping results against the wrong values, so nothing ever matched. Fixed in **v2.0.2** — run `ip-manager-update`.
+
+**All HA endpoints return 401**
+- The API key you are sending does not match the one stored on the server. Open **Settings → Home Assistant** and copy the current key, or generate a new one and update your `configuration.yaml`.
+- Confirm the key works: `curl -H "X-API-Key: YOUR_KEY" http://127.0.0.1:3001/api/ha/summary`
+
+**All HA endpoints return 503**
+- No API key has been generated yet. Open **Settings → Home Assistant** and click Generate.
+
+See [Home Assistant API](Home-Assistant-API) for the full setup.
 
 ---
 
@@ -22,16 +46,16 @@ Common issues and how to fix them.
 The Node.js service may not be running.
 
 ```bash
-systemctl status ip-manager
-systemctl restart ip-manager
-journalctl -u ip-manager -n 30 --no-pager
+systemctl status ip-manager-api
+systemctl restart ip-manager-api
+journalctl -u ip-manager-api -n 30 --no-pager
 ```
 
 If the service keeps crashing, check the logs for the specific error.
 
-**Port conflict** — if something else is using port 3000:
+**Port conflict** — the API listens on port 3001:
 ```bash
-lsof -i :3000
+lsof -i :3001
 ```
 
 ---
@@ -71,13 +95,13 @@ lsof -i :3000
 - Some TLDs don't publish public RDAP servers — this is a registry limitation, not a bug
 - Try refreshing — transient failures are common
 - Check if the IANA bootstrap is reachable from the server: `curl https://data.iana.org/rdap/dns.json`
-- If many domains are failing simultaneously, the IANA bootstrap cache may be stale — restart the service: `systemctl restart ip-manager`
+- If many domains are failing simultaneously, the IANA bootstrap cache may be stale — restart the service: `systemctl restart ip-manager-api`
 
 ---
 
 ## GUI update hangs
 
-- The update is likely still running — check progress: `journalctl -u ip-manager -f`
+- The update is likely still running — check progress: `journalctl -u ip-manager-api -f`
 - If genuinely stuck, run the update manually: `ip-manager-update`
 - Pre-v1.28 installs had a 30-second Nginx timeout; the update script patches this, but if you're upgrading from a very old version you may need to run the update from CLI the first time
 
@@ -102,27 +126,32 @@ Icons are fetched from the selfh.st CDN. If icons don't load:
 
 ## Useful commands
 
+The service is named **`ip-manager-api`**.
+
 ```bash
 # Service status
-systemctl status ip-manager
+systemctl status ip-manager-api
 
 # Live service logs
-journalctl -u ip-manager -f
+journalctl -u ip-manager-api -f
 
 # Last 50 log lines
-journalctl -u ip-manager -n 50 --no-pager
+journalctl -u ip-manager-api -n 50 --no-pager
 
 # Restart service
-systemctl restart ip-manager
+systemctl restart ip-manager-api
 
-# View credentials
+# View username (the password is a bcrypt hash from v2.0.0 onwards)
 cat /opt/ip-manager/server/credentials.env
 
 # Check installed version
-cat /opt/ip-manager/package.json | grep version
+grep version /opt/ip-manager/package.json
 
 # Run update manually
 ip-manager-update
+
+# Verify the install end-to-end (read-only, safe on a live server)
+cd /opt/ip-manager && SMOKE_USER=yourname SMOKE_PASS='yourpassword' node scripts/smoke-test.cjs
 
 # Check Nginx
 systemctl status nginx
@@ -134,6 +163,11 @@ nginx -t
 ## Getting help
 
 If you've worked through the above and are still stuck, [open an issue on GitHub](https://github.com/xy-io/ip-manager/issues) with:
-- Your IP Manager version (`cat /opt/ip-manager/package.json | grep version`)
-- Relevant log output (`journalctl -u ip-manager -n 50 --no-pager`)
+- Your IP Manager version (`grep version /opt/ip-manager/package.json`)
+- Relevant log output (`journalctl -u ip-manager-api -n 50 --no-pager`)
+- The output of the [smoke test](Testing) — it identifies most problems in one run
 - A description of what you expected vs. what happened
+
+The quickest way to gather all of this is **Settings → Support → Download support bundle**, which packages system info, service status, and recent logs into a single file.
+
+> **Before sharing a support bundle**, open it and check the log section. On a recently installed server it can still contain the generated startup password.

@@ -72,7 +72,7 @@ After logging in, open **Settings** (⚙️ icon) and enter your network details
 If you lose the install-time credentials, retrieve them from the systemd journal:
 
 ```bash
-journalctl -u ip-manager --no-pager | grep -i password
+journalctl -u ip-manager-api --no-pager | grep -i password
 ```
 
 Or read them directly:
@@ -91,7 +91,7 @@ cat /opt/ip-manager/server/credentials.env
 | `/opt/ip-manager/server/credentials.env` | Username and password |
 | `/opt/ip-manager/server/data.db` | SQLite database (all your data) |
 | `/etc/nginx/sites-available/ip-manager` | Nginx config |
-| `systemctl status ip-manager` | Service status |
+| `systemctl status ip-manager-api` | Service status |
 
 ---
 

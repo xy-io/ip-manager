@@ -340,7 +340,7 @@
 
 <!-- WHAT'S NEW BANNER -->
 <div class="whats-new-bar">
-  <strong>v2.0</strong> just landed — Bcrypt password hashing. Passwords never stored in plaintext again.
+  <strong>v2.0.2</strong> just landed — security fix, Home Assistant status fix, and a new end-to-end test suite.
   <a href="#changelog">See what's new →</a>
 </div>
 
@@ -634,9 +634,9 @@
 
       <div style="background:var(--slate-900);border:1px solid rgba(16,185,129,.3);border-radius:14px;padding:1.5rem;">
         <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--emerald);margin-bottom:.6rem">Latest release</div>
-        <div style="font-size:1.6rem;font-weight:800;color:#fff;margin-bottom:.35rem;">v2.0</div>
-        <div style="font-size:.85rem;font-weight:600;color:#e2e8f0;margin-bottom:.5rem;">Bcrypt password hashing — major security release</div>
-        <p style="font-size:.78rem;color:var(--slate-300);line-height:1.6;margin-bottom:1.1rem;">Passwords are no longer stored in plaintext. The server automatically migrates existing credentials to a bcrypt hash on first restart — no action needed. Your login credentials stay the same.</p>
+        <div style="font-size:1.6rem;font-weight:800;color:#fff;margin-bottom:.35rem;">v2.0.2</div>
+        <div style="font-size:.85rem;font-weight:600;color:#e2e8f0;margin-bottom:.5rem;">Security fix &amp; Home Assistant status fix</div>
+        <p style="font-size:.78rem;color:var(--slate-300);line-height:1.6;margin-bottom:1.1rem;">Closes an unauthenticated API route, fixes Home Assistant device status reporting, and adds a read-only smoke-test script that verifies an install end to end.</p>
         <a href="https://github.com/xy-io/ip-manager/releases/latest" target="_blank" rel="noopener"
            style="display:inline-flex;align-items:center;gap:.4rem;font-size:.8rem;font-weight:600;color:var(--emerald);text-decoration:none;">
           View release notes
@@ -648,6 +648,10 @@
         <div>
           <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--slate-500);margin-bottom:.6rem">Recent highlights</div>
           <ul style="list-style:none;display:flex;flex-direction:column;gap:.55rem;">
+            <li style="display:flex;align-items:center;gap:.6rem;font-size:.8rem;color:var(--slate-300);">
+              <span style="width:6px;height:6px;border-radius:50%;background:var(--emerald);flex-shrink:0"></span>
+              <span><strong style="color:#e2e8f0">v2.0</strong> — Bcrypt password hashing</span>
+            </li>
             <li style="display:flex;align-items:center;gap:.6rem;font-size:.8rem;color:var(--slate-300);">
               <span style="width:6px;height:6px;border-radius:50%;background:var(--emerald);flex-shrink:0"></span>
               <span><strong style="color:#e2e8f0">v1.33</strong> — Home Assistant JSON API</span>
@@ -663,10 +667,6 @@
             <li style="display:flex;align-items:center;gap:.6rem;font-size:.8rem;color:var(--slate-300);">
               <span style="width:6px;height:6px;border-radius:50%;background:var(--emerald);flex-shrink:0"></span>
               <span><strong style="color:#e2e8f0">v1.30</strong> — Domain Tracker with RDAP &amp; expiry alerts</span>
-            </li>
-            <li style="display:flex;align-items:center;gap:.6rem;font-size:.8rem;color:var(--slate-300);">
-              <span style="width:6px;height:6px;border-radius:50%;background:var(--emerald);flex-shrink:0"></span>
-              <span><strong style="color:#e2e8f0">v1.29</strong> — Secure-by-default, no more admin/admin</span>
             </li>
           </ul>
         </div>
@@ -757,7 +757,7 @@
 </section>
 
 <footer>
-  <p>IP Manager v2.0 · Built for home labs · <span>PolyForm Noncommercial License</span></p>
+  <p>IP Manager v2.0.2 · Built for home labs · <span>PolyForm Noncommercial License</span></p>
 </footer>
 
 <script>
