@@ -21,7 +21,8 @@
  *    SMOKE_USER     Username                        (required)
  *    SMOKE_PASS     Password                        (required)
  *    SMOKE_HA_KEY   Home Assistant API key          (optional —
- *                   HA tests are skipped if absent)
+ *                   read from /api/ha/key using the
+ *                   session if not supplied)
  *
  *  Exit code 0 = all passed, 1 = one or more failures.
  * ============================================================ */
@@ -42,7 +43,8 @@ const opt     = (name, fallback) => {
 const BASE     = (opt('--url', process.env.BASE_URL || 'http://127.0.0.1:3001')).replace(/\/$/, '');
 const USER     = process.env.SMOKE_USER;
 const PASS     = process.env.SMOKE_PASS;
-const HA_KEY   = process.env.SMOKE_HA_KEY || null;
+let   HA_KEY   = process.env.SMOKE_HA_KEY || null;
+let   haKeySource = HA_KEY ? 'SMOKE_HA_KEY' : null;
 const VERBOSE  = flag('--verbose');
 const DO_BUILD = flag('--build');
 
@@ -200,16 +202,17 @@ async function testAuth() {
 }
 
 // ── 2. Protected endpoints ───────────────────────────────────────────────────
+// `dataIsArray` means the route returns { data: [...] } where data may be null
+// until the first save — the client falls back to defaults in that case.
 const PROTECTED_ROUTES = [
   { path: '/api/health',               keys: null },
-  { path: '/api/ips',                  keys: null,  isArray: true },
-  { path: '/api/config',               keys: null },
-  { path: '/api/networks',             keys: null },
+  { path: '/api/ips',                  keys: ['data'], dataIsArray: true },
+  { path: '/api/config',               keys: ['data'] },
+  { path: '/api/networks',             keys: ['data'], dataIsArray: true },
   { path: '/api/domains',              keys: null },
   { path: '/api/dns-config',           keys: null },
   { path: '/api/arp-presence/config',  keys: null },
   { path: '/api/arp-presence/status',  keys: null },
-  { path: '/api/subnet-blocks',        keys: null },
   { path: '/api/backup/config',        keys: null },
   { path: '/api/backup/status',        keys: null },
   { path: '/api/proxmox-sync/config',  keys: null },
@@ -226,11 +229,36 @@ async function testProtectedRoutes() {
       const res = await GET(route.path);
       const statusCheck = expectStatus(res, 200, `GET ${route.path}`);
       if (statusCheck !== true) return statusCheck;
-      if (route.isArray && !Array.isArray(res.json)) return `expected an array, got ${typeof res.json}`;
-      if (route.keys) return expectKeys(res.json, route.keys, route.path);
+      if (route.keys) {
+        const keyCheck = expectKeys(res.json, route.keys, route.path);
+        if (keyCheck !== true) return keyCheck;
+      }
+      if (route.dataIsArray && res.json.data !== null && !Array.isArray(res.json.data)) {
+        return `expected data to be an array or null, got ${typeof res.json.data}`;
+      }
       return true;
     });
   }
+
+  // /api/subnet-blocks is per-network and requires a ?network= parameter.
+  await test('GET /api/subnet-blocks rejects a missing network parameter', async () => {
+    const res = await GET('/api/subnet-blocks');
+    return expectStatus(res, 400, 'GET /api/subnet-blocks without ?network=');
+  });
+
+  await test('GET /api/subnet-blocks returns blocks for a real network', async () => {
+    const networks = await GET('/api/networks');
+    const list = networks.json?.data;
+    if (!Array.isArray(list) || !list.length) return true; // no networks configured yet
+    const id = list[0].id ?? list[0].networkId;
+    if (!id) return 'could not determine a network id from /api/networks';
+    const res = await GET(`/api/subnet-blocks?network=${encodeURIComponent(id)}`);
+    const statusCheck = expectStatus(res, 200, `GET /api/subnet-blocks?network=${id}`);
+    if (statusCheck !== true) return statusCheck;
+    const keyCheck = expectKeys(res.json, ['networkId', 'blocks'], '/api/subnet-blocks');
+    if (keyCheck !== true) return keyCheck;
+    return Array.isArray(res.json.blocks) ? true : 'blocks is not an array';
+  });
 }
 
 // ── 3. Status caches and value domains ───────────────────────────────────────
@@ -269,10 +297,27 @@ async function testStatusCaches() {
 async function testHomeAssistant() {
   group('4. Home Assistant API');
 
+  // Prefer the key the server is actually storing. A stale SMOKE_HA_KEY would
+  // otherwise fail every HA test for a reason that has nothing to do with the
+  // endpoints themselves.
+  const stored = await GET('/api/ha/key');
+  const storedKey = stored.status === 200 && stored.json?.enabled ? stored.json.key : null;
+
+  if (storedKey && HA_KEY && storedKey !== HA_KEY) {
+    console.log(`  ${c.amber('NOTE')}  SMOKE_HA_KEY does not match the key stored on the server — using the stored key`);
+    HA_KEY = storedKey;
+    haKeySource = '/api/ha/key';
+  } else if (!HA_KEY && storedKey) {
+    HA_KEY = storedKey;
+    haKeySource = '/api/ha/key';
+  }
+
   if (!HA_KEY) {
-    skip('all Home Assistant tests', 'SMOKE_HA_KEY not set');
+    skip('all Home Assistant tests', 'no key set in Settings → Home Assistant');
     return;
   }
+
+  console.log(`  ${c.dim(`using API key from ${haKeySource}`)}`);
 
   const withKey = { headers: { 'X-API-Key': HA_KEY }, useSession: false };
 
@@ -377,6 +422,11 @@ async function testSecurityRegressions() {
     });
   }
 
+  // NOTE: the support bundle embeds the last 300 journal lines. On a freshly
+  // installed server those lines still contain the generated startup password,
+  // so this check fails. On a long-running server the block has scrolled out of
+  // range and it passes. A pass here therefore means "no credentials in this
+  // bundle right now", not "the bundle can never leak credentials".
   await test('support bundle does not leak credentials', async () => {
     const res = await GET('/api/support/bundle');
     if (res.status !== 200) return `expected HTTP 200, got ${res.status}`;
