@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 import QRCode from 'qrcode';
 
 // ── App version ───────────────────────────────────────────────────────────────
-const APP_VERSION = 'v2.0.1';
+const APP_VERSION = 'v2.0.2';
 
 // Default network configuration (overridden by Settings modal / localStorage)
 const DEFAULT_NETWORK_CONFIG = {

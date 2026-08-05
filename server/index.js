@@ -390,7 +390,11 @@ async function discoverProxmox(host, port, token, ignoreTls) {
 }
 
 // POST /api/proxmox/discover — proxies to Proxmox API (avoids browser CORS/TLS issues)
-app.post('/api/proxmox/discover', async (req, res) => {
+// NOTE: this route is registered above the blanket app.use('/api', …) auth
+// middleware, so it must apply the middleware itself. Without this it is
+// reachable by anyone who can talk to the server, and it will connect to an
+// arbitrary host on their behalf.
+app.post('/api/proxmox/discover', requireNotDefault, requireAuth, async (req, res) => {
   const { host: rawHost, apiToken, ignoreTls } = req.body || {};
   if (!rawHost || !apiToken) {
     return res.status(400).json({ error: 'host and apiToken are required' });
@@ -2302,6 +2306,17 @@ function getHaApiKey() {
   return dbGet('ha_api_key') || null;
 }
 
+// Translate a pingCache value into the vocabulary the HA API exposes.
+// The cache stores 'up' / 'down' (see refreshPingCache). Earlier versions of
+// this file compared against 'alive' / 'unreachable', which never matched, so
+// every device was reported as "unknown". Both spellings are accepted here so
+// the two sides cannot silently drift apart again.
+function haPingStatus(value) {
+  if (value === 'up'   || value === 'alive')       return 'online';
+  if (value === 'down' || value === 'unreachable') return 'offline';
+  return 'unknown';
+}
+
 function requireHaKey(req, res, next) {
   const key = req.headers['x-api-key'] || req.query.api_key;
   const stored = getHaApiKey();
@@ -2339,9 +2354,9 @@ app.get('/api/ha/summary', requireHaKey, (req, res) => {
 
   let online = 0, offline = 0, unknown = 0;
   for (const e of allEntries) {
-    const s = ping[e.ip];
-    if (s === 'alive') online++;
-    else if (s === 'unreachable') offline++;
+    const s = haPingStatus(ping[e.ip]);
+    if (s === 'online') online++;
+    else if (s === 'offline') offline++;
     else unknown++;
   }
 
@@ -2389,7 +2404,7 @@ app.get('/api/ha/devices', requireHaKey, (req, res) => {
         type:     e.type      || null,
         network:  networkMap[e.networkId] || null,
         tags:     e.tags      || [],
-        ping:     p === 'alive' ? 'online' : p === 'unreachable' ? 'offline' : 'unknown',
+        ping:     haPingStatus(p),
         health:   h ? h.status : null,
         health_code: h ? (h.code || null) : null,
       };

@@ -6,6 +6,16 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v2.0.2
+
+**Security fix and Home Assistant status fix**
+
+- **`/api/proxmox/discover` required no authentication.** The route was registered above the blanket auth middleware, so anyone able to reach the server could invoke it — and it connects to whatever host it is given. It now applies the auth middleware directly. No stored data was exposed by this, but an unauthenticated caller could use the server to probe other hosts on your network.
+- **Home Assistant reported every device as "unknown".** The ping cache stores `up`/`down`; the HA endpoints compared against `alive`/`unreachable`, which never matched. `devices_online` and `devices_offline` have been `0` for every install since the API shipped in v1.33.0. Both endpoints now share a single translation helper that accepts either spelling, so the two sides cannot drift apart again. **If you built Home Assistant automations on these sensors, they will start reporting real values after this update.**
+- **Added `scripts/smoke-test.cjs`** — a read-only end-to-end verification script covering authentication, every API route, the status caches, the Home Assistant API, and known security regressions. See the Testing section of the README. Both defects above were found by it.
+
+---
+
 ## v2.0.1
 
 **Hotfix: bcrypt hash detection and double-hash recovery**
