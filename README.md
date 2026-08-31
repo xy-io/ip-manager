@@ -45,6 +45,10 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
+### v2.1.0 — Public API with named access keys
+
+External clients authenticate with their own API key instead of your password. Create one per client in **Settings → API Keys**, each labelled and scoped `read only` or `read & write`; revoking one leaves the others working. Your existing Home Assistant key is migrated automatically as a read-only key — nothing to change. Adds per-entry endpoints (`POST /api/ips`, `PATCH`/`DELETE`/`GET /api/ips/:ip`) so a client can edit one device without rewriting the dataset, with optional `expectedLastModified` conflict detection. Keys are refused on account and maintenance routes regardless of scope, and writes must use the `X-API-Key` header rather than a query parameter. Full reference in the [API wiki page](https://github.com/xy-io/ip-manager/wiki/API).
+
 ### v2.0.2 — Security fix & Home Assistant status fix
 
 `/api/proxmox/discover` was reachable without authentication — it sat above the auth middleware, so anyone able to reach the server could ask it to connect to an arbitrary host. Now fixed. Separately, the Home Assistant API had reported every device as `unknown` since it shipped in v1.33.0: the ping cache stores `up`/`down` while the endpoints compared against `alive`/`unreachable`. Both now share one translation helper. **If you have Home Assistant automations built on these sensors, they will start reporting real values.** Also adds `scripts/smoke-test.cjs` — see [Testing](#testing) — which is how both defects were found.
@@ -293,7 +297,7 @@ Currently next up:
 - Remaining security hardening — argument-safe shell invocation, support-bundle redaction, login rate limiting, session expiry
 - Correctness fixes — Proxmox sync refresh, card expansion state, and a read-modify-write race on save
 - Performance — memoised list rows and virtualisation for large networks
-- Then: outbound webhooks / ntfy notifications, an audit log, and multi-user access
+- Then: outbound webhooks / ntfy notifications, an audit log, and an iOS client built on the v2.1 API
 
 ---
 

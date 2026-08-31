@@ -8,11 +8,15 @@ Added in **v1.33.0**. Device status reporting was broken until **v2.0.2** — se
 
 ## Generating an API key
 
-1. Open **Settings → Home Assistant**
-2. Click **Generate API key**
+1. Open **Settings → API Keys**
+2. Enter a label (e.g. `Home Assistant`), leave the scope as **Read only**, and click **Create key**
 3. Copy the key, or use **Copy YAML** to grab a ready-made configuration block with your server's URL already filled in
 
-The key is independent of your login credentials. You can regenerate or revoke it at any time — doing so immediately invalidates the old key.
+The key is independent of your login credentials. You can regenerate or revoke it at any time — doing so immediately invalidates the old key but leaves your other keys working.
+
+> **Upgrading from v2.0.x:** your existing key was migrated automatically as a read-only key labelled "Home Assistant". Nothing in your `configuration.yaml` needs to change.
+
+Home Assistant only reads data, so a **read-only** key is the right choice — if it ever leaks it cannot modify anything. See [API](API) for the full endpoint reference and the write endpoints.
 
 > The generated YAML contains your live API key. Treat it like a password: don't paste it into public issues, forums, or screenshots.
 
@@ -150,5 +154,6 @@ If you built automations against these sensors while the bug was present, they w
 
 - The API is **read-only**. There is no endpoint that modifies data.
 - The key is stored in the app's database, not in `credentials.env`, and is unrelated to your login.
+- From v2.1.0 each client can have its own key, so revoking the phone's key does not disturb Home Assistant.
 - The HA endpoints are deliberately exempt from session-cookie authentication so Home Assistant can poll them. They are protected only by the API key — so treat that key as a credential.
 - If your instance is reachable from the internet, put it behind a reverse proxy with TLS. The key is sent in a header on every request.

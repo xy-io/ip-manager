@@ -4,6 +4,21 @@ For the full release history see the [CHANGELOG](https://github.com/xy-io/ip-man
 
 ---
 
+## v2.1.0 — Public API with named access keys
+
+External clients — a phone, a script, Home Assistant — can now talk to IP Manager with their own API key instead of your account password.
+
+- **Named, scoped API keys.** Create one per client in **Settings → API Keys**, each with a label and a scope of *read only* or *read & write*. Revoking one leaves the others working, so rotating the key on a lost phone no longer takes your Home Assistant sensors down with it. Each key shows when it was last used, making stale ones easy to spot.
+- **Your existing Home Assistant key is migrated automatically** into the new store as a read-only key labelled "Home Assistant". Nothing in your `configuration.yaml` needs to change.
+- **Per-entry endpoints** — `POST /api/ips`, `PATCH /api/ips/:ip`, `DELETE /api/ips/:ip` and `GET /api/ips/:ip`. Previously the only way to write was to replace the entire dataset, which meant an external client editing one device had to send every other device back, and a concurrent Proxmox sync would silently discard one side of the change.
+- **Optimistic concurrency** — send `expectedLastModified` with an update and it is rejected with `409` if the entry changed since you read it, instead of quietly overwriting newer data.
+- **Keys cannot manage the account.** Regardless of scope, an API key is refused on `/api/auth`, `/api/keys`, `/api/update`, `/api/support`, `/api/backup` and `/api/ha/key` — so a key can never mint another key, change your password, or download a support bundle.
+- **Writes must use the `X-API-Key` header**, never an `?api_key=` query parameter, because query strings are recorded in Nginx access logs.
+
+See [API](API) for the full reference.
+
+---
+
 ## v2.0.2 — Security fix & Home Assistant status fix
 
 - **`/api/proxmox/discover` required no authentication.** The route sat above the blanket auth middleware, so anyone able to reach the server could invoke it — and it connects to whatever host it is given. It now applies the auth middleware directly. No stored data was exposed, but an unauthenticated caller could use the server to probe other hosts on your network. **Update if your instance is reachable beyond your LAN.**

@@ -6,6 +6,26 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v2.1.0
+
+**Public API with named access keys**
+
+External clients — a phone, a script, Home Assistant — can now authenticate with their own API key rather than the account password.
+
+- **Named, scoped API keys.** Create one per client in **Settings → API Keys**, each with a label and a scope of `read` or `write`. Revoking one leaves the others working, so rotating a lost phone's key no longer takes Home Assistant's sensors down with it. Each key records when it was last used.
+- **Automatic migration.** The existing standalone Home Assistant key is folded into the new store as a read-only key labelled "Home Assistant" on first start after updating. Existing `configuration.yaml` files keep working untouched — no action required.
+- **Per-entry endpoints** — `GET`, `POST`, `PATCH` and `DELETE` on individual entries. The only write path used to be `PUT /api/ips`, which replaces the entire dataset; an external client editing one device had to send every other device back, and a concurrent Proxmox sync would silently discard one side of the change.
+- **Optimistic concurrency** — an update carrying `expectedLastModified` is rejected with `409` (including the current entry, so the client can merge and retry) if the entry changed since it was read.
+- **Keys are refused on account and maintenance routes** regardless of scope — `/api/auth`, `/api/keys`, `/api/update`, `/api/support`, `/api/backup`, `/api/ha/key`. A key can never mint another key, change the password, trigger an update, or download a support bundle.
+- **Writes require the `X-API-Key` header.** A write attempted with `?api_key=` is rejected with `400`, because query strings are recorded in Nginx access logs.
+- **Keys are compared in constant time** and are 192-bit URL-safe random values.
+- **Settings → Home Assistant is now Settings → API Keys**, listing every key with its scope, creation date, last use, and controls to reveal, copy, regenerate or revoke. The Home Assistant YAML generator remains, and uses the key labelled "Home Assistant".
+- **Smoke tests extended** to 61 checks covering key creation, scope enforcement, the query-parameter block, the deny-listed routes, per-entry CRUD, and conflict detection. The suite now creates and removes a temporary key and entry; pass `--read-only` to skip that.
+
+Full reference: [API](https://github.com/xy-io/ip-manager/wiki/API).
+
+---
+
 ## v2.0.2
 
 **Security fix and Home Assistant status fix**

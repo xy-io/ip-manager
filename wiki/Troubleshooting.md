@@ -31,13 +31,19 @@ Common issues and how to fix them.
 - A defect present from v1.33.0 to v2.0.1: the HA endpoints compared ping results against the wrong values, so nothing ever matched. Fixed in **v2.0.2** — run `ip-manager-update`.
 
 **All HA endpoints return 401**
-- The API key you are sending does not match the one stored on the server. Open **Settings → Home Assistant** and copy the current key, or generate a new one and update your `configuration.yaml`.
+- The API key you are sending does not match one stored on the server. Open **Settings → API Keys** and copy the current key, or create a new one and update your `configuration.yaml`.
 - Confirm the key works: `curl -H "X-API-Key: YOUR_KEY" http://127.0.0.1:3001/api/ha/summary`
 
 **All HA endpoints return 503**
-- No API key has been generated yet. Open **Settings → Home Assistant** and click Generate.
+- No API key has been generated yet. Open **Settings → API Keys** and create one.
 
-See [Home Assistant API](Home-Assistant-API) for the full setup.
+**A key returns 403 on a write**
+- The key is read-only. Change its scope in **Settings → API Keys**, or use a read & write key.
+
+**A key returns 400 on a write**
+- Writes must send the key in the `X-API-Key` header, not as an `?api_key=` query parameter. Query strings are recorded in Nginx access logs, so keys sent that way end up on disk in plain text.
+
+See [Home Assistant API](Home-Assistant-API) for sensor setup and [API](API) for the full endpoint reference.
 
 ---
 
@@ -150,7 +156,7 @@ grep version /opt/ip-manager/package.json
 # Run update manually
 ip-manager-update
 
-# Verify the install end-to-end (read-only, safe on a live server)
+# Verify the install end-to-end (add --read-only to skip the write tests)
 cd /opt/ip-manager && SMOKE_USER=yourname SMOKE_PASS='yourpassword' node scripts/smoke-test.cjs
 
 # Check Nginx

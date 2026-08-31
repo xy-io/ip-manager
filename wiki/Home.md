@@ -16,6 +16,7 @@ Deploy it as a lightweight LXC container on Proxmox and get a live dashboard sho
 | 📥 [Importing Devices](Importing-Devices) | ARP scan, Proxmox import, CSV/Excel |
 | 💙 [Service Health Checks](Service-Health-Checks) | HTTP/HTTPS probes per device |
 | 🌐 [Domain Tracker](Domain-Tracker) | Track domain expiry via RDAP |
+| 🔌 [API](API) | Named API keys and the full endpoint reference |
 | 🏠 [Home Assistant API](Home-Assistant-API) | Pull network data into Home Assistant |
 | 💾 [Backup & Restore](Backup-and-Restore) | Export and restore your data |
 | 🔄 [Updating](Updating) | Keep the app up to date |
@@ -38,7 +39,7 @@ Deploy it as a lightweight LXC container on Proxmox and get a live dashboard sho
 - **Backup & restore** — single JSON file captures everything; restore on any machine in one click
 - **QR codes** — generate a QR code for any IP entry
 - **CIDR & subnet calculators** — built-in network calculators in the Tools menu
-- **Home Assistant API** — read-only JSON endpoints for device counts, per-device status, and domain expiry, secured by a dedicated API key
+- **HTTP API** — named, scoped API keys for external clients; per-entry create/update/delete plus read-only status endpoints for Home Assistant
 - **SSH quick-launch** — open a terminal session to any device, with an optional per-entry username
 - **Secure by default** — unique random password generated on first install, stored as a bcrypt hash; lockout enforced if defaults are detected
 

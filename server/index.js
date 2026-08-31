@@ -477,8 +477,95 @@ const dbSet = (key, value) => {
   }
 })();
 
+// ── API keys ──────────────────────────────────────────────────────────────────
+// Named, scoped keys let external clients (the iOS app, Home Assistant, scripts)
+// talk to the API without handling the account password. Each key can be revoked
+// on its own, so losing a phone does not mean rotating every other integration.
+//
+// Stored as: [{ id, label, key, scope, createdAt, lastUsedAt }]
+//   scope 'read'  → GET requests only
+//   scope 'write' → all methods (implies read)
+//
+// Keys are bearer credentials. They grant whatever their scope allows, with no
+// expiry, so they are compared in constant time, never accepted as a query
+// parameter on writes (query strings are recorded in Nginx access logs), and
+// refused outright on the account-management routes listed below.
+
+const API_KEY_SESSION_ONLY = ['/auth', '/keys', '/update', '/support', '/backup', '/ha/key'];
+
+const getApiKeys = () => dbGet('api_keys') || [];
+const setApiKeys = (keys) => dbSet('api_keys', keys);
+
+function generateApiKey() {
+  return crypto.randomBytes(24).toString('base64url'); // 192-bit, URL-safe
+}
+
+function safeEqual(a, b) {
+  const ab = Buffer.from(String(a));
+  const bb = Buffer.from(String(b));
+  if (ab.length !== bb.length) return false;
+  return crypto.timingSafeEqual(ab, bb);
+}
+
+function findApiKey(candidate) {
+  if (!candidate) return null;
+  return getApiKeys().find((k) => safeEqual(k.key, candidate)) || null;
+}
+
+// Record last use, but at most once a minute per key — otherwise a 60-second
+// Home Assistant poll would mean a database write on every request.
+function touchApiKey(id) {
+  const keys = getApiKeys();
+  const entry = keys.find((k) => k.id === id);
+  if (!entry) return;
+  const now = Date.now();
+  if (entry.lastUsedAt && now - new Date(entry.lastUsedAt).getTime() < 60000) return;
+  entry.lastUsedAt = new Date(now).toISOString();
+  setApiKeys(keys);
+}
+
+// Returns null when no key was presented, otherwise an outcome object.
+function checkApiKey(req) {
+  const headerKey = req.headers['x-api-key'];
+  const queryKey  = req.query.api_key;
+  const candidate = headerKey || queryKey;
+  if (!candidate) return null;
+
+  const found = findApiKey(candidate);
+  if (!found) return { ok: false, status: 401, error: 'Invalid API key' };
+
+  const isRead = req.method === 'GET' || req.method === 'HEAD';
+  if (!isRead && found.scope !== 'write') {
+    return { ok: false, status: 403, error: 'This API key is read-only' };
+  }
+  if (!isRead && !headerKey) {
+    return { ok: false, status: 400, error: 'Write requests must send the key in the X-API-Key header, not a query parameter' };
+  }
+  return { ok: true, key: found };
+}
+
+// One-time migration: fold the standalone Home Assistant key (v1.33–v2.0.x)
+// into the named key store as a read-scoped key, so existing Home Assistant
+// configurations keep working untouched.
+(function migrateHaKeyIntoApiKeys() {
+  const legacy = dbGet('ha_api_key');
+  if (!legacy) return;
+  const keys = getApiKeys();
+  if (keys.some((k) => k.key === legacy)) return;
+  keys.push({
+    id: crypto.randomUUID(),
+    label: 'Home Assistant',
+    key: legacy,
+    scope: 'read',
+    createdAt: new Date().toISOString(),
+    lastUsedAt: null,
+  });
+  setApiKeys(keys);
+  console.log('[api-keys] Existing Home Assistant key migrated into the named key store (scope: read).');
+})();
+
 // ── Protected routes ──────────────────────────────────────────────────────────
-// All /api/* routes below this point require a valid session.
+// Everything below requires either a valid session cookie or a valid API key.
 
 // Lockout: block all non-/auth/ routes when default credentials are in use.
 // /auth/ routes are registered above this point and are unaffected.
@@ -490,7 +577,23 @@ app.use('/api', (req, res, next) => {
 app.use('/api', (req, res, next) => {
   if (req.path.startsWith('/auth/')) return next();
   if (req.path.startsWith('/ha/')) return next(); // HA API uses its own key auth
-  return requireAuth(req, res, next);
+
+  // A browser session always takes precedence.
+  if (isValidSession(req.cookies[SESSION_COOKIE])) return next();
+
+  // Account and maintenance routes are deliberately session-only: an API key
+  // must never be able to mint another key, change the password, trigger an
+  // update, or download a support bundle.
+  const sessionOnly = API_KEY_SESSION_ONLY.some((p) => req.path.startsWith(p));
+  const outcome = checkApiKey(req);
+  if (outcome && !sessionOnly) {
+    if (!outcome.ok) return res.status(outcome.status).json({ error: outcome.error });
+    req.apiKey = outcome.key;
+    touchApiKey(outcome.key.id);
+    return next();
+  }
+
+  return res.status(401).json({ error: 'Unauthorised' });
 });
 
 // Health check — used by the React app to detect API mode
@@ -510,6 +613,85 @@ app.put('/api/ips', (req, res) => {
   }
   dbSet('ip_data', req.body);
   res.json({ ok: true });
+});
+
+// ── Per-entry endpoints ───────────────────────────────────────────────────────
+// PUT /api/ips replaces the whole dataset, which is fine for the web UI (it
+// holds the entire list in memory) but unusable for an external client: editing
+// one device would mean sending every other device back, and a concurrent
+// Proxmox sync would silently discard one side of the change. These operate on
+// a single entry and are the endpoints external clients should use.
+
+const findEntryIndex = (data, ip) => data.findIndex((e) => e.ip === ip);
+
+// Module-level numeric IP sort. (The /api/import handler has its own local
+// copy that compares only the final octet; this one orders correctly across
+// all four, which matters for /16 networks.)
+const ipSortKey = (ip) =>
+  String(ip || '').split('.').reduce((acc, octet) => (acc * 256) + (parseInt(octet, 10) || 0), 0);
+const sortEntriesByIp = (arr) => arr.sort((a, b) => ipSortKey(a.ip) - ipSortKey(b.ip));
+
+// GET /api/ips/:ip — fetch a single entry
+app.get('/api/ips/:ip', (req, res) => {
+  const data = dbGet('ip_data') || [];
+  const entry = data.find((e) => e.ip === req.params.ip);
+  if (!entry) return res.status(404).json({ error: 'No entry for that IP' });
+  res.json(entry);
+});
+
+// POST /api/ips — create a single entry
+app.post('/api/ips', (req, res) => {
+  const entry = req.body || {};
+  if (!entry.ip || typeof entry.ip !== 'string') {
+    return res.status(400).json({ error: 'An "ip" field is required' });
+  }
+  const data = dbGet('ip_data') || [];
+  if (findEntryIndex(data, entry.ip) !== -1) {
+    return res.status(409).json({ error: `An entry for ${entry.ip} already exists — use PATCH to update it` });
+  }
+  const now = new Date().toISOString();
+  const created = { ...entry, lastModified: now };
+  data.push(created);
+  dbSet('ip_data', sortEntriesByIp(data));
+  res.status(201).json(created);
+});
+
+// PATCH /api/ips/:ip — update one entry, merging the supplied fields.
+// Optional optimistic concurrency: send `expectedLastModified` and the request
+// is rejected with 409 if the entry changed since the client last read it.
+app.patch('/api/ips/:ip', (req, res) => {
+  const data = dbGet('ip_data') || [];
+  const idx = findEntryIndex(data, req.params.ip);
+  if (idx === -1) return res.status(404).json({ error: 'No entry for that IP' });
+
+  const { expectedLastModified, ...changes } = req.body || {};
+  const current = data[idx];
+
+  if (expectedLastModified && current.lastModified && expectedLastModified !== current.lastModified) {
+    return res.status(409).json({
+      error: 'Entry has changed since it was read',
+      currentLastModified: current.lastModified,
+      current,
+    });
+  }
+  if (changes.ip && changes.ip !== req.params.ip) {
+    return res.status(400).json({ error: 'The ip field cannot be changed — delete the entry and create a new one' });
+  }
+
+  const updated = { ...current, ...changes, ip: current.ip, lastModified: new Date().toISOString() };
+  data[idx] = updated;
+  dbSet('ip_data', data);
+  res.json(updated);
+});
+
+// DELETE /api/ips/:ip — remove a single entry
+app.delete('/api/ips/:ip', (req, res) => {
+  const data = dbGet('ip_data') || [];
+  const idx = findEntryIndex(data, req.params.ip);
+  if (idx === -1) return res.status(404).json({ error: 'No entry for that IP' });
+  const [removed] = data.splice(idx, 1);
+  dbSet('ip_data', data);
+  res.json({ ok: true, removed });
 });
 
 // Network config (legacy single-config endpoint — kept for migration)
@@ -2302,10 +2484,6 @@ scheduleBackup();
 // Read-only JSON API authenticated by a static API key.
 // No session cookie required — designed for polling by HA REST sensors.
 
-function getHaApiKey() {
-  return dbGet('ha_api_key') || null;
-}
-
 // Translate a pingCache value into the vocabulary the HA API exposes.
 // The cache stores 'up' / 'down' (see refreshPingCache). Earlier versions of
 // this file compared against 'alive' / 'unreachable', which never matched, so
@@ -2317,30 +2495,126 @@ function haPingStatus(value) {
   return 'unknown';
 }
 
+// Any valid key may read the Home Assistant endpoints; a session works too, so
+// the Settings screen can preview them. Kept separate from the blanket
+// middleware to preserve the documented 503 "not enabled" response.
 function requireHaKey(req, res, next) {
-  const key = req.headers['x-api-key'] || req.query.api_key;
-  const stored = getHaApiKey();
-  if (!stored) return res.status(503).json({ error: 'HA API not enabled — generate a key in Settings' });
-  if (key !== stored) return res.status(401).json({ error: 'Invalid API key' });
+  if (isValidSession(req.cookies[SESSION_COOKIE])) return next();
+
+  if (!getApiKeys().length) {
+    return res.status(503).json({ error: 'API not enabled — generate a key in Settings → API Keys' });
+  }
+  const outcome = checkApiKey(req);
+  if (!outcome) return res.status(401).json({ error: 'Invalid API key' });
+  if (!outcome.ok) return res.status(outcome.status).json({ error: outcome.error });
+
+  req.apiKey = outcome.key;
+  touchApiKey(outcome.key.id);
   next();
 }
 
-// GET /api/ha/key — return whether a key exists (auth required)
+// ── Key management (session only — an API key can never manage keys) ──────────
+
+// GET /api/keys — list all keys
+app.get('/api/keys', requireAuth, (req, res) => {
+  res.json({ keys: getApiKeys() });
+});
+
+// POST /api/keys — create a named key. Body: { label, scope }
+app.post('/api/keys', requireAuth, (req, res) => {
+  const { label, scope } = req.body || {};
+  const cleanLabel = String(label || '').trim().slice(0, 64);
+  if (!cleanLabel) return res.status(400).json({ error: 'A label is required' });
+  if (scope !== 'read' && scope !== 'write') {
+    return res.status(400).json({ error: "scope must be 'read' or 'write'" });
+  }
+  const keys = getApiKeys();
+  const entry = {
+    id: crypto.randomUUID(),
+    label: cleanLabel,
+    key: generateApiKey(),
+    scope,
+    createdAt: new Date().toISOString(),
+    lastUsedAt: null,
+  };
+  keys.push(entry);
+  setApiKeys(keys);
+  res.json(entry);
+});
+
+// PATCH /api/keys/:id — rename, change scope, or rotate the secret
+app.patch('/api/keys/:id', requireAuth, (req, res) => {
+  const keys = getApiKeys();
+  const entry = keys.find((k) => k.id === req.params.id);
+  if (!entry) return res.status(404).json({ error: 'Key not found' });
+
+  const { label, scope, regenerate } = req.body || {};
+  if (label !== undefined) {
+    const cleanLabel = String(label).trim().slice(0, 64);
+    if (!cleanLabel) return res.status(400).json({ error: 'A label is required' });
+    entry.label = cleanLabel;
+  }
+  if (scope !== undefined) {
+    if (scope !== 'read' && scope !== 'write') {
+      return res.status(400).json({ error: "scope must be 'read' or 'write'" });
+    }
+    entry.scope = scope;
+  }
+  if (regenerate) {
+    entry.key = generateApiKey();
+    entry.lastUsedAt = null;
+  }
+  setApiKeys(keys);
+  res.json(entry);
+});
+
+// DELETE /api/keys/:id — revoke a key immediately
+app.delete('/api/keys/:id', requireAuth, (req, res) => {
+  const keys = getApiKeys();
+  const remaining = keys.filter((k) => k.id !== req.params.id);
+  if (remaining.length === keys.length) return res.status(404).json({ error: 'Key not found' });
+  setApiKeys(remaining);
+  res.json({ ok: true });
+});
+
+// ── Legacy Home Assistant key endpoints ───────────────────────────────────────
+// Kept so an older cached frontend keeps working. These operate on the key
+// labelled "Home Assistant" in the named key store.
+
+function findHaKeyEntry() {
+  const keys = getApiKeys();
+  return keys.find((k) => k.label === 'Home Assistant') || keys.find((k) => k.scope === 'read') || null;
+}
+
 app.get('/api/ha/key', requireAuth, (req, res) => {
-  const key = getHaApiKey();
-  res.json({ enabled: !!key, key: key || null });
+  const entry = findHaKeyEntry();
+  res.json({ enabled: !!entry, key: entry ? entry.key : null });
 });
 
-// POST /api/ha/key — generate (or regenerate) API key (auth required)
 app.post('/api/ha/key', requireAuth, (req, res) => {
-  const key = crypto.randomBytes(24).toString('base64url');
-  dbSet('ha_api_key', key);
-  res.json({ key });
+  const keys = getApiKeys();
+  let entry = keys.find((k) => k.label === 'Home Assistant');
+  if (entry) {
+    entry.key = generateApiKey();
+    entry.lastUsedAt = null;
+  } else {
+    entry = {
+      id: crypto.randomUUID(),
+      label: 'Home Assistant',
+      key: generateApiKey(),
+      scope: 'read',
+      createdAt: new Date().toISOString(),
+      lastUsedAt: null,
+    };
+    keys.push(entry);
+  }
+  setApiKeys(keys);
+  res.json({ key: entry.key });
 });
 
-// DELETE /api/ha/key — revoke API key (auth required)
 app.delete('/api/ha/key', requireAuth, (req, res) => {
-  dbSet('ha_api_key', null);
+  const entry = findHaKeyEntry();
+  if (entry) setApiKeys(getApiKeys().filter((k) => k.id !== entry.id));
   res.json({ ok: true });
 });
 

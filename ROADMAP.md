@@ -35,35 +35,6 @@ Known defects and hardening work, in the order they should be tackled. These com
 
 ## Planned
 
-### Public API with named access keys
-
-A stable, documented API for external clients — the iOS app first, but equally anything else that wants to read or change data without driving the web UI.
-
-**Authentication: named API keys, in the style of Sonarr/Radarr.** Generate a key in Settings, copy it into the client, revoke it when you no longer want that client to have access. The client never handles your password, so nothing sensitive is stored on the device, and a compromised client is revoked without changing your password or disturbing any other client.
-
-Improvements on the single-global-key design those apps use:
-
-- **Multiple keys, each with a label** (`iPhone`, `Home Assistant`, `iPad`) and a created date. Rotating the phone's key must not take Home Assistant's sensors down, which a single shared key would.
-- **A scope per key — `read` or `read-write`.** Home Assistant only ever reads; if that key leaks it should not be able to delete entries. The iOS app gets `read-write`.
-- **Last-used timestamp** per key, so a key nothing has touched in months is obviously safe to revoke.
-
-The existing Home Assistant key is the prototype for this and should migrate into the same table as a `read`-scoped key named "Home Assistant", so nothing breaks for existing users.
-
-**Endpoint work required.** The current write path replaces the entire entry array in one `PUT /api/ips`, which is unworkable for a mobile client — editing one device would mean sending all of them back, and a concurrent Proxmox sync would silently discard one side of the change. Needed:
-
-- `POST /api/ips` — create a single entry
-- `PATCH /api/ips/:ip` — update a single entry
-- `DELETE /api/ips/:ip` — remove a single entry
-- A version or `ETag` on each entry so a stale client receives a conflict instead of overwriting newer data
-
-Domains already follow this per-resource pattern (`POST /api/domains`, `DELETE /api/domains/:id`) and are the model to copy.
-
-**Security notes.** Keys are bearer credentials: no expiry, no second factor, and full access within their scope. That tradeoff is proportionate for a self-hosted tool, provided that the key is accepted in the `X-API-Key` header and **never** as a query parameter on writes (query strings are recorded in Nginx access logs), rate limiting covers key authentication as well as login, and TLS is used wherever the instance is reachable beyond the LAN.
-
-**Sequencing.** Depends on the session persistence and rate-limiting work in the security batch above — keys must survive a restart, which the current in-memory session map does not. Should land before the iOS app is started, so the client is not written against an auth model that is about to change.
-
-*Deferred: QR-code pairing. Would make onboarding a phone easier, and the app already bundles a QR generator, but not needed for a first version.*
-
 ### Outbound notifications (webhooks / ntfy)
 Push a notification when a device goes offline, a health check starts failing, or a domain approaches expiry — without needing Home Assistant in the middle. Highest value for the least work of anything on this list, and depends on nothing else.
 
@@ -98,7 +69,7 @@ Visual diagram of the network showing device relationships — upstream router, 
 - **Bulk tag editor** — apply or remove tags across multiple entries at once
 - **Device history log** — track when an entry was last seen online, log state changes over time
 - **SNMP / mDNS discovery** — passive discovery of new devices on the network without requiring manual entry
-- **iOS app** — native client for at-a-glance status and quick lookups. Blocked on the public API above; a wrapper around the web UI would be quicker but gives up offline caching, push notifications, and widgets
+- **iOS app** — native client for at-a-glance status and quick lookups. The v2.1.0 API is the foundation; a client authenticates with a read & write key created in Settings
 
 ---
 
@@ -108,6 +79,7 @@ See [CHANGELOG.md](./CHANGELOG.md) for a full history of released features.
 
 | Version | Feature |
 |---------|---------|
+| v2.1.0 | Public API with named, scoped access keys; per-entry CRUD endpoints |
 | v2.0.2 | Unauthenticated `/api/proxmox/discover` fixed; Home Assistant device status fixed; smoke-test script added |
 | v2.0.1 | Bcrypt hash detection hotfix and automatic double-hash recovery |
 | v2.0.0 | Bcrypt password hashing — no plaintext credentials on disk |

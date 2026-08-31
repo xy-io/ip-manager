@@ -6,8 +6,10 @@
  *  API route's status code and response shape, the status caches,
  *  the Home Assistant API, and a set of known security regressions.
  *
- *  READ-ONLY. Makes no writes and mutates no data. Safe to run
- *  against a live server.
+ *  Almost entirely read-only. The API-key section (group 4b) creates two
+ *  temporary keys and one temporary entry at 203.0.113.253 (TEST-NET-3, never
+ *  a real device) and deletes all three afterwards. Pass --read-only to skip
+ *  that group entirely and touch nothing at all.
  *
  *  Usage:
  *    SMOKE_USER=Jay SMOKE_PASS='...' node scripts/smoke-test.js
@@ -15,6 +17,7 @@
  *  Options:
  *    --url <base>   Base URL          (default http://127.0.0.1:3001)
  *    --build        Also run `npm run build` and fail on error
+ *    --read-only    Skip the write tests (group 4b)
  *    --verbose      Print response bodies for failures
  *
  *  Environment:
@@ -45,8 +48,9 @@ const USER     = process.env.SMOKE_USER;
 const PASS     = process.env.SMOKE_PASS;
 let   HA_KEY   = process.env.SMOKE_HA_KEY || null;
 let   haKeySource = HA_KEY ? 'SMOKE_HA_KEY' : null;
-const VERBOSE  = flag('--verbose');
-const DO_BUILD = flag('--build');
+const VERBOSE   = flag('--verbose');
+const DO_BUILD  = flag('--build');
+const READ_ONLY = flag('--read-only');
 
 if (!USER || !PASS) {
   console.error('SMOKE_USER and SMOKE_PASS must be set.\n');
@@ -397,6 +401,155 @@ async function testHomeAssistant() {
   });
 }
 
+// ── 4b. API keys and per-entry endpoints ─────────────────────────────────────
+// Creates two temporary keys and a temporary entry, then removes all three.
+// This is the only part of the run that writes, and it cleans up after itself.
+async function testApiKeys() {
+  group('4b. API keys and per-entry endpoints');
+
+  const TEST_IP = '203.0.113.253'; // TEST-NET-3, never a real device
+  let readKey = null, writeKey = null, readId = null, writeId = null;
+
+  await test('GET /api/keys lists keys', async () => {
+    const res = await GET('/api/keys');
+    const statusCheck = expectStatus(res, 200, 'GET /api/keys');
+    if (statusCheck !== true) return statusCheck;
+    return Array.isArray(res.json?.keys) ? true : 'expected { keys: [...] }';
+  });
+
+  await test('POST /api/keys rejects a missing label', async () => {
+    const res = await POST('/api/keys', { scope: 'read' });
+    return expectStatus(res, 400, 'POST /api/keys without label');
+  });
+
+  await test('POST /api/keys rejects an invalid scope', async () => {
+    const res = await POST('/api/keys', { label: 'smoke-test-bad', scope: 'admin' });
+    return expectStatus(res, 400, 'POST /api/keys with bad scope');
+  });
+
+  await test('POST /api/keys creates a read key', async () => {
+    const res = await POST('/api/keys', { label: 'smoke-test-read', scope: 'read' });
+    if (res.status !== 200) return `expected HTTP 200, got ${res.status}`;
+    readKey = res.json?.key; readId = res.json?.id;
+    if (!readKey || !readId) return 'response did not include a key and id';
+    return res.json.scope === 'read' ? true : `expected scope 'read', got '${res.json.scope}'`;
+  });
+
+  await test('POST /api/keys creates a write key', async () => {
+    const res = await POST('/api/keys', { label: 'smoke-test-write', scope: 'write' });
+    if (res.status !== 200) return `expected HTTP 200, got ${res.status}`;
+    writeKey = res.json?.key; writeId = res.json?.id;
+    return writeKey && writeId ? true : 'response did not include a key and id';
+  });
+
+  const asKey = (k) => ({ headers: { 'X-API-Key': k }, useSession: false });
+
+  await test('a read key can read entries', async () => {
+    if (!readKey) return 'no read key';
+    const res = await GET('/api/ips', asKey(readKey));
+    return expectStatus(res, 200, 'GET /api/ips with read key');
+  });
+
+  await test('an invalid key is rejected', async () => {
+    const res = await GET('/api/ips', asKey('not-a-real-key'));
+    return expectStatus(res, 401, 'GET /api/ips with bogus key');
+  });
+
+  await test('a read key CANNOT write', async () => {
+    if (!readKey) return 'no read key';
+    const res = await req('POST', '/api/ips', { body: { ip: TEST_IP }, ...asKey(readKey) });
+    if (res.status === 403) return true;
+    return `read-only key was allowed to POST — expected HTTP 403, got ${res.status}`;
+  });
+
+  await test('a key CANNOT be used as a query parameter for writes', async () => {
+    if (!writeKey) return 'no write key';
+    const res = await req('POST', `/api/ips?api_key=${encodeURIComponent(writeKey)}`, { body: { ip: TEST_IP }, useSession: false });
+    if (res.status === 400) return true;
+    return `write via query parameter was allowed — expected HTTP 400, got ${res.status}. `
+         + `Query strings are recorded in Nginx access logs.`;
+  });
+
+  await test('a key CANNOT manage keys', async () => {
+    if (!writeKey) return 'no write key';
+    const res = await GET('/api/keys', asKey(writeKey));
+    return expectStatus(res, 401, 'GET /api/keys with an API key');
+  });
+
+  await test('a key CANNOT download a support bundle', async () => {
+    if (!writeKey) return 'no write key';
+    const res = await GET('/api/support/bundle', asKey(writeKey));
+    return expectStatus(res, 401, 'GET /api/support/bundle with an API key');
+  });
+
+  await test('a write key can create an entry', async () => {
+    if (!writeKey) return 'no write key';
+    const res = await req('POST', '/api/ips', {
+      body: { ip: TEST_IP, assetName: 'smoke-test-temp', type: 'other' },
+      ...asKey(writeKey),
+    });
+    if (res.status !== 201) return `expected HTTP 201, got ${res.status}`;
+    return res.json?.lastModified ? true : 'created entry has no lastModified timestamp';
+  });
+
+  await test('creating a duplicate entry is rejected', async () => {
+    if (!writeKey) return 'no write key';
+    const res = await req('POST', '/api/ips', { body: { ip: TEST_IP }, ...asKey(writeKey) });
+    return expectStatus(res, 409, 'POST /api/ips duplicate');
+  });
+
+  await test('GET /api/ips/:ip returns the single entry', async () => {
+    const res = await GET(`/api/ips/${TEST_IP}`);
+    const statusCheck = expectStatus(res, 200, `GET /api/ips/${TEST_IP}`);
+    if (statusCheck !== true) return statusCheck;
+    return res.json?.ip === TEST_IP ? true : `expected ip ${TEST_IP}, got ${res.json?.ip}`;
+  });
+
+  await test('PATCH updates one entry without touching the rest', async () => {
+    const before = await GET('/api/ips');
+    const countBefore = (before.json?.data || []).length;
+    const res = await req('PATCH', `/api/ips/${TEST_IP}`, { body: { assetName: 'smoke-test-renamed' }, ...asKey(writeKey) });
+    if (res.status !== 200) return `expected HTTP 200, got ${res.status}`;
+    if (res.json?.assetName !== 'smoke-test-renamed') return 'assetName was not updated';
+    const after = await GET('/api/ips');
+    const countAfter = (after.json?.data || []).length;
+    return countBefore === countAfter ? true : `entry count changed from ${countBefore} to ${countAfter}`;
+  });
+
+  await test('PATCH rejects a stale write (conflict detection)', async () => {
+    const res = await req('PATCH', `/api/ips/${TEST_IP}`, {
+      body: { assetName: 'stale', expectedLastModified: '2000-01-01T00:00:00.000Z' },
+      ...asKey(writeKey),
+    });
+    return expectStatus(res, 409, 'PATCH with stale expectedLastModified');
+  });
+
+  await test('PATCH on an unknown IP returns 404', async () => {
+    const res = await req('PATCH', '/api/ips/203.0.113.254', { body: { assetName: 'x' }, ...asKey(writeKey) });
+    return expectStatus(res, 404, 'PATCH unknown IP');
+  });
+
+  await test('DELETE removes the entry', async () => {
+    const res = await req('DELETE', `/api/ips/${TEST_IP}`, asKey(writeKey));
+    if (res.status !== 200) return `expected HTTP 200, got ${res.status}`;
+    const check = await GET(`/api/ips/${TEST_IP}`);
+    return check.status === 404 ? true : `entry still present after delete (HTTP ${check.status})`;
+  });
+
+  // Clean up the temporary keys.
+  await test('temporary test keys removed', async () => {
+    const failures = [];
+    for (const id of [readId, writeId].filter(Boolean)) {
+      const res = await req('DELETE', `/api/keys/${id}`);
+      if (res.status !== 200) failures.push(`${id} -> HTTP ${res.status}`);
+    }
+    if (failures.length) return `could not delete: ${failures.join(', ')} — remove them by hand in Settings → API Keys`;
+    const remaining = await GET('/api/keys');
+    const strays = (remaining.json?.keys || []).filter((k) => k.label.startsWith('smoke-test-'));
+    return strays.length ? `${strays.length} smoke-test key(s) left behind` : true;
+  });
+}
+
 // ── 5. Security regressions ──────────────────────────────────────────────────
 // Every /api/* route except /api/auth/* and /api/ha/* must require a session.
 // Routes registered above the auth middleware silently bypass it, which is how
@@ -467,7 +620,8 @@ async function testBuild() {
   console.log(c.bold('\nIP Address Manager — smoke tests'));
   console.log(c.dim(`Target: ${BASE}`));
   console.log(c.dim(`User:   ${USER}`));
-  console.log(c.dim(`HA key: ${HA_KEY ? 'provided' : 'not provided — HA tests will be skipped'}`));
+  console.log(c.dim(`HA key: ${HA_KEY ? 'provided' : 'read from the server after login'}`));
+  console.log(c.dim(`Mode:   ${READ_ONLY ? 'read-only' : 'includes write tests (temporary key + entry, cleaned up)'}`));
 
   const started = Date.now();
 
@@ -482,6 +636,12 @@ async function testBuild() {
   await testProtectedRoutes();
   await testStatusCaches();
   await testHomeAssistant();
+  if (READ_ONLY) {
+    group('4b. API keys and per-entry endpoints');
+    skip('all write tests', '--read-only');
+  } else {
+    await testApiKeys();
+  }
   await testSecurityRegressions();
   await testBuild();
 

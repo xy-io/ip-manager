@@ -2,7 +2,7 @@
 
 From **v2.0.2** the repo includes `scripts/smoke-test.cjs` — a read-only script that verifies a running install end-to-end in a few seconds.
 
-It is **safe to run against a live server**. It makes no writes, changes no settings, and mutates no data.
+It is safe to run against a live server. Almost every check is read-only; the API-key group creates two temporary keys and one temporary entry at `203.0.113.253` (a reserved TEST-NET-3 address that can never be a real device) and removes all three afterwards. Pass `--read-only` to skip that group and touch nothing at all.
 
 ---
 
@@ -24,6 +24,7 @@ No `npm install` is needed; the script uses only built-in Node modules.
 | `SMOKE_HA_KEY` | Home Assistant API key. Optional — if omitted, the script reads the key from the server using your session. |
 | `--url <base>` | Target a different host. Default `http://127.0.0.1:3001`, which bypasses Nginx and tests the API directly. |
 | `--build` | Also run `npm run build` and fail if the frontend build breaks. |
+| `--read-only` | Skip the write tests. Nothing is created or deleted. |
 | `--verbose` | Print response bodies for failing checks. |
 
 Exit code is `0` when everything passes and `1` on any failure, so it can gate a deployment:
@@ -43,6 +44,8 @@ node scripts/smoke-test.cjs --build && ip-manager-update
 **3. Status caches** — the ping and service-health caches return well-formed results, and ping values are within the expected set.
 
 **4. Home Assistant API** — missing and incorrect API keys are rejected, all three endpoints return the documented shape, device counts add up, and the reported statuses are real rather than all-unknown.
+
+**4b. API keys and entry endpoints** — keys can be created with a label and scope; a read-only key is refused on writes; a key cannot be used in a query string for writes, cannot manage other keys, and cannot download a support bundle; entries can be created, fetched, patched and deleted individually; conflicting updates are rejected. Temporary keys and entries are cleaned up.
 
 **5. Security regressions** — every route that should require a session actually does, and the support bundle contains no credentials.
 
@@ -91,5 +94,6 @@ Worth being clear about what a clean run does **not** prove:
 - It exercises the API, not the user interface. A passing run says nothing about whether the front end renders correctly.
 - The support-bundle credential check reflects the bundle *at that moment*. The bundle embeds recent log lines, so on a freshly installed server it may contain the generated startup password even when the check passes on an older one.
 - Checks that depend on data — device counts, domain expiry — pass trivially when there is no data to look at.
+- If the run is interrupted part-way through the API-key group, a key labelled `smoke-test-read` or `smoke-test-write` may be left behind. Delete it in **Settings → API Keys**.
 
 It is a fast way to catch broken plumbing, not a substitute for trying the app.

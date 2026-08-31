@@ -15,6 +15,7 @@
 - [Importing Devices](Importing-Devices)
 - [Service Health Checks](Service-Health-Checks)
 - [Domain Tracker](Domain-Tracker)
+- [API](API)
 - [Home Assistant API](Home-Assistant-API)
 - [Backup & Restore](Backup-and-Restore)
 

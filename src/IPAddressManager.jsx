@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 import QRCode from 'qrcode';
 
 // ── App version ───────────────────────────────────────────────────────────────
-const APP_VERSION = 'v2.0.2';
+const APP_VERSION = 'v2.1.0';
 
 // Default network configuration (overridden by Settings modal / localStorage)
 const DEFAULT_NETWORK_CONFIG = {
@@ -319,46 +319,88 @@ function ArpPresenceTab() {
 }
 
 // ── Home Assistant Tab ────────────────────────────────────────────────────────
-function HomeAssistantTab() {
-  const [apiKey, setApiKey] = useState(null);
+function ApiKeysTab() {
+  const [keys, setKeys] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [copied, setCopied] = useState(false);
-  const [revoking, setRevoking] = useState(false);
+  const [label, setLabel] = useState('');
+  const [scope, setScope] = useState('read');
+  const [creating, setCreating] = useState(false);
+  const [copiedId, setCopiedId] = useState(null);
+  const [revealed, setRevealed] = useState({});
+  const [error, setError] = useState(null);
 
-  useEffect(() => {
-    fetch('/api/ha/key').then(r => r.json()).then(d => {
-      setApiKey(d.key);
-      setLoading(false);
-    }).catch(() => setLoading(false));
-  }, []);
-
-  const generate = async () => {
-    const r = await fetch('/api/ha/key', { method: 'POST' });
-    const d = await r.json();
-    setApiKey(d.key);
+  const load = () => {
+    fetch('/api/keys')
+      .then(r => r.json())
+      .then(d => { setKeys(d.keys || []); setLoading(false); })
+      .catch(() => { setError('Could not load API keys'); setLoading(false); });
   };
 
-  const revoke = async () => {
-    if (!confirm('Revoke the API key? Any Home Assistant sensors using it will stop updating.')) return;
-    setRevoking(true);
-    await fetch('/api/ha/key', { method: 'DELETE' });
-    setApiKey(null);
-    setRevoking(false);
+  useEffect(load, []);
+
+  const create = async () => {
+    if (!label.trim()) { setError('Give the key a label so you can tell your clients apart'); return; }
+    setCreating(true);
+    setError(null);
+    try {
+      const r = await fetch('/api/keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: label.trim(), scope }),
+      });
+      const d = await r.json();
+      if (!r.ok) { setError(d.error || 'Could not create key'); return; }
+      setLabel('');
+      setScope('read');
+      setRevealed(prev => ({ ...prev, [d.id]: true }));
+      load();
+    } finally {
+      setCreating(false);
+    }
   };
 
-  const copy = (text) => {
+  const regenerate = async (entry) => {
+    if (!confirm(`Regenerate the key for "${entry.label}"?\n\nThe old key stops working immediately and any client using it must be updated.`)) return;
+    await fetch(`/api/keys/${entry.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ regenerate: true }),
+    });
+    setRevealed(prev => ({ ...prev, [entry.id]: true }));
+    load();
+  };
+
+  const revoke = async (entry) => {
+    if (!confirm(`Revoke "${entry.label}"?\n\nAnything using this key loses access immediately. Other keys are unaffected.`)) return;
+    await fetch(`/api/keys/${entry.id}`, { method: 'DELETE' });
+    load();
+  };
+
+  const copy = (text, id) => {
     navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const relative = (iso) => {
+    if (!iso) return 'never';
+    const diff = Date.now() - new Date(iso).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    return `${Math.floor(hrs / 24)}d ago`;
   };
 
   const baseUrl = window.location.origin;
+  const haKey = keys.find(k => k.label === 'Home Assistant') || keys.find(k => k.scope === 'read');
 
-  const yamlExample = apiKey ? `# Add to configuration.yaml or a sensor package file
+  const yamlExample = haKey ? `# Add to configuration.yaml or a sensor package file
 rest:
   - resource: "${baseUrl}/api/ha/summary"
     headers:
-      X-API-Key: "${apiKey}"
+      X-API-Key: "${haKey.key}"
     scan_interval: 60
     sensor:
       - name: "Network Devices Online"
@@ -376,107 +418,165 @@ rest:
 
   - resource: "${baseUrl}/api/ha/devices"
     headers:
-      X-API-Key: "${apiKey}"
+      X-API-Key: "${haKey.key}"
     scan_interval: 60
     sensor:
       - name: "Network Device List"
         value_template: "{{ value_json.count }}"
         unit_of_measurement: "devices"
         json_attributes:
-          - devices
+          - devices` : '';
 
-  - resource: "${baseUrl}/api/ha/domains"
-    headers:
-      X-API-Key: "${apiKey}"
-    scan_interval: 3600
-    sensor:
-      - name: "Domain List"
-        value_template: "{{ value_json.count }}"
-        unit_of_measurement: "domains"
-        json_attributes:
-          - domains` : '';
+  const [copiedYaml, setCopiedYaml] = useState(false);
+  const copyYaml = () => {
+    navigator.clipboard.writeText(yamlExample);
+    setCopiedYaml(true);
+    setTimeout(() => setCopiedYaml(false), 2000);
+  };
 
-  if (loading) return <div className="text-sm text-slate-500 py-8 text-center">Loading…</div>;
+  if (loading) return <div className="text-sm text-slate-400">Loading API keys…</div>;
 
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-base font-semibold text-slate-800 mb-1">Home Assistant API</h3>
-        <p className="text-xs text-slate-500">A read-only JSON API for use with Home Assistant REST sensors. Secured by an API key — no session cookie required.</p>
+        <h3 className="text-sm font-semibold text-slate-700 mb-1">API Keys</h3>
+        <p className="text-xs text-slate-500 leading-relaxed">
+          Give each client its own key — Home Assistant, a phone, a script. Revoking one leaves the others working.
+          Pass the key as an <code className="font-mono bg-slate-100 px-1 rounded">X-API-Key</code> header.
+        </p>
       </div>
 
-      {/* Available endpoints */}
-      <div className="bg-slate-50 rounded-xl border border-slate-200 divide-y divide-slate-200 text-xs font-mono">
-        {[
-          { path: '/api/ha/summary', desc: 'Device counts, domain expiry summary' },
-          { path: '/api/ha/devices', desc: 'Per-device ping & health status' },
-          { path: '/api/ha/domains', desc: 'Domain expiry details' },
-        ].map(({ path, desc }) => (
-          <div key={path} className="flex items-center gap-3 px-3 py-2">
-            <span className="text-emerald-600 font-semibold">GET</span>
-            <span className="text-slate-800">{path}</span>
-            <span className="text-slate-400 font-sans ml-auto text-right">{desc}</span>
-          </div>
-        ))}
+      {error && (
+        <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>
+      )}
+
+      {/* Create */}
+      <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/60">
+        <label className="block text-xs font-medium text-slate-600 mb-2">Create a new key</label>
+        <div className="flex flex-wrap gap-2">
+          <input
+            type="text"
+            value={label}
+            onChange={e => setLabel(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && create()}
+            placeholder="e.g. iPhone, Home Assistant"
+            className="flex-1 min-w-[180px] px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+          />
+          <select
+            value={scope}
+            onChange={e => setScope(e.target.value)}
+            className="px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-emerald-500"
+          >
+            <option value="read">Read only</option>
+            <option value="write">Read &amp; write</option>
+          </select>
+          <button
+            onClick={create}
+            disabled={creating}
+            className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+          >
+            {creating ? 'Creating…' : 'Create key'}
+          </button>
+        </div>
+        <p className="text-xs text-slate-400 mt-2">
+          Home Assistant only needs <strong>read only</strong>. Choose read &amp; write for a client that edits entries.
+        </p>
       </div>
 
-      {/* Key management */}
+      {/* List */}
+      {keys.length === 0 ? (
+        <p className="text-sm text-slate-400 italic">No API keys yet. Create one above to connect an external client.</p>
+      ) : (
+        <div className="space-y-2">
+          {keys.map(entry => (
+            <div key={entry.id} className="border border-slate-200 rounded-xl p-3 bg-white">
+              <div className="flex items-center gap-2 flex-wrap mb-2">
+                <span className="text-sm font-medium text-slate-700">{entry.label}</span>
+                <span className={`px-1.5 py-0.5 text-xs font-medium rounded border ${
+                  entry.scope === 'write'
+                    ? 'bg-amber-50 text-amber-700 border-amber-200'
+                    : 'bg-slate-100 text-slate-500 border-slate-200'
+                }`}>
+                  {entry.scope === 'write' ? 'read & write' : 'read only'}
+                </span>
+                <span className="text-xs text-slate-400 ml-auto">last used {relative(entry.lastUsedAt)}</span>
+              </div>
+              <div className="flex gap-2 items-center">
+                <code className="flex-1 font-mono text-xs bg-slate-900 text-emerald-300 rounded-lg px-3 py-2 overflow-x-auto whitespace-nowrap">
+                  {revealed[entry.id] ? entry.key : '•'.repeat(32)}
+                </code>
+                <button
+                  onClick={() => setRevealed(p => ({ ...p, [entry.id]: !p[entry.id] }))}
+                  className="px-2.5 py-2 bg-slate-100 border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-200 transition-colors"
+                >
+                  {revealed[entry.id] ? 'Hide' : 'Show'}
+                </button>
+                <button
+                  onClick={() => copy(entry.key, entry.id)}
+                  className="px-2.5 py-2 bg-slate-100 border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-200 transition-colors whitespace-nowrap"
+                >
+                  {copiedId === entry.id ? '✓ Copied' : 'Copy'}
+                </button>
+              </div>
+              <div className="flex gap-2 mt-2">
+                <button onClick={() => regenerate(entry)} className="px-2.5 py-1 bg-amber-50 border border-amber-200 text-amber-700 rounded-lg text-xs font-medium hover:bg-amber-100 transition-colors">
+                  Regenerate
+                </button>
+                <button onClick={() => revoke(entry)} className="px-2.5 py-1 bg-red-50 border border-red-200 text-red-600 rounded-lg text-xs font-medium hover:bg-red-100 transition-colors">
+                  Revoke
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Endpoints */}
       <div>
-        <label className="block text-sm font-medium text-slate-700 mb-2">API Key</label>
-        {apiKey ? (
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <code className="flex-1 px-3 py-2 bg-slate-100 border border-slate-200 rounded-lg text-xs font-mono text-slate-700 truncate">
-                {apiKey}
-              </code>
-              <button
-                onClick={() => copy(apiKey)}
-                className="px-3 py-2 bg-slate-100 border border-slate-200 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-200 transition-colors whitespace-nowrap"
-              >
-                {copied ? '✓ Copied' : 'Copy'}
-              </button>
+        <h4 className="text-sm font-semibold text-slate-700 mb-2">Endpoints</h4>
+        <div className="border border-slate-200 rounded-xl overflow-hidden text-xs">
+          {[
+            ['GET',    '/api/ha/summary',  'Device counts and domain expiry totals', 'read'],
+            ['GET',    '/api/ha/devices',  'Every device with ping and health status', 'read'],
+            ['GET',    '/api/ha/domains',  'Tracked domains with expiry dates', 'read'],
+            ['GET',    '/api/ips',         'All IP entries', 'read'],
+            ['GET',    '/api/ips/:ip',     'A single entry', 'read'],
+            ['POST',   '/api/ips',         'Create an entry', 'write'],
+            ['PATCH',  '/api/ips/:ip',     'Update one entry', 'write'],
+            ['DELETE', '/api/ips/:ip',     'Delete one entry', 'write'],
+          ].map(([method, path, desc, needs]) => (
+            <div key={method + path} className="flex items-center gap-2 px-3 py-2 border-b border-slate-100 last:border-0">
+              <span className={`font-mono font-semibold w-14 shrink-0 ${needs === 'write' ? 'text-amber-600' : 'text-emerald-600'}`}>{method}</span>
+              <code className="font-mono text-slate-700 w-40 shrink-0">{path}</code>
+              <span className="text-slate-500 flex-1">{desc}</span>
+              <span className="text-slate-400 shrink-0">{needs}</span>
             </div>
-            <div className="flex gap-2">
-              <button onClick={generate} className="px-3 py-1.5 bg-amber-50 border border-amber-200 text-amber-700 rounded-lg text-xs font-medium hover:bg-amber-100 transition-colors">
-                Regenerate key
-              </button>
-              <button onClick={revoke} disabled={revoking} className="px-3 py-1.5 bg-red-50 border border-red-200 text-red-600 rounded-lg text-xs font-medium hover:bg-red-100 transition-colors">
-                Revoke
-              </button>
-            </div>
-            <p className="text-xs text-slate-400">Pass as <code className="font-mono bg-slate-100 px-1 rounded">X-API-Key</code> header or <code className="font-mono bg-slate-100 px-1 rounded">?api_key=</code> query parameter.</p>
-          </div>
-        ) : (
-          <div>
-            <p className="text-xs text-slate-500 mb-3">No API key set. Generate one to enable the HA API.</p>
-            <button onClick={generate} className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors">
-              Generate API Key
-            </button>
-          </div>
-        )}
+          ))}
+        </div>
       </div>
 
-      {/* YAML example */}
-      {apiKey && (
+      {/* Home Assistant YAML */}
+      {haKey && (
         <div>
           <div className="flex items-center justify-between mb-2">
-            <label className="text-sm font-medium text-slate-700">Example configuration.yaml</label>
-            <button onClick={() => copy(yamlExample)} className="text-xs text-emerald-600 hover:text-emerald-700 font-medium">
-              {copied ? '✓ Copied' : 'Copy YAML'}
+            <label className="text-sm font-medium text-slate-700">Home Assistant configuration.yaml</label>
+            <button onClick={copyYaml} className="text-xs text-emerald-600 hover:text-emerald-700 font-medium">
+              {copiedYaml ? '✓ Copied' : 'Copy YAML'}
             </button>
           </div>
           <pre className="bg-slate-900 text-emerald-300 text-xs rounded-xl p-4 overflow-x-auto leading-relaxed whitespace-pre font-mono max-h-64 overflow-y-auto">
             {yamlExample}
           </pre>
           <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-2 flex items-center gap-1.5">
-            <span>⚠</span> This YAML contains your live API key — treat it like a password and do not share it publicly.
+            <span>⚠</span> This YAML contains a live API key — treat it like a password and do not share it publicly.
           </p>
-          <p className="text-xs text-slate-400 mt-2">After adding to Home Assistant, restart HA and the sensors will appear. Use them in dashboards, automations, and alerts.</p>
+          <p className="text-xs text-slate-400 mt-2">Uses the <strong>{haKey.label}</strong> key. Restart Home Assistant after adding it.</p>
         </div>
       )}
     </div>
   );
 }
+
 
 // Settings Modal Component
 // ── Updates Tab (lives inside SettingsModal) ──────────────────────────────────
@@ -1656,7 +1756,7 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
     { id: 'backup',   label: 'Backup' },
     { id: 'manage',   label: 'Locations & Tags' },
     { id: 'presence', label: 'ARP & Presence' },
-    { id: 'ha',       label: 'Home Assistant' },
+    { id: 'api',      label: 'API Keys' },
     { id: 'account',  label: 'Account' },
     { id: 'updates',  label: 'Updates' },
     { id: 'support',  label: 'Support' },
@@ -2328,9 +2428,9 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
               <ArpPresenceTab />
             )}
 
-            {/* ── HOME ASSISTANT TAB ── */}
-            {activeTab === 'ha' && (
-              <HomeAssistantTab />
+            {/* ── API KEYS TAB ── */}
+            {activeTab === 'api' && (
+              <ApiKeysTab />
             )}
 
             {/* ── UPDATES TAB ── */}
