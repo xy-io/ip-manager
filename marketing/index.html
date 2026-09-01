@@ -340,7 +340,7 @@
 
 <!-- WHAT'S NEW BANNER -->
 <div class="whats-new-bar">
-  <strong>v2.2.0</strong> just landed — push notifications to ntfy or any webhook, plus a full activity log.
+  <strong>v2.3.0</strong> just landed — a documented API that native clients can talk to with a single key.
   <a href="#changelog">See what's new →</a>
 </div>
 
@@ -634,9 +634,9 @@
 
       <div style="background:var(--slate-900);border:1px solid rgba(16,185,129,.3);border-radius:14px;padding:1.5rem;">
         <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--emerald);margin-bottom:.6rem">Latest release</div>
-        <div style="font-size:1.6rem;font-weight:800;color:#fff;margin-bottom:.35rem;">v2.2.0</div>
-        <div style="font-size:.85rem;font-weight:600;color:#e2e8f0;margin-bottom:.5rem;">Notifications, activity log &amp; accessibility</div>
-        <p style="font-size:.78rem;color:var(--slate-300);line-height:1.6;margin-bottom:1.1rem;">Get pushed an alert when a device drops off or a domain nears expiry — straight to ntfy or your own webhook, with flap protection so a dropped packet never wakes you.</p>
+        <div style="font-size:1.6rem;font-weight:800;color:#fff;margin-bottom:.35rem;">v2.3.0</div>
+        <div style="font-size:.85rem;font-weight:600;color:#e2e8f0;margin-bottom:.5rem;">Full API-key compatibility for native clients</div>
+        <p style="font-size:.78rem;color:var(--slate-300);line-height:1.6;margin-bottom:1.1rem;">Every endpoint now works with a single API key and no browser session, with structured JSON errors and a capabilities map — the groundwork for native mobile clients.</p>
         <a href="https://github.com/xy-io/ip-manager/releases/latest" target="_blank" rel="noopener"
            style="display:inline-flex;align-items:center;gap:.4rem;font-size:.8rem;font-weight:600;color:var(--emerald);text-decoration:none;">
           View release notes
@@ -648,6 +648,10 @@
         <div>
           <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--slate-500);margin-bottom:.6rem">Recent highlights</div>
           <ul style="list-style:none;display:flex;flex-direction:column;gap:.55rem;">
+            <li style="display:flex;align-items:center;gap:.6rem;font-size:.8rem;color:var(--slate-300);">
+              <span style="width:6px;height:6px;border-radius:50%;background:var(--emerald);flex-shrink:0"></span>
+              <span><strong style="color:#e2e8f0">v2.2.0</strong> — Notifications, activity log &amp; accessibility</span>
+            </li>
             <li style="display:flex;align-items:center;gap:.6rem;font-size:.8rem;color:var(--slate-300);">
               <span style="width:6px;height:6px;border-radius:50%;background:var(--emerald);flex-shrink:0"></span>
               <span><strong style="color:#e2e8f0">v2.1.0</strong> — Public API with named access keys</span>
@@ -663,10 +667,6 @@
             <li style="display:flex;align-items:center;gap:.6rem;font-size:.8rem;color:var(--slate-300);">
               <span style="width:6px;height:6px;border-radius:50%;background:var(--emerald);flex-shrink:0"></span>
               <span><strong style="color:#e2e8f0">v1.33</strong> — Home Assistant JSON API</span>
-            </li>
-            <li style="display:flex;align-items:center;gap:.6rem;font-size:.8rem;color:var(--slate-300);">
-              <span style="width:6px;height:6px;border-radius:50%;background:var(--emerald);flex-shrink:0"></span>
-              <span><strong style="color:#e2e8f0">v1.32</strong> — SSH username per entry</span>
             </li>
           </ul>
         </div>
@@ -757,7 +757,7 @@
 </section>
 
 <footer>
-  <p>IP Manager v2.2.0 · Built for home labs · <span>PolyForm Noncommercial License</span></p>
+  <p>IP Manager v2.3.0 · Built for home labs · <span>PolyForm Noncommercial License</span></p>
 </footer>
 
 <script>

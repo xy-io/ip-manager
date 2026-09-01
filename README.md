@@ -45,6 +45,10 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
+### v2.3.0 — Full API-key compatibility for native clients
+
+Fixes a significant bug: around 48 routes applied `requireAuth` directly and only accepted session cookies, so API keys were rejected on Domains, Ping, Service Health, ARP, DNS and Proxmox despite passing the middleware. Every endpoint now accepts `X-API-Key` with no cookie. Adds structured `{error, message}` JSON on every failure with correct `401`/`403`/`409` semantics, a `GET /api/capabilities` feature map, and Unix-seconds timestamps on the status endpoints (they were milliseconds, which would have made a client's refresh scheduling wrong by a factor of a thousand). The Proxmox API token is no longer returned to API keys. Smoke tests now run 99 checks including a full dashboard sweep using only a key.
+
 ### v2.2.0 — Notifications, activity log, and accessibility
 
 Push alerts to [ntfy](https://ntfy.sh) or any webhook when a device goes offline, a health check fails, a domain nears expiry, or a backup fails — configured in **Settings → Notifications**, with a test button and per-event toggles. Offline alerts wait for a configurable number of consecutive failed ping cycles so a single dropped packet doesn't wake you, and fire once rather than repeatedly. Adds an **Activity** log recording sign-ins (including failures), API key changes, config updates and entry edits — the last 500 events, filterable. Both are session-only, so an API key can't read the log or repoint notifications. Plus a full accessibility pass: dialog semantics and focus management on all eleven modals, accessible names on icon buttons, and keyboard-operable IP cards.

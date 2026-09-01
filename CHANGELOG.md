@@ -6,6 +6,25 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v2.3.0
+
+**Full API-key compatibility for native clients**
+
+Prepares the API for the iOS app. The headline item is a bug fix that made key authentication largely unusable.
+
+- **API keys now work on every endpoint.** Around 48 routes — Domains, Ping, Service Health, ARP, DNS, Proxmox, Subnet Blocks and others — applied `requireAuth` directly, which only ever checked for a session cookie. A valid key passed the blanket middleware and was then rejected by the route itself, so those endpoints returned `401` to any external client. `requireAuth` now honours the key the middleware has already validated.
+- **Structured JSON errors everywhere** — every failure returns `{ "error": "…", "message": "…" }` with a usable explanation. `401` for a missing or invalid key, `403` for a valid key without permission, `409` for an edit conflict, `423` while default credentials are in force. No endpoint returns HTML or redirects to a login page.
+- **Session-only routes now answer `403` rather than `401`** when called with a valid key, distinguishing "your key is wrong" from "your key is fine but this route is off-limits".
+- **`GET /api/capabilities`** — advertises `apiVersion` and a feature map so a client can tell an unsupported feature apart from a broken or unauthorised endpoint. `pushNotifications` is `false` until APNs support exists.
+- **Timestamps are Unix seconds and countdowns are seconds** on `/api/ping-status`, `/api/service-health`, `/api/dns-status` and `/api/proxmox-vm-status`. They were milliseconds, so a client scheduling a refresh from `nextIn` would have waited around sixteen minutes instead of thirty seconds.
+- **The Proxmox API token is no longer exposed to API keys.** `/api/proxmox-sync/config` returns `tokenConfigured: true|false` instead; the Settings screen, which authenticates with a session, is unaffected. The endpoint returns a valid disabled configuration when Proxmox has never been set up, rather than an error.
+- **`label` and `serviceUrl` on entries** for key-authenticated callers — the name-fallback chain and the composed service URL, so every client does not reimplement them. Session responses are unchanged, so these derived fields cannot leak into stored data via the web UI's bulk save.
+- **Smoke tests extended to 99 checks**, including a group that exercises the entire dashboard surface with an API key and no cookie, mirroring the client's acceptance criteria: JSON content types, ping/service dictionaries keyed consistently with `/api/ips`, ISO-8601 domain dates, structured `401`/`403` bodies, and forced refreshes completing inside the client's 20-second timeout.
+
+**Not included: APNs push.** Notifications still require the app to be foregrounded or rely on opportunistic background refresh. Server-side push is on the roadmap — see the note below.
+
+---
+
 ## v2.2.0
 
 **Notifications, activity log, and accessibility**

@@ -4,6 +4,21 @@ For the full release history see the [CHANGELOG](https://github.com/xy-io/ip-man
 
 ---
 
+## v2.3.0 — Full API-key compatibility for native clients
+
+Groundwork for the iOS app, led by a bug fix that made key authentication largely unusable.
+
+- **API keys now work on every endpoint.** Around 48 routes — Domains, Ping, Service Health, ARP, DNS, Proxmox and others — checked only for a session cookie. A valid key passed the main middleware and was then rejected by the route itself, so external clients got `401` from most of the API. Fixed.
+- **Structured JSON errors** — every failure returns `{ "error", "message" }`. `401` for a missing or invalid key, `403` for a valid key without permission, `409` for an edit conflict. Nothing returns HTML or a login redirect.
+- **`GET /api/capabilities`** — a feature map so a client can tell "not supported" apart from "broken".
+- **Timestamps are Unix seconds**, and countdowns are seconds, on the status endpoints. They were milliseconds, which would have made a client's refresh scheduling wrong by a factor of a thousand.
+- **The Proxmox API token is no longer returned to API keys** — `tokenConfigured` replaces it. Proxmox routes also answer properly when Proxmox has never been configured.
+- **`label` and `serviceUrl`** are added to entries for API clients, so each client does not reimplement the same fallbacks.
+
+See [API](API) for the full reference.
+
+---
+
 ## v2.2.0 — Notifications, activity log & accessibility
 
 - **Outbound notifications.** Alerts when a device drops off, a health check fails, a domain nears expiry, or a backup fails — pushed to an [ntfy](https://ntfy.sh) topic or any webhook. No Home Assistant required. Configure in **Settings → Notifications**, pick which events to send, and use **Send test** to check delivery before switching it on. See [Notifications](Notifications).

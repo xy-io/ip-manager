@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 import QRCode from 'qrcode';
 
 // ── App version ───────────────────────────────────────────────────────────────
-const APP_VERSION = 'v2.2.0';
+const APP_VERSION = 'v2.3.0';
 
 // Default network configuration (overridden by Settings modal / localStorage)
 const DEFAULT_NETWORK_CONFIG = {
@@ -7281,7 +7281,7 @@ export default function IPAddressManager() {
       if (!res.ok) return;
       const data = await res.json();
       setDnsStatus(data.results || {});
-      setDnsLastAt(data.cachedAt ? new Date(data.cachedAt) : null);
+      setDnsLastAt(data.cachedAt ? new Date(data.cachedAt * 1000) : null); // server returns Unix seconds
       if (data.configs) setDnsConfig(data.configs);
     } catch { /* silently ignore network errors */ } finally {
       setDnsLoading(false);

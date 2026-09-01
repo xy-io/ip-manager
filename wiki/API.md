@@ -24,6 +24,29 @@ Grant the narrowest scope that works. Home Assistant only ever reads, so a read-
 
 ---
 
+## Client compatibility
+
+`GET /api/capabilities` describes what this server supports, so a client can distinguish an unsupported feature from a broken or unauthorised endpoint:
+
+```json
+{
+  "apiVersion": "1.0",
+  "serverVersion": "2.3.0",
+  "capabilities": {
+    "inventory": true, "networks": true, "ping": true, "serviceHealth": true,
+    "domains": true, "domainWrite": true, "arpScan": true, "arpPresence": true,
+    "dns": true, "subnetBlocks": true, "proxmox": true,
+    "notifications": true, "activityLog": true, "pushNotifications": false
+  }
+}
+```
+
+`apiVersion` gains a minor bump for additive changes and a major bump for anything a client must be updated to handle.
+
+> **Native clients:** from **v2.3.0** every endpoint below accepts `X-API-Key` with no session cookie. Before that, around 48 routes applied session-only authentication internally and returned `401` to key-authenticated callers even though the key was valid. If a client sees `401` on Domains, Ping, Service Health, ARP, DNS or Proxmox, the server is older than v2.3.0.
+
+---
+
 ## Authentication
 
 Send the key in the `X-API-Key` header:
@@ -38,14 +61,30 @@ A browser session cookie also authenticates every endpoint; that is what the web
 
 ### Responses
 
+Successful responses are always `application/json`. No endpoint returns HTML or redirects to a login page.
+
+Every failure uses the same body shape:
+
+```json
+{
+  "error": "Read-only API key",
+  "message": "The key \"iPhone\" has read-only scope and cannot make changes. Give it read & write scope in Settings → API Keys, or use a different key."
+}
+```
+
 | Status | Meaning |
 |---|---|
+| `400` | Malformed request — a missing field, or a write with the key in the query string |
 | `401` | No key, or the key is not recognised |
-| `403` | Valid key, but read-only and the request was a write |
-| `400` | A write was attempted with the key in the query string |
+| `403` | The key is valid but lacks permission — read-only on a write, or a session-only route |
 | `404` | No entry for that IP |
 | `409` | Conflict — the entry already exists, or it changed since you read it |
-| `423` | Locked — default credentials are still in use; log in and change them |
+| `423` | Locked — default credentials are still in use; sign in and change them |
+| `503` | No API key has been created on this server yet |
+
+### Units
+
+`cachedAt` is **Unix seconds** and `nextIn` is **seconds remaining**, on `/api/ping-status`, `/api/service-health`, `/api/dns-status` and `/api/proxmox-vm-status`. Before v2.3.0 both were milliseconds.
 
 ### What keys cannot do
 
@@ -58,6 +97,17 @@ So a key can never mint another key, change your password, trigger an update, or
 ---
 
 ## Endpoints
+
+### Convenience fields
+
+Key-authenticated responses from `/api/ips` and `/api/ips/:ip` include two derived fields that the stored record does not contain:
+
+| Field | Meaning |
+|---|---|
+| `label` | `assetName`, falling back to `hostname`, then `ip` |
+| `serviceUrl` | Composed from `healthScheme`, `hostname` or `ip`, `healthPort` and `healthPath`; `null` when no health port is set |
+
+They are omitted for session-authenticated requests, because the web UI writes the whole array back and would otherwise persist them.
 
 ### Entries
 
@@ -77,12 +127,20 @@ So a key can never mint another key, change your password, trigger an update, or
 | `GET` | `/api/networks` | read | All configured networks |
 | `GET` | `/api/config` | read | Legacy single-network configuration |
 | `GET` | `/api/subnet-blocks?network=<id>` | read | Planned blocks for a network |
+| `GET` | `/api/arp-presence/status` | read | Last-seen times plus the discovery block used for new-host alerts |
+| `GET` | `/api/dns-status` | read | PTR results and per-network resolver configuration |
+| `POST` | `/api/arp/scan` | write | Run an ARP sweep |
+| `GET` | `/api/proxmox-sync/config` | read | Returns a valid disabled object when Proxmox is unconfigured. `token` is `null` for key-authenticated callers; use `tokenConfigured` |
+| `GET` | `/api/proxmox-sync/status` | read | Last and running sync state |
+| `POST` | `/api/proxmox-sync/run` | write | Start a sync |
+| `GET` | `/api/proxmox-vm-status` | read | Cached guest status |
+| `GET` | `/api/capabilities` | read | Feature map, see above |
 
 ### Status
 
 | Method | Path | Scope | Description |
 |---|---|---|---|
-| `GET` | `/api/ping-status` | read | `{ "results": { "<ip>": "up" \| "down" }, … }` |
+| `GET` | `/api/ping-status` | read | `{ results, warning, cachedAt, nextIn, lastSeen }` — values are exactly `up`, `down` or `unknown`, keyed by the same IP strings as `/api/ips` |
 | `GET` | `/api/service-health` | read | Health check results keyed by IP |
 | `GET` | `/api/domains` | read | Tracked domains |
 

@@ -474,13 +474,13 @@ async function testApiKeys() {
   await test('a key CANNOT manage keys', async () => {
     if (!writeKey) return 'no write key';
     const res = await GET('/api/keys', asKey(writeKey));
-    return expectStatus(res, 401, 'GET /api/keys with an API key');
+    return expectStatus(res, [401, 403], 'GET /api/keys with an API key');
   });
 
   await test('a key CANNOT download a support bundle', async () => {
     if (!writeKey) return 'no write key';
     const res = await GET('/api/support/bundle', asKey(writeKey));
-    return expectStatus(res, 401, 'GET /api/support/bundle with an API key');
+    return expectStatus(res, [401, 403], 'GET /api/support/bundle with an API key');
   });
 
   await test('a write key can create an entry', async () => {
@@ -626,7 +626,8 @@ async function testNotificationsAndAudit() {
     const key = stored.json?.key;
     if (!key) return true; // no key configured
     const res = await GET('/api/audit-log', { headers: { 'X-API-Key': key }, useSession: false });
-    return expectStatus(res, 401, 'GET /api/audit-log with an API key');
+    // 403 is the correct answer: the key is valid, but this route is session-only.
+    return expectStatus(res, [401, 403], 'GET /api/audit-log with an API key');
   });
 
   await test('an API key cannot change notification settings', async () => {
@@ -640,6 +641,207 @@ async function testNotificationsAndAudit() {
     });
     if (res.status === 401 || res.status === 403) return true;
     return `an API key was able to repoint notifications — expected HTTP 401/403, got ${res.status}`;
+  });
+}
+
+// ── 4d. iOS client compatibility ─────────────────────────────────────────────
+// Mirrors the acceptance criteria for the native iOS app. Every request in this
+// group is made with an API key and NO session cookie — that is the whole point.
+async function testIosCompatibility() {
+  group('4d. iOS client compatibility (API key, no cookie)');
+
+  // Use the stored read key so this group works even in --read-only mode.
+  const stored = await GET('/api/ha/key');
+  const key = stored.status === 200 && stored.json?.enabled ? stored.json.key : HA_KEY;
+  if (!key) {
+    skip('all iOS compatibility tests', 'no API key available');
+    return;
+  }
+  const asKey = { headers: { 'X-API-Key': key, Accept: 'application/json' }, useSession: false };
+
+  // 1 & 9 & 10 — every dashboard GET answers with JSON, using only a key.
+  const DASHBOARD = [
+    '/api/health',
+    '/api/capabilities',
+    '/api/ips',
+    '/api/networks',
+    '/api/ping-status',
+    '/api/service-health',
+    '/api/domains',
+    '/api/arp-presence/status',
+    '/api/dns-status',
+    '/api/proxmox-sync/config',
+    '/api/proxmox-sync/status',
+    '/api/proxmox-vm-status',
+  ];
+
+  for (const route of DASHBOARD) {
+    await test(`GET ${route} with only an API key`, async () => {
+      const res = await GET(route, asKey);
+      if (res.status < 200 || res.status >= 300) {
+        return `expected 2xx, got ${res.status}. A route-level requireAuth that ignores req.apiKey is the usual cause.`;
+      }
+      const ctype = res.headers.get('content-type') || '';
+      if (!ctype.includes('application/json')) {
+        return `expected application/json, got "${ctype}" — a client would see HTML or a login redirect here`;
+      }
+      if (res.json === null) return 'response body was not parseable JSON';
+      return true;
+    });
+  }
+
+  // 3 — ping/service dictionaries key off exactly the IPs from /api/ips.
+  let entryIps = [];
+  await test('ping status keys match the IPs returned by /api/ips', async () => {
+    const ips = await GET('/api/ips', asKey);
+    const ping = await GET('/api/ping-status', asKey);
+    entryIps = (ips.json?.data || []).map((e) => e.ip);
+    const pingIps = Object.keys(ping.json?.results || {});
+    if (!pingIps.length) return true; // cache cold
+    const strays = pingIps.filter((ip) => !entryIps.includes(ip));
+    return strays.length
+      ? `ping results contain ${strays.length} IP(s) absent from /api/ips, e.g. ${strays[0]}`
+      : true;
+  });
+
+  await test('ping values are exactly up / down / unknown', async () => {
+    const res = await GET('/api/ping-status', asKey);
+    const bad = [...new Set(Object.values(res.json?.results || {}))]
+      .filter((v) => !['up', 'down', 'unknown'].includes(v));
+    return bad.length ? `unexpected ping value(s): ${bad.join(', ')}` : true;
+  });
+
+  await test('service health entries expose status and code', async () => {
+    const res = await GET('/api/service-health', asKey);
+    const entries = Object.values(res.json?.results || {});
+    if (!entries.length) return true;
+    const bad = entries.filter((e) => !e || typeof e !== 'object' || !('status' in e) || !('code' in e));
+    if (bad.length) return `${bad.length} health entr(ies) missing status/code`;
+    const badStatus = [...new Set(entries.map((e) => e.status))].filter((v) => !['up', 'down', 'unknown'].includes(v));
+    return badStatus.length ? `unexpected health status value(s): ${badStatus.join(', ')}` : true;
+  });
+
+  // Timestamps must be seconds, not milliseconds — a client scheduling a
+  // refresh off milliseconds would wait ~16 minutes instead of 30 seconds.
+  await test('cachedAt and nextIn are in seconds', async () => {
+    const res = await GET('/api/ping-status', asKey);
+    const { cachedAt, nextIn } = res.json || {};
+    if (cachedAt === undefined || nextIn === undefined) return 'cachedAt or nextIn missing';
+    if (cachedAt && cachedAt > 4102444800) {
+      return `cachedAt is ${cachedAt} — that is milliseconds, not Unix seconds`;
+    }
+    if (nextIn > 3600) return `nextIn is ${nextIn}, too large to be seconds`;
+    return true;
+  });
+
+  // 4 — domains carry parseable ISO-8601 dates.
+  await test('domain records use parseable ISO-8601 dates', async () => {
+    const res = await GET('/api/domains', asKey);
+    const domains = res.json?.data;
+    if (!Array.isArray(domains)) return 'expected { data: [...] }';
+    if (!domains.length) return true;
+    const problems = [];
+    for (const d of domains) {
+      if (!d.id) problems.push(`${d.domain}: no id`);
+      for (const field of ['expiry', 'lastChecked']) {
+        const v = d[field];
+        if (v === null || v === undefined) continue;
+        if (Number.isNaN(Date.parse(v))) problems.push(`${d.domain}: ${field} "${v}" is not ISO-8601`);
+      }
+    }
+    return problems.length ? problems.slice(0, 3).join('; ') : true;
+  });
+
+  // 5 — Proxmox answers even when unconfigured, and never leaks the token.
+  await test('Proxmox config returns a valid object rather than an error', async () => {
+    const res = await GET('/api/proxmox-sync/config', asKey);
+    if (res.status !== 200) return `expected HTTP 200 even when unconfigured, got ${res.status}`;
+    const keyCheck = expectKeys(res.json, ['host', 'tokenConfigured', 'enabled', 'intervalMinutes'], 'proxmox config');
+    if (keyCheck !== true) return keyCheck;
+    return typeof res.json.tokenConfigured === 'boolean' ? true : 'tokenConfigured is not a boolean';
+  });
+
+  await test('Proxmox API token is not exposed to an API key', async () => {
+    const res = await GET('/api/proxmox-sync/config', asKey);
+    return res.json?.token ? 'the Proxmox API token was returned to a key-authenticated caller' : true;
+  });
+
+  // 6 — invalid keys get structured JSON, never HTML.
+  await test('an invalid key returns structured JSON 401', async () => {
+    const res = await GET('/api/ips', { headers: { 'X-API-Key': 'invalid-key-for-testing' }, useSession: false });
+    if (res.status !== 401) return `expected HTTP 401, got ${res.status}`;
+    const ctype = res.headers.get('content-type') || '';
+    if (!ctype.includes('application/json')) return `error was not JSON (content-type: ${ctype})`;
+    return expectKeys(res.json, ['error', 'message'], '401 body');
+  });
+
+  await test('a missing key returns structured JSON 401', async () => {
+    const res = await GET('/api/ips', { useSession: false });
+    if (res.status !== 401) return `expected HTTP 401, got ${res.status}`;
+    return expectKeys(res.json, ['error', 'message'], '401 body');
+  });
+
+  // 7 — read-only keys get structured 403 on every write verb.
+  await test('a read-only key gets structured 403 on POST, PATCH and DELETE', async () => {
+    if (READ_ONLY) return true;
+    const created = await POST('/api/keys', { label: 'smoke-test-ios-read', scope: 'read' });
+    if (created.status !== 200) return `could not create a test key (HTTP ${created.status})`;
+    const ro = { headers: { 'X-API-Key': created.json.key }, useSession: false };
+    const problems = [];
+    for (const [method, path, body] of [
+      ['POST', '/api/ips', { ip: '203.0.113.252' }],
+      ['PATCH', '/api/ips/203.0.113.251', { assetName: 'x' }],
+      ['DELETE', '/api/ips/203.0.113.251', undefined],
+    ]) {
+      const res = await req(method, path, { ...ro, body });
+      if (res.status !== 403) problems.push(`${method} ${path} → ${res.status}, expected 403`);
+      else if (!res.json || !('error' in res.json) || !('message' in res.json)) {
+        problems.push(`${method} ${path} → 403 but body lacks error/message`);
+      }
+    }
+    await req('DELETE', `/api/keys/${created.json.id}`);
+    return problems.length ? problems.join('; ') : true;
+  });
+
+  // 8 — forced refreshes finish inside the client's 20-second timeout.
+  await test('forced ping refresh completes within 20s', async () => {
+    const started = Date.now();
+    const res = await GET('/api/ping-status?force=1', asKey);
+    const elapsed = Date.now() - started;
+    if (res.status !== 200) return `expected HTTP 200, got ${res.status}`;
+    return elapsed < 20000 ? true : `took ${(elapsed / 1000).toFixed(1)}s, over the 20s client timeout`;
+  });
+
+  await test('forced service-health refresh completes within 20s', async () => {
+    const started = Date.now();
+    const res = await GET('/api/service-health?force=1', asKey);
+    const elapsed = Date.now() - started;
+    if (res.status !== 200) return `expected HTTP 200, got ${res.status}`;
+    return elapsed < 20000 ? true : `took ${(elapsed / 1000).toFixed(1)}s, over the 20s client timeout`;
+  });
+
+  // Capabilities must be self-describing.
+  await test('capabilities advertises apiVersion and feature flags', async () => {
+    const res = await GET('/api/capabilities', asKey);
+    const keyCheck = expectKeys(res.json, ['apiVersion', 'capabilities'], '/api/capabilities');
+    if (keyCheck !== true) return keyCheck;
+    const required = ['inventory', 'networks', 'ping', 'serviceHealth', 'domains', 'arpScan', 'dns', 'proxmox', 'pushNotifications'];
+    return expectKeys(res.json.capabilities, required, 'capabilities');
+  });
+
+  await test('ARP presence exposes the discovery block for new-host alerts', async () => {
+    const res = await GET('/api/arp-presence/status', asKey);
+    const keyCheck = expectKeys(res.json, ['lastSeen', 'discovery', 'lastSeenEnabled', 'discoveryEnabled'], 'arp-presence/status');
+    if (keyCheck !== true) return keyCheck;
+    return expectKeys(res.json.discovery, ['running', 'lastRun', 'lastResults', 'lastError'], 'discovery');
+  });
+
+  await test('entries expose label and serviceUrl to API clients', async () => {
+    const res = await GET('/api/ips', asKey);
+    const entries = res.json?.data || [];
+    if (!entries.length) return true;
+    const missing = entries.filter((e) => !('label' in e) || !('serviceUrl' in e));
+    return missing.length ? `${missing.length} entr(ies) lack label/serviceUrl` : true;
   });
 }
 
@@ -736,6 +938,7 @@ async function testBuild() {
     await testApiKeys();
   }
   await testNotificationsAndAudit();
+  await testIosCompatibility();
   await testSecurityRegressions();
   await testBuild();
 

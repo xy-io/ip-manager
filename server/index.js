@@ -16,6 +16,15 @@ const { exec, execFile } = require('child_process');
 
 const BCRYPT_ROUNDS = 12; // cost factor — ~300ms per hash on modest hardware
 
+// Installed version, read once from package.json (the single source of truth).
+const APP_VERSION = (() => {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')).version || 'unknown';
+  } catch {
+    return 'unknown';
+  }
+})();
+
 const app = express();
 app.use(express.json({ limit: '2mb' }));
 app.use(cookieParser());
@@ -162,9 +171,29 @@ function isValidSession(token) {
 // ── Auth middleware ───────────────────────────────────────────────────────────
 // Applied to all /api/* routes except /api/auth/*
 
+// Structured error responses. Every API failure returns the same shape so a
+// client can show something useful without parsing prose:
+//   { "error": "Short error", "message": "Human-readable explanation" }
+function apiError(res, status, error, message) {
+  return res.status(status).json({ error, message });
+}
+
+// Cache timestamps are exposed to clients as Unix seconds, and countdowns as
+// seconds, rather than the milliseconds used internally. Clients schedule
+// refreshes off these values, so the unit has to be unambiguous.
+const toEpochSeconds = (ms) => (ms ? Math.floor(ms / 1000) : 0);
+const toSecondsRemaining = (intervalMs, sinceMs) =>
+  Math.max(0, Math.round((intervalMs - (Date.now() - sinceMs)) / 1000));
+
 function requireAuth(req, res, next) {
   if (isValidSession(req.cookies[SESSION_COOKIE])) return next();
-  res.status(401).json({ error: 'Unauthorised' });
+  // The blanket /api middleware validates API keys and sets req.apiKey before
+  // any route handler runs. Honouring it here is what makes key authentication
+  // work on the ~48 routes that apply requireAuth directly — without this,
+  // a valid key passes the blanket check and is then rejected by the route.
+  if (req.apiKey) return next();
+  return apiError(res, 401, 'Unauthorised',
+    'Sign in, or supply a valid API key in the X-API-Key header.');
 }
 
 // ── Default-credentials lockout (safety net) ──────────────────────────────────
@@ -182,10 +211,8 @@ function isDefaultCreds() {
 
 function requireNotDefault(req, res, next) {
   if (isDefaultCreds()) {
-    return res.status(423).json({
-      error: 'default-credentials',
-      message: 'Default credentials must be changed before the API is available.',
-    });
+    return apiError(res, 423, 'Default credentials in use',
+      'The default credentials must be changed before the API becomes available. Sign in through a browser to set a new password.');
   }
   next();
 }
@@ -214,7 +241,7 @@ app.post('/api/auth/login', (req, res) => {
     meta: { username: String(username || '').slice(0, 40) },
     req,
   });
-  res.status(401).json({ error: 'Invalid username or password' });
+  apiError(res, 401, 'Invalid credentials', 'That username and password combination was not recognised.');
 });
 
 app.post('/api/auth/logout', (req, res) => {
@@ -670,14 +697,17 @@ function checkApiKey(req) {
   if (!candidate) return null;
 
   const found = findApiKey(candidate);
-  if (!found) return { ok: false, status: 401, error: 'Invalid API key' };
+  if (!found) return { ok: false, status: 401, error: 'Invalid API key',
+    message: 'The supplied API key was not recognised. Check it in Settings → API Keys, or create a new one.' };
 
   const isRead = req.method === 'GET' || req.method === 'HEAD';
   if (!isRead && found.scope !== 'write') {
-    return { ok: false, status: 403, error: 'This API key is read-only' };
+    return { ok: false, status: 403, error: 'Read-only API key',
+      message: `The key "${found.label}" has read-only scope and cannot make changes. Give it read & write scope in Settings → API Keys, or use a different key.` };
   }
   if (!isRead && !headerKey) {
-    return { ok: false, status: 400, error: 'Write requests must send the key in the X-API-Key header, not a query parameter' };
+    return { ok: false, status: 400, error: 'Key must be sent as a header',
+      message: 'Write requests must send the key in the X-API-Key header rather than an api_key query parameter, because query strings are recorded in access logs.' };
   }
   return { ok: true, key: found };
 }
@@ -724,14 +754,20 @@ app.use('/api', (req, res, next) => {
   // update, or download a support bundle.
   const sessionOnly = API_KEY_SESSION_ONLY.some((p) => req.path.startsWith(p));
   const outcome = checkApiKey(req);
-  if (outcome && !sessionOnly) {
-    if (!outcome.ok) return res.status(outcome.status).json({ error: outcome.error });
+
+  if (outcome && sessionOnly) {
+    return apiError(res, 403, 'Session required',
+      'This route manages the account or the server itself and cannot be used with an API key. Sign in with a browser session.');
+  }
+  if (outcome) {
+    if (!outcome.ok) return apiError(res, outcome.status, outcome.error, outcome.message);
     req.apiKey = outcome.key;
     touchApiKey(outcome.key.id);
     return next();
   }
 
-  return res.status(401).json({ error: 'Unauthorised' });
+  return apiError(res, 401, 'Unauthorised',
+    'Sign in, or supply a valid API key in the X-API-Key header.');
 });
 
 // Health check — used by the React app to detect API mode
@@ -739,9 +775,57 @@ app.get('/api/health', (req, res) => {
   res.json({ ok: true, mode: 'sqlite' });
 });
 
+// ── Capabilities ──────────────────────────────────────────────────────────────
+// Lets a client tell "this server does not support that" apart from "that
+// endpoint is broken or I am not authorised". Bump apiVersion's minor for
+// additive changes, major for anything a client must be updated to handle.
+app.get('/api/capabilities', (req, res) => {
+  res.json({
+    apiVersion: '1.0',
+    serverVersion: APP_VERSION,
+    capabilities: {
+      inventory:         true,
+      networks:          true,
+      ping:              true,
+      serviceHealth:     true,
+      domains:           true,
+      domainWrite:       true,
+      arpScan:           true,
+      arpPresence:       true,
+      dns:               true,
+      subnetBlocks:      true,
+      proxmox:           true,
+      notifications:     true,
+      activityLog:       true,
+      pushNotifications: false, // APNs not implemented — see the roadmap
+    },
+  });
+});
+
 // IP data
+// Convenience fields for external API clients. `label` saves every client
+// reimplementing the same fallback chain, and `serviceUrl` composes the health
+// check settings into the URL a client would otherwise have to assemble.
+// Added only for key-authenticated callers: the web UI reads this endpoint and
+// writes the whole array back, so injecting derived fields there would persist
+// them into stored data.
+function decorateEntry(entry) {
+  const scheme = entry.healthScheme || 'http';
+  const port = entry.healthPort;
+  const host = entry.hostname || entry.ip;
+  const defaultPort = (scheme === 'https' && String(port) === '443') || (scheme === 'http' && String(port) === '80');
+  return {
+    ...entry,
+    label: entry.assetName || entry.hostname || entry.ip,
+    serviceUrl: port
+      ? `${scheme}://${host}${defaultPort ? '' : `:${port}`}${entry.healthPath || ''}`
+      : null,
+  };
+}
+
 app.get('/api/ips', (req, res) => {
   const data = dbGet('ip_data');
+  if (data && req.apiKey) return res.json({ data: data.map(decorateEntry) });
   res.json({ data }); // null if not yet saved — client falls back to hardcoded defaults
 });
 
@@ -773,19 +857,20 @@ const sortEntriesByIp = (arr) => arr.sort((a, b) => ipSortKey(a.ip) - ipSortKey(
 app.get('/api/ips/:ip', (req, res) => {
   const data = dbGet('ip_data') || [];
   const entry = data.find((e) => e.ip === req.params.ip);
-  if (!entry) return res.status(404).json({ error: 'No entry for that IP' });
-  res.json(entry);
+  if (!entry) return apiError(res, 404, 'Not found', `No entry exists for ${req.params.ip}.`);
+  res.json(req.apiKey ? decorateEntry(entry) : entry);
 });
 
 // POST /api/ips — create a single entry
 app.post('/api/ips', (req, res) => {
   const entry = req.body || {};
   if (!entry.ip || typeof entry.ip !== 'string') {
-    return res.status(400).json({ error: 'An "ip" field is required' });
+    return apiError(res, 400, 'Missing field', 'An "ip" field is required and must be a string.');
   }
   const data = dbGet('ip_data') || [];
   if (findEntryIndex(data, entry.ip) !== -1) {
-    return res.status(409).json({ error: `An entry for ${entry.ip} already exists — use PATCH to update it` });
+    return apiError(res, 409, 'Already exists',
+      `An entry for ${entry.ip} already exists. Use PATCH /api/ips/${entry.ip} to update it.`);
   }
   const now = new Date().toISOString();
   const created = { ...entry, lastModified: now };
@@ -801,20 +886,22 @@ app.post('/api/ips', (req, res) => {
 app.patch('/api/ips/:ip', (req, res) => {
   const data = dbGet('ip_data') || [];
   const idx = findEntryIndex(data, req.params.ip);
-  if (idx === -1) return res.status(404).json({ error: 'No entry for that IP' });
+  if (idx === -1) return apiError(res, 404, 'Not found', `No entry exists for ${req.params.ip}.`);
 
   const { expectedLastModified, ...changes } = req.body || {};
   const current = data[idx];
 
   if (expectedLastModified && current.lastModified && expectedLastModified !== current.lastModified) {
     return res.status(409).json({
-      error: 'Entry has changed since it was read',
+      error: 'Edit conflict',
+      message: 'This entry was modified after you read it. Re-read it, merge your changes, and try again.',
       currentLastModified: current.lastModified,
       current,
     });
   }
   if (changes.ip && changes.ip !== req.params.ip) {
-    return res.status(400).json({ error: 'The ip field cannot be changed — delete the entry and create a new one' });
+    return apiError(res, 400, 'Immutable field',
+      'The ip field cannot be changed. Delete the entry and create a new one instead.');
   }
 
   const updated = { ...current, ...changes, ip: current.ip, lastModified: new Date().toISOString() };
@@ -828,7 +915,7 @@ app.patch('/api/ips/:ip', (req, res) => {
 app.delete('/api/ips/:ip', (req, res) => {
   const data = dbGet('ip_data') || [];
   const idx = findEntryIndex(data, req.params.ip);
-  if (idx === -1) return res.status(404).json({ error: 'No entry for that IP' });
+  if (idx === -1) return apiError(res, 404, 'Not found', `No entry exists for ${req.params.ip}.`);
   const [removed] = data.splice(idx, 1);
   dbSet('ip_data', data);
   recordEvent({ type: 'entry.deleted', message: `Entry ${removed.ip} deleted${removed.assetName ? ` (${removed.assetName})` : ''}`, meta: { ip: removed.ip }, req });
@@ -1332,8 +1419,8 @@ app.get('/api/ping-status', requireAuth, async (req, res) => {
   res.json({
     results:   pingCache.results,
     warning:   pingCache.warning,
-    cachedAt:  pingCache.timestamp,
-    nextIn:    Math.max(0, PING_INTERVAL - (Date.now() - pingCache.timestamp)),
+    cachedAt:  toEpochSeconds(pingCache.timestamp),
+    nextIn:    toSecondsRemaining(PING_INTERVAL, pingCache.timestamp),
     lastSeen:  lastSeenData,  // { [ip]: isoString } — populated when lastSeenEnabled
   });
 });
@@ -1425,8 +1512,8 @@ app.get('/api/service-health', requireAuth, async (req, res) => {
   if (force || stale) await runServiceHealthChecks();
   res.json({
     results:  serviceHealthCache.results,
-    cachedAt: serviceHealthCache.timestamp,
-    nextIn:   Math.max(0, HEALTH_INTERVAL - (Date.now() - serviceHealthCache.timestamp)),
+    cachedAt: toEpochSeconds(serviceHealthCache.timestamp),
+    nextIn:   toSecondsRemaining(HEALTH_INTERVAL, serviceHealthCache.timestamp),
   });
 });
 
@@ -1515,8 +1602,8 @@ app.get('/api/proxmox-vm-status', requireAuth, async (req, res) => {
   if (force || stale) await runProxmoxVmStatusCheck();
   res.json({
     results:  proxmoxVmStatusCache.results,
-    cachedAt: proxmoxVmStatusCache.timestamp,
-    nextIn:   Math.max(0, PROXMOX_STATUS_INTERVAL - (Date.now() - proxmoxVmStatusCache.timestamp)),
+    cachedAt: toEpochSeconds(proxmoxVmStatusCache.timestamp),
+    nextIn:   toSecondsRemaining(PROXMOX_STATUS_INTERVAL, proxmoxVmStatusCache.timestamp),
   });
 });
 
@@ -1886,9 +1973,14 @@ async function runProxmoxSync() {
 // GET /api/proxmox-sync/config
 app.get('/api/proxmox-sync/config', requireAuth, (req, res) => {
   const c = getProxmoxSyncConfig();
+  // The Proxmox API token is a credential for another system. The Settings
+  // screen (session) needs it to populate the field; an API key has no reason
+  // to see it, so key-authenticated callers get tokenConfigured instead.
+  const viaApiKey = !!req.apiKey;
   res.json({
     host:            c.host            || '',
-    token:           c.token           || '',
+    token:           viaApiKey ? null : (c.token || ''),
+    tokenConfigured: !!c.token,
     ignoreTLS:       c.ignoreTLS       !== false,
     enabled:         c.enabled         === true,
     intervalMinutes: c.intervalMinutes || 60,
@@ -1930,7 +2022,7 @@ app.post('/api/proxmox-sync/run', requireAuth, (req, res) => {
   if (proxmoxSyncCache.running) {
     return res.json({ ok: false, message: 'Sync already in progress' });
   }
-  res.json({ ok: true, message: 'Sync started' });
+  res.json({ ok: true, message: 'Proxmox sync started' });
   runProxmoxSync(); // fire and forget — client polls /status for results
 });
 
@@ -2042,7 +2134,7 @@ app.get('/api/dns-status', requireAuth, async (req, res) => {
   res.json({
     results:  dnsCache.results,
     warning:  dnsCache.warning,
-    cachedAt: dnsCache.timestamp,
+    cachedAt: toEpochSeconds(dnsCache.timestamp),
     configs:  getDnsConfigs(),
   });
 });
@@ -2208,6 +2300,7 @@ function saveDomains(domains) {
 
 // API endpoints for domains
 app.get('/api/domains', requireAuth, (req, res) => {
+  // Envelope for consistency with /api/ips and /api/networks.
   res.json({ data: getDomains() });
 });
 
@@ -2753,11 +2846,13 @@ function requireHaKey(req, res, next) {
   if (isValidSession(req.cookies[SESSION_COOKIE])) return next();
 
   if (!getApiKeys().length) {
-    return res.status(503).json({ error: 'API not enabled — generate a key in Settings → API Keys' });
+    return apiError(res, 503, 'API not enabled',
+      'No API key has been created yet. Create one in Settings → API Keys.');
   }
   const outcome = checkApiKey(req);
-  if (!outcome) return res.status(401).json({ error: 'Invalid API key' });
-  if (!outcome.ok) return res.status(outcome.status).json({ error: outcome.error });
+  if (!outcome) return apiError(res, 401, 'Unauthorised',
+    'Supply a valid API key in the X-API-Key header.');
+  if (!outcome.ok) return apiError(res, outcome.status, outcome.error, outcome.message);
 
   req.apiKey = outcome.key;
   touchApiKey(outcome.key.id);
