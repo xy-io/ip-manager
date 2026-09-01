@@ -4,6 +4,16 @@ For the full release history see the [CHANGELOG](https://github.com/xy-io/ip-man
 
 ---
 
+## v2.2.0 — Notifications, activity log & accessibility
+
+- **Outbound notifications.** Alerts when a device drops off, a health check fails, a domain nears expiry, or a backup fails — pushed to an [ntfy](https://ntfy.sh) topic or any webhook. No Home Assistant required. Configure in **Settings → Notifications**, pick which events to send, and use **Send test** to check delivery before switching it on. See [Notifications](Notifications).
+- **Flap protection.** A device must miss a configurable number of consecutive ping cycles (two by default, about two minutes) before an offline alert fires, and it fires once rather than every minute. A single dropped packet never wakes you up.
+- **Activity log.** A record of sign-ins including failed attempts, API key changes, configuration updates, entry edits, and device status changes — the last 500 events, filterable, in **Settings → Activity**. See [Activity Log](Activity-Log).
+- **Both are session-only.** An API key cannot read the activity log or repoint notifications at another destination, whatever its scope.
+- **Accessibility.** All eleven dialogs now announce themselves properly, move focus in on open, trap Tab inside, close on Escape, and restore focus on close. Icon-only buttons have accessible names, and IP cards and their checkboxes can be operated from the keyboard.
+
+---
+
 ## v2.1.0 — Public API with named access keys
 
 External clients — a phone, a script, Home Assistant — can now talk to IP Manager with their own API key instead of your account password.

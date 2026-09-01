@@ -25,21 +25,12 @@ Known defects and hardening work, in the order they should be tackled. These com
 - Memoise list rows — a status poll currently re-renders every entry three times a minute.
 - Virtualise long lists; debounce the full-dataset save on each mutation.
 
-### Accessibility
-- Modals need `role="dialog"`, focus traps, and focus restoration; icon-only buttons need labels; clickable `div`s should be real controls.
-
-### Maintainability
-- Split `server/index.js` (~2,400 lines) into route modules and `src/IPAddressManager.jsx` (~8,900 lines) into components. Best done alongside the performance work, since memoising rows requires extracting them anyway.
+### Maintainability — next up (v2.3.0)
+- Split `server/index.js` into route modules and `src/IPAddressManager.jsx` into components. Planned as a pure code-movement release with no behaviour change, so that any smoke-test failure unambiguously indicates a refactor mistake.
 
 ---
 
 ## Planned
-
-### Outbound notifications (webhooks / ntfy)
-Push a notification when a device goes offline, a health check starts failing, or a domain approaches expiry — without needing Home Assistant in the middle. Highest value for the least work of anything on this list, and depends on nothing else.
-
-### Audit log
-A system-level record of logins, configuration changes, and updates. Entry-level history already exists; this is the missing counterpart, and worth having before multi-user.
 
 ### Automated test suite
 The smoke tests added in v2.0.2 cover the API surface. Unit coverage of the auth and IP-maths helpers would have caught the v2.0.0 bcrypt regression before release.
@@ -79,6 +70,7 @@ See [CHANGELOG.md](./CHANGELOG.md) for a full history of released features.
 
 | Version | Feature |
 |---------|---------|
+| v2.2.0 | Outbound notifications (ntfy/webhook), activity log, accessibility pass |
 | v2.1.0 | Public API with named, scoped access keys; per-entry CRUD endpoints |
 | v2.0.2 | Unauthenticated `/api/proxmox/discover` fixed; Home Assistant device status fixed; smoke-test script added |
 | v2.0.1 | Bcrypt hash detection hotfix and automatic double-hash recovery |

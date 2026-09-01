@@ -4,7 +4,8 @@
  *
  *  Verifies a running install end-to-end: authentication, every
  *  API route's status code and response shape, the status caches,
- *  the Home Assistant API, and a set of known security regressions.
+ *  the Home Assistant API, notifications, the activity log, and a set
+ *  of known security regressions.
  *
  *  Almost entirely read-only. The API-key section (group 4b) creates two
  *  temporary keys and one temporary entry at 203.0.113.253 (TEST-NET-3, never
@@ -550,6 +551,98 @@ async function testApiKeys() {
   });
 }
 
+// ── 4c. Notifications and audit log ──────────────────────────────────────────
+async function testNotificationsAndAudit() {
+  group('4c. Notifications and activity log');
+
+  await test('GET /api/notifications/config returns config and catalogue', async () => {
+    const res = await GET('/api/notifications/config');
+    const statusCheck = expectStatus(res, 200, 'GET /api/notifications/config');
+    if (statusCheck !== true) return statusCheck;
+    const keyCheck = expectKeys(res.json, ['config', 'catalogue'], '/api/notifications/config');
+    if (keyCheck !== true) return keyCheck;
+    return expectKeys(res.json.config, ['enabled', 'type', 'url', 'events', 'minOfflineCycles'], 'config');
+  });
+
+  await test('notification config rejects an invalid URL', async () => {
+    const res = await POST('/api/notifications/config', { url: 'not a url' });
+    return expectStatus(res, 400, 'POST /api/notifications/config with bad url');
+  });
+
+  await test('notification config rejects a non-http scheme', async () => {
+    const res = await POST('/api/notifications/config', { url: 'file:///etc/passwd' });
+    return expectStatus(res, 400, 'POST /api/notifications/config with file:// url');
+  });
+
+  await test('notification config rejects an unknown type', async () => {
+    const res = await POST('/api/notifications/config', { type: 'carrier-pigeon' });
+    return expectStatus(res, 400, 'POST /api/notifications/config with bad type');
+  });
+
+  await test('cannot enable notifications without a destination', async () => {
+    const current = await GET('/api/notifications/config');
+    if (current.json?.config?.url) return true; // a URL is already configured
+    const res = await POST('/api/notifications/config', { enabled: true });
+    return expectStatus(res, 400, 'enabling with no url');
+  });
+
+  await test('GET /api/audit-log returns entries', async () => {
+    const res = await GET('/api/audit-log');
+    const statusCheck = expectStatus(res, 200, 'GET /api/audit-log');
+    if (statusCheck !== true) return statusCheck;
+    const keyCheck = expectKeys(res.json, ['entries', 'total'], '/api/audit-log');
+    if (keyCheck !== true) return keyCheck;
+    return Array.isArray(res.json.entries) ? true : 'entries is not an array';
+  });
+
+  await test('the failed login from group 1 was recorded', async () => {
+    const res = await GET('/api/audit-log?type=auth&limit=50');
+    if (res.status !== 200) return `expected HTTP 200, got ${res.status}`;
+    const entries = res.json?.entries || [];
+    if (!entries.length) return 'no auth events recorded — the audit log is not capturing sign-in activity';
+    const hasFailure = entries.some((e) => e.type === 'auth.login.failed');
+    const hasSuccess = entries.some((e) => e.type === 'auth.login.success');
+    if (!hasSuccess) return 'the successful login from this run was not recorded';
+    if (!hasFailure) return 'the failed login attempts from this run were not recorded';
+    return true;
+  });
+
+  await test('audit entries carry a type, timestamp and message', async () => {
+    const res = await GET('/api/audit-log?limit=5');
+    const entries = res.json?.entries || [];
+    if (!entries.length) return true;
+    return expectKeys(entries[0], ['id', 'ts', 'type', 'message', 'actor'], 'audit entry');
+  });
+
+  await test('audit log filtering by type works', async () => {
+    const res = await GET('/api/audit-log?type=auth');
+    if (res.status !== 200) return `expected HTTP 200, got ${res.status}`;
+    const wrong = (res.json?.entries || []).filter((e) => !e.type.startsWith('auth'));
+    return wrong.length ? `filter returned ${wrong.length} non-auth event(s)` : true;
+  });
+
+  await test('an API key cannot read the activity log', async () => {
+    const stored = await GET('/api/ha/key');
+    const key = stored.json?.key;
+    if (!key) return true; // no key configured
+    const res = await GET('/api/audit-log', { headers: { 'X-API-Key': key }, useSession: false });
+    return expectStatus(res, 401, 'GET /api/audit-log with an API key');
+  });
+
+  await test('an API key cannot change notification settings', async () => {
+    const stored = await GET('/api/ha/key');
+    const key = stored.json?.key;
+    if (!key) return true;
+    const res = await req('POST', '/api/notifications/config', {
+      body: { url: 'https://attacker.example.com/collect' },
+      headers: { 'X-API-Key': key },
+      useSession: false,
+    });
+    if (res.status === 401 || res.status === 403) return true;
+    return `an API key was able to repoint notifications — expected HTTP 401/403, got ${res.status}`;
+  });
+}
+
 // ── 5. Security regressions ──────────────────────────────────────────────────
 // Every /api/* route except /api/auth/* and /api/ha/* must require a session.
 // Routes registered above the auth middleware silently bypass it, which is how
@@ -642,6 +735,7 @@ async function testBuild() {
   } else {
     await testApiKeys();
   }
+  await testNotificationsAndAudit();
   await testSecurityRegressions();
   await testBuild();
 

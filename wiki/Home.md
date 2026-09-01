@@ -18,6 +18,8 @@ Deploy it as a lightweight LXC container on Proxmox and get a live dashboard sho
 | 🌐 [Domain Tracker](Domain-Tracker) | Track domain expiry via RDAP |
 | 🔌 [API](API) | Named API keys and the full endpoint reference |
 | 🏠 [Home Assistant API](Home-Assistant-API) | Pull network data into Home Assistant |
+| 🔔 [Notifications](Notifications) | Alerts via ntfy or webhook when something breaks |
+| 📋 [Activity Log](Activity-Log) | Who signed in and what changed |
 | 💾 [Backup & Restore](Backup-and-Restore) | Export and restore your data |
 | 🔄 [Updating](Updating) | Keep the app up to date |
 | ✅ [Testing](Testing) | Verify an install end-to-end |
@@ -40,6 +42,8 @@ Deploy it as a lightweight LXC container on Proxmox and get a live dashboard sho
 - **QR codes** — generate a QR code for any IP entry
 - **CIDR & subnet calculators** — built-in network calculators in the Tools menu
 - **HTTP API** — named, scoped API keys for external clients; per-entry create/update/delete plus read-only status endpoints for Home Assistant
+- **Notifications** — push to ntfy or any webhook when a device goes offline, a health check fails, or a domain nears expiry, with flap protection
+- **Activity log** — system-level record of sign-ins, key changes, and configuration updates
 - **SSH quick-launch** — open a terminal session to any device, with an optional per-entry username
 - **Secure by default** — unique random password generated on first install, stored as a bcrypt hash; lockout enforced if defaults are detected
 

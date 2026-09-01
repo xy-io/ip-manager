@@ -17,11 +17,13 @@
 - [Domain Tracker](Domain-Tracker)
 - [API](API)
 - [Home Assistant API](Home-Assistant-API)
+- [Notifications](Notifications)
 - [Backup & Restore](Backup-and-Restore)
 
 ---
 
 **Maintenance**
+- [Activity Log](Activity-Log)
 - [Updating](Updating)
 - [Testing](Testing)
 - [Troubleshooting](Troubleshooting)

@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 import QRCode from 'qrcode';
 
 // ── App version ───────────────────────────────────────────────────────────────
-const APP_VERSION = 'v2.1.0';
+const APP_VERSION = 'v2.2.0';
 
 // Default network configuration (overridden by Settings modal / localStorage)
 const DEFAULT_NETWORK_CONFIG = {
@@ -319,6 +319,340 @@ function ArpPresenceTab() {
 }
 
 // ── Home Assistant Tab ────────────────────────────────────────────────────────
+// ── Accessibility: modal dialog behaviour ────────────────────────────────────
+// Gives a modal the three things assistive technology and keyboard users need:
+// the dialog is announced, focus moves into it and cannot Tab out, and focus
+// returns to whatever opened it on close. Escape closes, when the modal is
+// dismissible.
+function useModalA11y(onClose) {
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    const previouslyFocused = document.activeElement;
+    const node = containerRef.current;
+    // Focus the container itself rather than the first control — landing on a
+    // destructive button would be worse than landing nowhere.
+    if (node) node.focus({ preventScroll: true });
+
+    const SELECTOR = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape' && onClose) {
+        e.stopPropagation();
+        onClose();
+        return;
+      }
+      if (e.key !== 'Tab' || !node) return;
+      const focusable = Array.from(node.querySelectorAll(SELECTOR))
+        .filter(el => el.offsetParent !== null || el === document.activeElement);
+      if (!focusable.length) { e.preventDefault(); return; }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && (document.activeElement === first || document.activeElement === node)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown, true);
+      if (previouslyFocused && typeof previouslyFocused.focus === 'function') {
+        previouslyFocused.focus({ preventScroll: true });
+      }
+    };
+  }, [onClose]);
+
+  return containerRef;
+}
+
+function NotificationsTab() {
+  const [config, setConfig] = useState(null);
+  const [catalogue, setCatalogue] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [message, setMessage] = useState(null);
+
+  useEffect(() => {
+    fetch('/api/notifications/config')
+      .then(r => r.json())
+      .then(d => { setConfig(d.config); setCatalogue(d.catalogue || {}); })
+      .catch(() => setMessage({ kind: 'error', text: 'Could not load notification settings' }));
+  }, []);
+
+  const save = async (patch) => {
+    setSaving(true);
+    setMessage(null);
+    try {
+      const r = await fetch('/api/notifications/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      });
+      const d = await r.json();
+      if (!r.ok) { setMessage({ kind: 'error', text: d.error || 'Could not save' }); return; }
+      setConfig(d.config);
+      setMessage({ kind: 'ok', text: 'Saved' });
+      setTimeout(() => setMessage(null), 2500);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const sendTest = async () => {
+    setTesting(true);
+    setMessage(null);
+    try {
+      const r = await fetch('/api/notifications/test', { method: 'POST' });
+      const d = await r.json();
+      setMessage(r.ok
+        ? { kind: 'ok', text: `Test sent to ${d.sentTo}. If nothing arrives, check the URL and that the server can reach it.` }
+        : { kind: 'error', text: d.error || 'Could not send test' });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  if (!config) return <div className="text-sm text-slate-400">Loading notification settings…</div>;
+
+  const placeholder = config.type === 'ntfy'
+    ? 'https://ntfy.sh/your-topic-name'
+    : 'https://example.com/webhook';
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-sm font-semibold text-slate-700 mb-1">Notifications</h3>
+        <p className="text-xs text-slate-500 leading-relaxed">
+          Push an alert when something changes — a device drops off, a health check fails, a domain is about to expire.
+          Sends to an <a href="https://ntfy.sh" target="_blank" rel="noopener noreferrer" className="text-emerald-600 hover:underline">ntfy</a> topic
+          or any webhook endpoint. No Home Assistant required.
+        </p>
+      </div>
+
+      {message && (
+        <div className={`text-xs rounded-lg px-3 py-2 border ${
+          message.kind === 'ok'
+            ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+            : 'text-red-600 bg-red-50 border-red-200'
+        }`}>{message.text}</div>
+      )}
+
+      {/* Destination */}
+      <div className="border border-slate-200 rounded-xl p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <input
+            id="notif-enabled"
+            type="checkbox"
+            checked={config.enabled}
+            onChange={e => save({ enabled: e.target.checked })}
+            className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+          />
+          <label htmlFor="notif-enabled" className="text-sm font-medium text-slate-700">Enable notifications</label>
+        </div>
+
+        <div>
+          <label htmlFor="notif-type" className="block text-xs font-medium text-slate-600 mb-1">Destination type</label>
+          <select
+            id="notif-type"
+            value={config.type}
+            onChange={e => setConfig(c => ({ ...c, type: e.target.value }))}
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-emerald-500"
+          >
+            <option value="ntfy">ntfy — plain text push to a topic</option>
+            <option value="webhook">Webhook — JSON POST</option>
+          </select>
+        </div>
+
+        <div>
+          <label htmlFor="notif-url" className="block text-xs font-medium text-slate-600 mb-1">Destination URL</label>
+          <input
+            id="notif-url"
+            type="url"
+            value={config.url}
+            onChange={e => setConfig(c => ({ ...c, url: e.target.value }))}
+            placeholder={placeholder}
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono outline-none focus:ring-2 focus:ring-emerald-500"
+          />
+          <p className="text-xs text-slate-400 mt-1">
+            {config.type === 'ntfy'
+              ? 'Pick any hard-to-guess topic name — anyone who knows it can read your alerts.'
+              : 'Receives a JSON body with type, message, meta and timestamp.'}
+          </p>
+        </div>
+
+        <div>
+          <label htmlFor="notif-cycles" className="block text-xs font-medium text-slate-600 mb-1">
+            Failed ping cycles before alerting
+          </label>
+          <input
+            id="notif-cycles"
+            type="number"
+            min="1"
+            max="10"
+            value={config.minOfflineCycles}
+            onChange={e => setConfig(c => ({ ...c, minOfflineCycles: e.target.value }))}
+            className="w-24 px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+          />
+          <p className="text-xs text-slate-400 mt-1">
+            Pings run every 60 seconds. A value of 2 means a device must be unreachable for two consecutive checks before you are told — this filters out dropped packets.
+          </p>
+        </div>
+
+        <div className="flex gap-2 pt-1">
+          <button
+            onClick={() => save({ type: config.type, url: config.url, minOfflineCycles: config.minOfflineCycles })}
+            disabled={saving}
+            className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+          <button
+            onClick={sendTest}
+            disabled={testing || !config.url}
+            className="px-4 py-2 bg-slate-100 border border-slate-200 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200 disabled:opacity-50 transition-colors"
+          >
+            {testing ? 'Sending…' : 'Send test'}
+          </button>
+        </div>
+        <p className="text-xs text-slate-400">A test sends regardless of whether notifications are enabled, so you can check delivery first.</p>
+      </div>
+
+      {/* Events */}
+      <div>
+        <h4 className="text-sm font-semibold text-slate-700 mb-2">Which events to send</h4>
+        <div className="border border-slate-200 rounded-xl overflow-hidden">
+          {Object.entries(catalogue).map(([key, description]) => (
+            <div key={key} className="flex items-start gap-3 px-3 py-2.5 border-b border-slate-100 last:border-0">
+              <input
+                id={`evt-${key}`}
+                type="checkbox"
+                checked={!!config.events[key]}
+                onChange={e => save({ events: { [key]: e.target.checked } })}
+                className="mt-0.5 w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 shrink-0"
+              />
+              <label htmlFor={`evt-${key}`} className="flex-1 cursor-pointer">
+                <span className="block text-sm text-slate-700">{description}</span>
+                <code className="text-xs text-slate-400 font-mono">{key}</code>
+              </label>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ActivityTab() {
+  const [entries, setEntries] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState('');
+
+  const load = () => {
+    setLoading(true);
+    const qs = filter ? `?type=${encodeURIComponent(filter)}&limit=200` : '?limit=200';
+    fetch(`/api/audit-log${qs}`)
+      .then(r => r.json())
+      .then(d => { setEntries(d.entries || []); setLoading(false); })
+      .catch(() => setLoading(false));
+  };
+
+  useEffect(load, [filter]);
+
+  const clear = async () => {
+    if (!confirm('Clear the activity log?\n\nThis cannot be undone.')) return;
+    await fetch('/api/audit-log', { method: 'DELETE' });
+    load();
+  };
+
+  const relative = (iso) => {
+    const diff = Date.now() - new Date(iso).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    return `${Math.floor(hrs / 24)}d ago`;
+  };
+
+  const colourFor = (type) => {
+    if (type.startsWith('auth.login.failed')) return 'bg-red-50 text-red-600 border-red-200';
+    if (type.startsWith('auth')) return 'bg-indigo-50 text-indigo-600 border-indigo-200';
+    if (type.startsWith('apikey')) return 'bg-amber-50 text-amber-700 border-amber-200';
+    if (type.startsWith('device.offline') || type.startsWith('health.down')) return 'bg-orange-50 text-orange-600 border-orange-200';
+    if (type.startsWith('device.online') || type.startsWith('health.up')) return 'bg-emerald-50 text-emerald-600 border-emerald-200';
+    if (type.startsWith('entry')) return 'bg-sky-50 text-sky-600 border-sky-200';
+    return 'bg-slate-100 text-slate-500 border-slate-200';
+  };
+
+  const filters = [
+    ['', 'All'],
+    ['auth', 'Sign-in'],
+    ['apikey', 'API keys'],
+    ['entry', 'Entries'],
+    ['device', 'Devices'],
+    ['config', 'Config'],
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h3 className="text-sm font-semibold text-slate-700 mb-1">Activity</h3>
+        <p className="text-xs text-slate-500 leading-relaxed">
+          System-level record of sign-ins, API key changes, configuration updates, and device status changes.
+          The most recent 500 events are kept.
+        </p>
+      </div>
+
+      <div className="flex items-center gap-2 flex-wrap">
+        {filters.map(([value, text]) => (
+          <button
+            key={value || 'all'}
+            onClick={() => setFilter(value)}
+            aria-pressed={filter === value}
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors ${
+              filter === value
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            {text}
+          </button>
+        ))}
+        <button onClick={load} className="ml-auto px-2.5 py-1 rounded-lg text-xs font-medium border border-slate-200 text-slate-500 hover:bg-slate-50 transition-colors">
+          Refresh
+        </button>
+        <button onClick={clear} className="px-2.5 py-1 rounded-lg text-xs font-medium border border-red-200 text-red-600 hover:bg-red-50 transition-colors">
+          Clear
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="text-sm text-slate-400">Loading activity…</div>
+      ) : entries.length === 0 ? (
+        <p className="text-sm text-slate-400 italic">Nothing recorded yet.</p>
+      ) : (
+        <div className="border border-slate-200 rounded-xl overflow-hidden max-h-96 overflow-y-auto">
+          {entries.map(e => (
+            <div key={e.id} className="flex items-start gap-3 px-3 py-2 border-b border-slate-100 last:border-0">
+              <span className={`px-1.5 py-0.5 text-xs font-mono rounded border shrink-0 ${colourFor(e.type)}`}>
+                {e.type}
+              </span>
+              <span className="text-sm text-slate-700 flex-1 min-w-0">{e.message}</span>
+              <span className="text-xs text-slate-400 shrink-0" title={new Date(e.ts).toLocaleString()}>
+                {relative(e.ts)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ApiKeysTab() {
   const [keys, setKeys] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1573,6 +1907,7 @@ function DnsTab({ networks, dnsConfig, dnsStatus, dnsLoading, onSave, onRun }) {
 }
 
 function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLocation, onDeleteLocation, tags, onRenameTag, onDeleteTag, canDeleteNetwork, onDeleteNetwork, showFreeInList, onToggleShowFreeInList, ipData, networks, onRestore, dnsConfig, dnsStatus, dnsLoading, onSaveDnsConfig, onRunDns, proxmoxSyncConfig, proxmoxSyncStatus, proxmoxSyncLoading, onSaveProxmoxSyncConfig, onRunProxmoxSync, updateAvailable, initialTab }) {
+  const modalRef = useModalA11y(typeof onClose === 'function' ? onClose : null);
   const [form, setForm] = useState({
     networkName: config.networkName,
     subnet: config.subnet,
@@ -1757,13 +2092,16 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
     { id: 'manage',   label: 'Locations & Tags' },
     { id: 'presence', label: 'ARP & Presence' },
     { id: 'api',      label: 'API Keys' },
+    { id: 'notifications', label: 'Notifications' },
+    { id: 'activity', label: 'Activity' },
     { id: 'account',  label: 'Account' },
     { id: 'updates',  label: 'Updates' },
     { id: 'support',  label: 'Support' },
   ];
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <div ref={modalRef} role="dialog" aria-modal="true" aria-label="Settings" tabIndex={-1}
+         className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 outline-none" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl h-[88vh] flex flex-col" onClick={e => e.stopPropagation()}>
 
         {/* Header */}
@@ -2229,8 +2567,8 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
                         ) : (
                           <>
                             <span className="text-xs text-slate-700">{loc}</span>
-                            <button type="button" onClick={() => setEditingLoc({ old: loc, draft: loc })} className="text-slate-400 hover:text-blue-500 text-xs ml-1" title="Rename">✎</button>
-                            <button type="button" onClick={() => onDeleteLocation(loc)} className="text-slate-400 hover:text-red-500 text-xs" title="Remove from all entries">✕</button>
+                            <button type="button" onClick={() => setEditingLoc({ old: loc, draft: loc })} className="text-slate-400 hover:text-blue-500 text-xs ml-1" title="Rename" aria-label="Rename">✎</button>
+                            <button type="button" onClick={() => onDeleteLocation(loc)} className="text-slate-400 hover:text-red-500 text-xs" title="Remove from all entries" aria-label="Remove from all entries">✕</button>
                           </>
                         )}
                       </div>
@@ -2284,8 +2622,8 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
                         ) : (
                           <>
                             <span className="text-xs text-slate-700">{tag}</span>
-                            <button type="button" onClick={() => setEditingTag({ old: tag, draft: tag })} className="text-slate-400 hover:text-blue-500 text-xs ml-1" title="Rename tag">✎</button>
-                            <button type="button" onClick={() => onDeleteTag(tag)} className="text-slate-400 hover:text-red-500 text-xs" title="Remove tag from all entries">✕</button>
+                            <button type="button" onClick={() => setEditingTag({ old: tag, draft: tag })} className="text-slate-400 hover:text-blue-500 text-xs ml-1" title="Rename tag" aria-label="Rename tag">✎</button>
+                            <button type="button" onClick={() => onDeleteTag(tag)} className="text-slate-400 hover:text-red-500 text-xs" title="Remove tag from all entries" aria-label="Remove tag from all entries">✕</button>
                           </>
                         )}
                       </div>
@@ -2433,6 +2771,16 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
               <ApiKeysTab />
             )}
 
+            {/* ── NOTIFICATIONS TAB ── */}
+            {activeTab === 'notifications' && (
+              <NotificationsTab />
+            )}
+
+            {/* ── ACTIVITY TAB ── */}
+            {activeTab === 'activity' && (
+              <ActivityTab />
+            )}
+
             {/* ── UPDATES TAB ── */}
             {activeTab === 'updates' && (
               <UpdatesTab />
@@ -2528,6 +2876,7 @@ async function apiPut(path, body) {
 // ── Proxmox import modal ──────────────────────────────────────────────────────
 
 function ProxmoxImportModal({ onClose, onImport }) {
+  const modalRef = useModalA11y(typeof onClose === 'function' ? onClose : null);
   const [step, setStep]           = useState(1); // 1 = connect, 2 = preview
   const [host, setHost]           = useState('');
   const [apiToken, setApiToken]   = useState('');
@@ -2576,7 +2925,8 @@ function ProxmoxImportModal({ onClose, onImport }) {
   const inputCls = 'w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent';
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <div ref={modalRef} role="dialog" aria-modal="true" aria-label="Import from Proxmox" tabIndex={-1}
+         className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 outline-none" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
 
         {/* Header */}
@@ -2851,6 +3201,7 @@ function parseCIDR(raw) {
 }
 
 function CIDRCalculatorModal({ onClose }) {
+  const modalRef = useModalA11y(typeof onClose === 'function' ? onClose : null);
   const [input, setInput]   = useState('');
   const [result, setResult] = useState(null);
   const [error,  setError]  = useState('');
@@ -2893,7 +3244,8 @@ function CIDRCalculatorModal({ onClose }) {
   const PRESETS = ['10.0.0.0/8','172.16.0.0/12','192.168.0.0/16','192.168.1.0/24','192.168.1.0/28','10.0.0.0/30'];
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <div ref={modalRef} role="dialog" aria-modal="true" aria-label="CIDR calculator" tabIndex={-1}
+         className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 outline-none" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="p-5 border-b border-slate-200 flex items-center justify-between flex-shrink-0">
@@ -2979,6 +3331,7 @@ function CIDRCalculatorModal({ onClose }) {
 // ── QR Code Modal ─────────────────────────────────────────────────────────────
 
 function QRModal({ item, onClose }) {
+  const modalRef = useModalA11y(typeof onClose === 'function' ? onClose : null);
   const [mode,   setMode]   = useState('smart'); // 'smart' | 'ip'
   const [qrSrc,  setQrSrc]  = useState('');
   const [copied, setCopied] = useState(false);
@@ -3010,7 +3363,8 @@ function QRModal({ item, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <div ref={modalRef} role="dialog" aria-modal="true" aria-label="QR code" tabIndex={-1}
+         className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 outline-none" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xs" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="p-4 border-b border-slate-200 flex items-center justify-between">
@@ -3079,6 +3433,7 @@ function QRModal({ item, onClose }) {
 // ── ARP Scan Modal ────────────────────────────────────────────────────────────
 
 function ARPScanModal({ onClose, onImport, subnet, networkConfig }) {
+  const modalRef = useModalA11y(typeof onClose === 'function' ? onClose : null);
   const [step, setStep]             = useState(1); // 1 = config, 2 = results
   const [scanSubnet, setScanSubnet] = useState(subnet); // editable copy
   const [iface, setIface]           = useState('');
@@ -3171,7 +3526,8 @@ function ARPScanModal({ onClose, onImport, subnet, networkConfig }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <div ref={modalRef} role="dialog" aria-modal="true" aria-label="ARP network scan" tabIndex={-1}
+         className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 outline-none" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
 
         {/* Header */}
@@ -3991,6 +4347,7 @@ function SubnetGridLogo({ size = 32 }) {
 
 // ── Subnet Visualiser Modal ────────────────────────────────────────────────────────────────
 function SubnetVisuiserModal({ network, ipData, onClose }) {
+  const modalRef = useModalA11y(typeof onClose === 'function' ? onClose : null);
   const [blocks, setBlocks] = useState([]);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState({ name: '', color: '#6366f1', start: '', end: '' });
@@ -4082,7 +4439,8 @@ function SubnetVisuiserModal({ network, ipData, onClose }) {
   const BLOCK_COLORS = ['#6366f1','#0ea5e9','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#14b8a6'];
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <div ref={modalRef} role="dialog" aria-modal="true" aria-label="Subnet visualiser" tabIndex={-1}
+         className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 outline-none" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="p-5 border-b border-slate-200 flex items-center justify-between">
@@ -4263,6 +4621,7 @@ function SubnetVisuiserModal({ network, ipData, onClose }) {
 
 // ── Help Modal ────────────────────────────────────────────────────────────────
 function HelpModal({ onClose }) {
+  const modalRef = useModalA11y(typeof onClose === 'function' ? onClose : null);
   const [activeSection, setActiveSection] = useState('overview');
 
   const sections = [
@@ -4922,7 +5281,8 @@ function HelpModal({ onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <div ref={modalRef} role="dialog" aria-modal="true" aria-label="Help and reference" tabIndex={-1}
+         className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 outline-none" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl h-[82vh] flex flex-col" onClick={e => e.stopPropagation()}>
 
         {/* Header */}
@@ -4975,6 +5335,7 @@ function HelpModal({ onClose }) {
 
 // ── Import Modal ──────────────────────────────────────────────────────────────
 function ImportModal({ onClose, onImport, networkConfig }) {
+  const modalRef = useModalA11y(typeof onClose === 'function' ? onClose : null);
   const EXPECTED_FIELDS = [
     { key: 'ip',           label: 'IP Address',        required: true  },
     { key: 'name',         label: 'Name / Asset Name', required: false },
@@ -5124,7 +5485,8 @@ function ImportModal({ onClose, onImport, networkConfig }) {
   const inputCls    = 'px-2 py-1.5 border border-slate-300 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500';
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <div ref={modalRef} role="dialog" aria-modal="true" aria-label="Import data" tabIndex={-1}
+         className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 outline-none" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
 
         {/* Header */}
@@ -5370,6 +5732,7 @@ function ImportModal({ onClose, onImport, networkConfig }) {
 
 // Bulk Edit Modal
 function BulkEditModal({ count, onApply, onClose, types, locations, allTags }) {
+  const modalRef = useModalA11y(typeof onClose === 'function' ? onClose : null);
   const [tagInput, setTagInput] = useState('');
   const [pendingTags, setPendingTags] = useState([]);
   const [setType, setSetType] = useState('');
@@ -5382,7 +5745,8 @@ function BulkEditModal({ count, onApply, onClose, types, locations, allTags }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <div ref={modalRef} role="dialog" aria-modal="true" aria-label="Bulk edit entries" tabIndex={-1}
+         className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 outline-none" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between p-6 border-b border-slate-100">
           <div>
@@ -5471,6 +5835,7 @@ function BulkEditModal({ count, onApply, onClose, types, locations, allTags }) {
 
 // Edit Modal Component
 function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddLocation, allTags, allNetworkEntries }) {
+  const modalRef = useModalA11y(typeof onClose === 'function' ? onClose : null);
   const [formData, setFormData] = useState({
     ip: item.ip,
     assetName: item.assetName,
@@ -5602,7 +5967,8 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
     : null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <div ref={modalRef} role="dialog" aria-modal="true" aria-label="Edit entry" tabIndex={-1}
+         className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 outline-none" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="p-6 border-b border-slate-200">
           <div className="flex items-center justify-between">
@@ -6082,8 +6448,7 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
                     type="button"
                     onClick={() => setFormData({ ...formData, healthPort: '', healthPath: '/', healthScheme: 'http' })}
                     title="Disable health check"
-                    className="px-2 py-1.5 text-xs bg-slate-50 border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-100"
-                  >
+                    className="px-2 py-1.5 text-xs bg-slate-50 border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-100" aria-label="Disable health check">
                     Clear
                   </button>
                 )}
@@ -6148,8 +6513,7 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
                         type="button"
                         onClick={() => setPendingUnlinks(prev => [...prev, entry.ip])}
                         className="text-slate-400 hover:text-red-500 text-sm leading-none px-1"
-                        title="Unlink this IP"
-                      >×</button>
+                        title="Unlink this IP" aria-label="Unlink this IP">×</button>
                     </div>
                   ))}
 
@@ -6164,8 +6528,7 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
                           type="button"
                           onClick={() => setPendingLinks(prev => prev.filter(p => p !== ip))}
                           className="text-slate-400 hover:text-red-500 text-sm leading-none px-1"
-                          title="Remove"
-                        >×</button>
+                          title="Remove" aria-label="Remove">×</button>
                       </div>
                     );
                   })}
@@ -6255,6 +6618,7 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
 
 // ── Domains View Component ────────────────────────────────────────────────────
 function DomainsView({ onClose }) {
+  const modalRef = useModalA11y(typeof onClose === 'function' ? onClose : null);
   const [domains, setDomains] = useState([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
@@ -6389,7 +6753,8 @@ function DomainsView({ onClose }) {
   ).length;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div ref={modalRef} role="dialog" aria-modal="true" aria-label="Domain tracker" tabIndex={-1}
+         className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 outline-none">
       <div className="bg-white rounded-2xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="border-b border-slate-100 px-6 py-4 flex items-center justify-between flex-shrink-0">
@@ -6412,8 +6777,7 @@ function DomainsView({ onClose }) {
           <button
             onClick={onClose}
             className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-            title="Close (Esc)"
-          >
+            title="Close (Esc)" aria-label="Close (Esc)">
             <X className="w-5 h-5 text-slate-500" />
           </button>
         </div>
@@ -6561,15 +6925,13 @@ function DomainsView({ onClose }) {
                             ? 'text-slate-300 cursor-not-allowed'
                             : 'text-slate-400 hover:bg-slate-200 hover:text-slate-600'
                         }`}
-                        title="Refresh"
-                      >
+                        title="Refresh" aria-label="Refresh">
                         <RotateCw className={`w-3.5 h-3.5 ${refreshing.has(domain.id) ? 'animate-spin' : ''}`} />
                       </button>
                       <button
                         onClick={() => handleDeleteDomain(domain.id)}
                         className="p-1.5 hover:bg-red-100 hover:text-red-500 text-slate-400 rounded-lg transition-colors"
-                        title="Delete"
-                      >
+                        title="Delete" aria-label="Delete">
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -7746,8 +8108,7 @@ export default function IPAddressManager() {
                 <button
                   onClick={handleAddNetwork}
                   title="Add another network (e.g. a VLAN or IoT segment)"
-                  className="hidden sm:flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 border border-dashed border-slate-200 hover:border-slate-300 transition-colors"
-                >
+                  className="hidden sm:flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 border border-dashed border-slate-200 hover:border-slate-300 transition-colors" aria-label="Add another network (e.g. a VLAN or IoT segment)">
                   <Plus className="w-3.5 h-3.5 flex-shrink-0" />
                   Add network
                 </button>
@@ -7781,8 +8142,7 @@ export default function IPAddressManager() {
                   <button
                     onClick={() => setShowToolsMenu(v => !v)}
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white text-sm font-medium rounded-lg transition-colors"
-                    title="Network operations and utility tools"
-                  >
+                    title="Network operations and utility tools" aria-label="Network operations and utility tools">
                     <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 11-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 004.486-6.336l-3.276 3.277a3.004 3.004 0 01-2.25-2.25l3.276-3.276a4.5 4.5 0 00-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085m-1.745 1.437L5.909 7.5H4.5L2.25 3.75l1.5-1.5L7.5 4.5v1.409l4.26 4.26m-1.745 1.437l1.745-1.437m6.615 8.206L15.75 15.75M4.867 19.125h.008v.008h-.008v-.008z" />
                     </svg>
@@ -7863,7 +8223,7 @@ export default function IPAddressManager() {
                 <button onClick={() => setDarkMode(d => !d)} className="p-1.5 hover:bg-slate-100 text-slate-500 rounded-lg transition-colors" title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}>
                   {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
                 </button>
-                <button onClick={() => setShowHelp(true)} className="p-1.5 hover:bg-slate-100 text-slate-500 rounded-lg transition-colors" title="Help & Reference">
+                <button onClick={() => setShowHelp(true)} className="p-1.5 hover:bg-slate-100 text-slate-500 rounded-lg transition-colors" title="Help & Reference" aria-label="Help & Reference">
                   <HelpCircle className="w-4 h-4" />
                 </button>
                 <button onClick={() => setShowSettings(true)} className="relative p-1.5 hover:bg-slate-100 text-slate-600 rounded-lg transition-colors" title={topLevelVersionInfo?.updateAvailable ? `Update available · ${topLevelVersionInfo.latest}` : 'Settings'}>
@@ -7871,7 +8231,7 @@ export default function IPAddressManager() {
                   {topLevelVersionInfo?.updateAvailable && <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-amber-400 rounded-full" />}
                 </button>
                 {persistMode === 'api' && (
-                  <button onClick={handleLogout} className="p-1.5 hover:bg-red-50 hover:text-red-500 text-slate-500 rounded-lg transition-colors" title="Sign out">
+                  <button onClick={handleLogout} className="p-1.5 hover:bg-red-50 hover:text-red-500 text-slate-500 rounded-lg transition-colors" title="Sign out" aria-label="Sign out">
                     <LogOut className="w-4 h-4" />
                   </button>
                 )}
@@ -8326,8 +8686,19 @@ export default function IPAddressManager() {
               return (
                 <div
                   key={item.ip}
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={isExpanded}
+                  aria-label={`${item.assetName || item.hostname || item.ip} — ${item.ip}${isSelected ? ', selected' : ''}`}
                   onClick={() => selectedIPs.size > 0 ? toggleSelect(item.ip, { stopPropagation: () => {} }) : setExpandedCard(isExpanded ? null : index)}
-                  className={`group rounded-xl border transition-all ${
+                  onKeyDown={e => {
+                    if (e.key !== 'Enter' && e.key !== ' ') return;
+                    if (e.target !== e.currentTarget) return; // let inner controls handle their own keys
+                    e.preventDefault();
+                    if (selectedIPs.size > 0) toggleSelect(item.ip, { stopPropagation: () => {} });
+                    else setExpandedCard(isExpanded ? null : index);
+                  }}
+                  className={`group rounded-xl border transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
                     isSelected
                       ? 'bg-violet-50 border-violet-400 border-2 ring-2 ring-violet-300 cursor-pointer'
                       : isFree
@@ -8342,8 +8713,18 @@ export default function IPAddressManager() {
                       <div className="flex items-start gap-2">
                         {/* Selection checkbox — always visible on hover, solid when selected */}
                         <div
+                          role="checkbox"
+                          aria-checked={isSelected}
+                          tabIndex={0}
+                          aria-label={`Select ${item.assetName || item.ip}`}
                           onClick={e => toggleSelect(item.ip, e)}
-                          className={`mt-0.5 w-4 h-4 rounded border-2 flex-shrink-0 cursor-pointer flex items-center justify-center transition-all
+                          onKeyDown={e => {
+                            if (e.key !== 'Enter' && e.key !== ' ') return;
+                            e.preventDefault();
+                            e.stopPropagation();
+                            toggleSelect(item.ip, { stopPropagation: () => {} });
+                          }}
+                          className={`mt-0.5 w-4 h-4 rounded border-2 flex-shrink-0 cursor-pointer flex items-center justify-center transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500
                             ${isSelected
                               ? 'bg-violet-600 border-violet-600'
                               : 'border-slate-300 hover:border-violet-400 bg-white opacity-0 group-hover:opacity-100'
@@ -8718,8 +9099,7 @@ export default function IPAddressManager() {
                             <button
                               onClick={(e) => { e.stopPropagation(); setQrItem(item); }}
                               className="flex items-center justify-center gap-1.5 px-3 py-2 bg-violet-100 hover:bg-violet-200 rounded-lg text-sm text-violet-700 transition-colors"
-                              title="Generate QR code for this entry"
-                            >
+                              title="Generate QR code for this entry" aria-label="Generate QR code for this entry">
                               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                                 <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>
                                 <path d="M14 14h3v3M17 17v3h3M14 20h3"/>
@@ -8993,8 +9373,7 @@ export default function IPAddressManager() {
                               <button
                                 onClick={() => setQrItem(item)}
                                 title="QR code"
-                                className="flex items-center justify-center p-1 text-violet-400 hover:text-violet-600 hover:bg-violet-50 rounded transition-colors"
-                              >
+                                className="flex items-center justify-center p-1 text-violet-400 hover:text-violet-600 hover:bg-violet-50 rounded transition-colors" aria-label="QR code">
                                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                                   <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>
                                   <path d="M14 14h3v3M17 17v3h3M14 20h3"/>

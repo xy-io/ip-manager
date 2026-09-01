@@ -205,8 +205,15 @@ app.post('/api/auth/login', (req, res) => {
     const token = createSession();
     // httpOnly prevents JS access; sameSite=strict prevents CSRF
     res.cookie(SESSION_COOKIE, token, { httpOnly: true, sameSite: 'strict' });
+    recordEvent({ type: 'auth.login.success', message: `Signed in as ${credentials.username}`, req });
     return res.json({ ok: true, mustChangePassword: isDefaultCreds() });
   }
+  recordEvent({
+    type: 'auth.login.failed',
+    message: `Failed sign-in attempt for "${String(username || '').slice(0, 40)}"`,
+    meta: { username: String(username || '').slice(0, 40) },
+    req,
+  });
   res.status(401).json({ error: 'Invalid username or password' });
 });
 
@@ -246,6 +253,7 @@ app.post('/api/auth/change-password', (req, res) => {
   try {
     fs.writeFileSync(envFile, content, 'utf8');
     credentials = { username: newUsername, password: hashedNew };
+    recordEvent({ type: 'auth.password_changed', message: `Credentials changed (username: ${newUsername})`, req });
     // Invalidate all existing sessions so everyone must re-login
     sessions.clear();
     res.clearCookie(SESSION_COOKIE);
@@ -477,6 +485,130 @@ const dbSet = (key, value) => {
   }
 })();
 
+// ── Events: audit log and outbound notifications ──────────────────────────────
+// One path for anything worth recording. recordEvent() appends to a capped
+// audit log and, if the event type is enabled, pushes a notification out to a
+// webhook or an ntfy topic. Everything is best-effort: a failing webhook must
+// never break the request that triggered it.
+
+const AUDIT_LIMIT = 500; // entries kept; oldest are discarded
+
+const NOTIFY_EVENTS = {
+  'device.offline':  'A tracked device stops responding to ping',
+  'device.online':   'A device that was offline comes back',
+  'health.down':     'A service health check starts failing',
+  'health.up':       'A failing health check recovers',
+  'domain.expiring': 'A tracked domain is within 30 days of expiry',
+  'backup.failed':   'A scheduled cloud backup fails',
+  'update.completed':'An app update finishes',
+  'auth.login.failed': 'A failed login attempt',
+};
+
+const defaultNotificationConfig = () => ({
+  enabled: false,
+  type: 'ntfy',            // 'ntfy' | 'webhook'
+  url: '',
+  events: Object.fromEntries(Object.keys(NOTIFY_EVENTS).map((k) => [
+    k, ['device.offline', 'health.down', 'domain.expiring', 'backup.failed'].includes(k),
+  ])),
+  minOfflineCycles: 2,     // consecutive failed cycles before alerting (flap guard)
+});
+
+function getNotificationConfig() {
+  return { ...defaultNotificationConfig(), ...(dbGet('notification_config') || {}) };
+}
+
+function getAuditLog() { return dbGet('audit_log') || []; }
+
+/**
+ * Record something noteworthy.
+ *   type     dot-separated event id, e.g. 'auth.login.failed'
+ *   message  human-readable one-liner
+ *   meta     optional structured detail
+ *   req      optional request, used to record the actor and source IP
+ */
+function recordEvent({ type, message, meta = {}, req = null }) {
+  const event = {
+    id: crypto.randomUUID(),
+    ts: new Date().toISOString(),
+    type,
+    message,
+    meta,
+    actor: req ? (req.apiKey ? `key:${req.apiKey.label}` : 'session') : 'system',
+    source: req ? (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || null) : null,
+  };
+
+  try {
+    const log = getAuditLog();
+    log.unshift(event);
+    dbSet('audit_log', log.slice(0, AUDIT_LIMIT));
+  } catch (e) {
+    console.error(`[audit] Could not write audit entry: ${e.message}`);
+  }
+
+  dispatchNotification(event);
+  return event;
+}
+
+// Fire-and-forget delivery. Never throws into the caller.
+function dispatchNotification(event) {
+  let cfg;
+  try { cfg = getNotificationConfig(); } catch { return; }
+  if (!cfg.enabled || !cfg.url) return;
+  if (!cfg.events || !cfg.events[event.type]) return;
+
+  const priority = ['device.offline', 'health.down', 'backup.failed'].includes(event.type) ? 'high' : 'default';
+
+  try {
+    const target = new URL(cfg.url);
+    const lib = target.protocol === 'http:' ? http : https;
+
+    let body, headers;
+    if (cfg.type === 'ntfy') {
+      body = event.message;
+      headers = {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Title': 'IP Manager',
+        'Priority': priority,
+        'Tags': event.type.startsWith('device') ? 'satellite' : 'warning',
+      };
+    } else {
+      body = JSON.stringify({
+        type: event.type,
+        message: event.message,
+        meta: event.meta,
+        timestamp: event.ts,
+        source: 'ip-manager',
+      });
+      headers = { 'Content-Type': 'application/json' };
+    }
+
+    const payload = Buffer.from(body, 'utf8');
+    headers['Content-Length'] = payload.length;
+
+    const request = lib.request({
+      hostname: target.hostname,
+      port: target.port || (target.protocol === 'http:' ? 80 : 443),
+      path: target.pathname + target.search,
+      method: 'POST',
+      headers,
+      timeout: 8000,
+    }, (res) => {
+      res.resume(); // drain
+      if (res.statusCode >= 400) {
+        console.warn(`[notify] ${cfg.type} responded ${res.statusCode} for ${event.type}`);
+      }
+    });
+
+    request.on('timeout', () => { request.destroy(new Error('timeout')); });
+    request.on('error', (err) => console.warn(`[notify] delivery failed for ${event.type}: ${err.message}`));
+    request.write(payload);
+    request.end();
+  } catch (err) {
+    console.warn(`[notify] could not dispatch ${event.type}: ${err.message}`);
+  }
+}
+
 // ── API keys ──────────────────────────────────────────────────────────────────
 // Named, scoped keys let external clients (the iOS app, Home Assistant, scripts)
 // talk to the API without handling the account password. Each key can be revoked
@@ -491,7 +623,13 @@ const dbSet = (key, value) => {
 // parameter on writes (query strings are recorded in Nginx access logs), and
 // refused outright on the account-management routes listed below.
 
-const API_KEY_SESSION_ONLY = ['/auth', '/keys', '/update', '/support', '/backup', '/ha/key'];
+const API_KEY_SESSION_ONLY = [
+  '/auth', '/keys', '/update', '/support', '/backup', '/ha/key',
+  // The audit log records failed-login usernames and source addresses, and the
+  // notification config could be repointed at a destination of the caller's
+  // choosing. Both stay behind a browser session.
+  '/audit-log', '/notifications',
+];
 
 const getApiKeys = () => dbGet('api_keys') || [];
 const setApiKeys = (keys) => dbSet('api_keys', keys);
@@ -653,6 +791,7 @@ app.post('/api/ips', (req, res) => {
   const created = { ...entry, lastModified: now };
   data.push(created);
   dbSet('ip_data', sortEntriesByIp(data));
+  recordEvent({ type: 'entry.created', message: `Entry created for ${created.ip}${created.assetName ? ` (${created.assetName})` : ''}`, meta: { ip: created.ip }, req });
   res.status(201).json(created);
 });
 
@@ -681,6 +820,7 @@ app.patch('/api/ips/:ip', (req, res) => {
   const updated = { ...current, ...changes, ip: current.ip, lastModified: new Date().toISOString() };
   data[idx] = updated;
   dbSet('ip_data', data);
+  recordEvent({ type: 'entry.updated', message: `Entry ${updated.ip} updated`, meta: { ip: updated.ip, fields: Object.keys(changes) }, req });
   res.json(updated);
 });
 
@@ -691,6 +831,7 @@ app.delete('/api/ips/:ip', (req, res) => {
   if (idx === -1) return res.status(404).json({ error: 'No entry for that IP' });
   const [removed] = data.splice(idx, 1);
   dbSet('ip_data', data);
+  recordEvent({ type: 'entry.deleted', message: `Entry ${removed.ip} deleted${removed.assetName ? ` (${removed.assetName})` : ''}`, meta: { ip: removed.ip }, req });
   res.json({ ok: true, removed });
 });
 
@@ -719,6 +860,7 @@ app.put('/api/networks', (req, res) => {
     return res.status(400).json({ error: 'Expected an array of network configs' });
   }
   dbSet('networks', req.body);
+  recordEvent({ type: 'config.networks_updated', message: `Network configuration updated (${req.body.length} network${req.body.length === 1 ? '' : 's'})`, req });
   res.json({ ok: true });
 });
 
@@ -1098,11 +1240,70 @@ function runFping(ips) {
   });
 }
 
+// Consecutive-failure counters, so a single dropped packet does not raise an
+// alert. An IP must be down for `minOfflineCycles` consecutive polls before
+// device.offline fires, and notifiedOffline stops it firing again every cycle.
+const offlineStreak = new Map();   // ip → consecutive 'down' count
+const notifiedOffline = new Set(); // ips we have already alerted about
+
+function detectPingTransitions(results) {
+  let cfg;
+  try { cfg = getNotificationConfig(); } catch { return; }
+  const threshold = Math.max(1, Number(cfg.minOfflineCycles) || 2);
+
+  // Resolve entry names once so alerts read "NAS (192.168.0.50)".
+  const entries = dbGet('ip_data') || [];
+  const nameFor = (ip) => {
+    const e = entries.find((x) => x.ip === ip);
+    const label = e && (e.assetName || e.hostname);
+    return label ? `${label} (${ip})` : ip;
+  };
+
+  for (const [ip, status] of Object.entries(results)) {
+    if (status === 'down') {
+      const streak = (offlineStreak.get(ip) || 0) + 1;
+      offlineStreak.set(ip, streak);
+      if (streak === threshold && !notifiedOffline.has(ip)) {
+        notifiedOffline.add(ip);
+        recordEvent({
+          type: 'device.offline',
+          message: `${nameFor(ip)} is offline`,
+          meta: { ip, consecutiveFailures: streak },
+        });
+      }
+    } else if (status === 'up') {
+      offlineStreak.delete(ip);
+      if (notifiedOffline.has(ip)) {
+        notifiedOffline.delete(ip);
+        recordEvent({
+          type: 'device.online',
+          message: `${nameFor(ip)} is back online`,
+          meta: { ip },
+        });
+      }
+    }
+  }
+
+  // Forget IPs that are no longer tracked, so the maps cannot grow unbounded.
+  for (const ip of [...offlineStreak.keys()]) if (!(ip in results)) offlineStreak.delete(ip);
+  for (const ip of [...notifiedOffline]) if (!(ip in results)) notifiedOffline.delete(ip);
+}
+
 async function refreshPingCache() {
   const ips = getTrackedIPs();
   if (!ips.length) return;
   const { results, warning } = await runFping(ips);
+  const previous = pingCache.results || {};
   pingCache = { results, timestamp: Date.now(), warning };
+
+  // Only look for transitions once we have a baseline — otherwise every device
+  // that happens to be off would alert the moment the server starts.
+  if (Object.keys(previous).length) {
+    try { detectPingTransitions(results); } catch (e) { console.warn(`[notify] ping transition check failed: ${e.message}`); }
+  } else {
+    // Seed the streak counters silently on the first run after a restart.
+    for (const [ip, status] of Object.entries(results)) if (status === 'down') offlineStreak.set(ip, 1);
+  }
 
   // Update last-seen timestamps for every IP that responded — only if enabled
   const presenceConfig = getArpPresenceConfig();
@@ -1180,6 +1381,36 @@ async function runServiceHealthChecks() {
   const settled = await Promise.all(probes);
   const results = {};
   for (const { ip, status, code } of settled) results[ip] = { status, code };
+
+  // Alert on health transitions. Unlike ping there is no flap guard: a health
+  // check is a deliberate HTTP probe of a service, so a single failure is
+  // already meaningful.
+  const previous = serviceHealthCache.results || {};
+  if (Object.keys(previous).length) {
+    try {
+      const nameFor = (ip) => {
+        const e = rows.find((x) => x.ip === ip);
+        const label = e && (e.assetName || e.hostname);
+        return label ? `${label} (${ip})` : ip;
+      };
+      for (const [ip, current] of Object.entries(results)) {
+        const before = previous[ip];
+        if (!before) continue;
+        if (before.status === 'up' && current.status === 'down') {
+          recordEvent({
+            type: 'health.down',
+            message: `Health check failing for ${nameFor(ip)}${current.code ? ` (HTTP ${current.code})` : ''}`,
+            meta: { ip, code: current.code || null },
+          });
+        } else if (before.status === 'down' && current.status === 'up') {
+          recordEvent({ type: 'health.up', message: `Health check recovered for ${nameFor(ip)}`, meta: { ip } });
+        }
+      }
+    } catch (e) {
+      console.warn(`[notify] health transition check failed: ${e.message}`);
+    }
+  }
+
   serviceHealthCache = { results, timestamp: Date.now() };
 }
 
@@ -2072,6 +2303,26 @@ async function refreshDomainsCache() {
   }
 
   saveDomains(domains);
+
+  // Alert once per refresh cycle for anything expiring within 30 days. The
+  // cycle runs daily, so this is a daily reminder rather than a per-poll spam.
+  try {
+    const now = Date.now();
+    for (const d of domains) {
+      if (!d.expiry) continue;
+      const days = Math.ceil((new Date(d.expiry) - now) / 86400000);
+      if (days >= 0 && days <= 30) {
+        recordEvent({
+          type: 'domain.expiring',
+          message: `${d.domain} expires in ${days} day${days === 1 ? '' : 's'}`,
+          meta: { domain: d.domain, daysUntilExpiry: days, expiry: d.expiry },
+        });
+      }
+    }
+  } catch (e) {
+    console.warn(`[notify] domain expiry check failed: ${e.message}`);
+  }
+
   console.log('[domains] Auto-refresh complete');
 }
 
@@ -2539,6 +2790,7 @@ app.post('/api/keys', requireAuth, (req, res) => {
   };
   keys.push(entry);
   setApiKeys(keys);
+  recordEvent({ type: 'apikey.created', message: `API key "${entry.label}" created (${entry.scope})`, meta: { id: entry.id, scope: entry.scope }, req });
   res.json(entry);
 });
 
@@ -2565,6 +2817,11 @@ app.patch('/api/keys/:id', requireAuth, (req, res) => {
     entry.lastUsedAt = null;
   }
   setApiKeys(keys);
+  recordEvent({
+    type: regenerate ? 'apikey.regenerated' : 'apikey.updated',
+    message: regenerate ? `API key "${entry.label}" regenerated` : `API key "${entry.label}" updated`,
+    meta: { id: entry.id, scope: entry.scope }, req,
+  });
   res.json(entry);
 });
 
@@ -2573,7 +2830,87 @@ app.delete('/api/keys/:id', requireAuth, (req, res) => {
   const keys = getApiKeys();
   const remaining = keys.filter((k) => k.id !== req.params.id);
   if (remaining.length === keys.length) return res.status(404).json({ error: 'Key not found' });
+  const removedKey = keys.find((k) => k.id === req.params.id);
   setApiKeys(remaining);
+  recordEvent({ type: 'apikey.revoked', message: `API key "${removedKey ? removedKey.label : req.params.id}" revoked`, req });
+  res.json({ ok: true });
+});
+
+// ── Notifications ─────────────────────────────────────────────────────────────
+
+// GET /api/notifications/config — current configuration and the event catalogue
+app.get('/api/notifications/config', requireAuth, (req, res) => {
+  res.json({ config: getNotificationConfig(), catalogue: NOTIFY_EVENTS });
+});
+
+// POST /api/notifications/config — save configuration
+app.post('/api/notifications/config', requireAuth, (req, res) => {
+  const { enabled, type, url, events, minOfflineCycles } = req.body || {};
+
+  if (type !== undefined && type !== 'ntfy' && type !== 'webhook') {
+    return res.status(400).json({ error: "type must be 'ntfy' or 'webhook'" });
+  }
+  if (url) {
+    let parsed;
+    try { parsed = new URL(url); } catch { return res.status(400).json({ error: 'url is not a valid URL' }); }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return res.status(400).json({ error: 'url must be http:// or https://' });
+    }
+  }
+  if (enabled && !url) {
+    return res.status(400).json({ error: 'A destination URL is required to enable notifications' });
+  }
+
+  const current = getNotificationConfig();
+  const next = {
+    ...current,
+    ...(enabled !== undefined ? { enabled: !!enabled } : {}),
+    ...(type !== undefined ? { type } : {}),
+    ...(url !== undefined ? { url: String(url).trim() } : {}),
+    ...(events !== undefined ? { events: { ...current.events, ...events } } : {}),
+    ...(minOfflineCycles !== undefined
+      ? { minOfflineCycles: Math.min(10, Math.max(1, parseInt(minOfflineCycles, 10) || 2)) }
+      : {}),
+  };
+  dbSet('notification_config', next);
+  recordEvent({ type: 'config.notifications_updated', message: `Notifications ${next.enabled ? 'enabled' : 'disabled'} (${next.type})`, req });
+  res.json({ config: next });
+});
+
+// POST /api/notifications/test — send a test message using the saved settings
+app.post('/api/notifications/test', requireAuth, (req, res) => {
+  const cfg = getNotificationConfig();
+  if (!cfg.url) return res.status(400).json({ error: 'Save a destination URL first' });
+
+  // Bypass the enabled flag and the per-event toggles for the test, so the user
+  // can verify delivery before switching notifications on.
+  dispatchNotification({
+    id: 'test',
+    ts: new Date().toISOString(),
+    type: Object.keys(cfg.events).find((k) => cfg.events[k]) || 'device.offline',
+    message: 'Test notification from IP Manager — delivery is working.',
+    meta: { test: true },
+    actor: 'session',
+    source: null,
+  });
+  res.json({ ok: true, sentTo: cfg.url, type: cfg.type });
+});
+
+// ── Audit log ─────────────────────────────────────────────────────────────────
+
+// GET /api/audit-log?limit=100&type=auth — recent system events
+app.get('/api/audit-log', requireAuth, (req, res) => {
+  const limit = Math.min(AUDIT_LIMIT, Math.max(1, parseInt(req.query.limit, 10) || 100));
+  const prefix = req.query.type ? String(req.query.type) : null;
+  let entries = getAuditLog();
+  if (prefix) entries = entries.filter((e) => e.type.startsWith(prefix));
+  res.json({ entries: entries.slice(0, limit), total: entries.length, limit: AUDIT_LIMIT });
+});
+
+// DELETE /api/audit-log — clear the log
+app.delete('/api/audit-log', requireAuth, (req, res) => {
+  dbSet('audit_log', []);
+  recordEvent({ type: 'audit.cleared', message: 'Audit log cleared', req });
   res.json({ ok: true });
 });
 

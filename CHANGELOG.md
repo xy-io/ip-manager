@@ -6,6 +6,19 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v2.2.0
+
+**Notifications, activity log, and accessibility**
+
+- **Outbound notifications.** Get told when a device drops off, a health check starts failing, a domain is about to expire, or a backup fails — without Home Assistant in the middle. Sends to an [ntfy](https://ntfy.sh) topic (plain text push) or any webhook endpoint (JSON POST). Configure in **Settings → Notifications**, choose which events to send, and use **Send test** to verify delivery before switching it on.
+- **Flap protection.** A device must fail a configurable number of consecutive ping cycles — two by default, so roughly two minutes — before an offline alert fires, and it fires once rather than every cycle. A single dropped packet never wakes you up. Recovery sends one "back online" message. Health-check alerts have no such delay, since a failing HTTP probe is already deliberate.
+- **Activity log.** A system-level record of sign-ins (including failed attempts, with the attempted username and source address), API key creation and revocation, configuration changes, entry create/update/delete, and device status changes. The most recent 500 events are kept, filterable by category in **Settings → Activity**. This complements the existing per-entry change history, which records *what* changed rather than *who* did it.
+- **The activity log and notification settings are session-only.** An API key cannot read the log or repoint notifications at another destination, regardless of its scope.
+- **Accessibility.** All eleven modals now announce themselves as dialogs (`role="dialog"`, `aria-modal`, an accessible name), move focus into the dialog on open, trap Tab within it, close on Escape, and return focus to whatever opened them. Icon-only buttons carry accessible names. IP cards and their selection checkboxes are now reachable and operable by keyboard with correct roles and state, rather than being click-only `div`s.
+- **Smoke tests extended to 72 checks**, covering notification validation, the activity log, and the new session-only restrictions.
+
+---
+
 ## v2.1.0
 
 **Public API with named access keys**

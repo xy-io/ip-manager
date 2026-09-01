@@ -45,6 +45,10 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
+### v2.2.0 — Notifications, activity log, and accessibility
+
+Push alerts to [ntfy](https://ntfy.sh) or any webhook when a device goes offline, a health check fails, a domain nears expiry, or a backup fails — configured in **Settings → Notifications**, with a test button and per-event toggles. Offline alerts wait for a configurable number of consecutive failed ping cycles so a single dropped packet doesn't wake you, and fire once rather than repeatedly. Adds an **Activity** log recording sign-ins (including failures), API key changes, config updates and entry edits — the last 500 events, filterable. Both are session-only, so an API key can't read the log or repoint notifications. Plus a full accessibility pass: dialog semantics and focus management on all eleven modals, accessible names on icon buttons, and keyboard-operable IP cards.
+
 ### v2.1.0 — Public API with named access keys
 
 External clients authenticate with their own API key instead of your password. Create one per client in **Settings → API Keys**, each labelled and scoped `read only` or `read & write`; revoking one leaves the others working. Your existing Home Assistant key is migrated automatically as a read-only key — nothing to change. Adds per-entry endpoints (`POST /api/ips`, `PATCH`/`DELETE`/`GET /api/ips/:ip`) so a client can edit one device without rewriting the dataset, with optional `expectedLastModified` conflict detection. Keys are refused on account and maintenance routes regardless of scope, and writes must use the `X-API-Key` header rather than a query parameter. Full reference in the [API wiki page](https://github.com/xy-io/ip-manager/wiki/API).
