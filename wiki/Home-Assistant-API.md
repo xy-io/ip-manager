@@ -68,7 +68,7 @@ Tracked domains with expiry information. Each entry includes `days_until_expiry`
 
 ## Home Assistant configuration
 
-Add to `configuration.yaml` or a sensor package file. **Settings → Home Assistant → Copy YAML** generates this for you with the correct URL and key.
+Add to `configuration.yaml` or a sensor package file. **Settings → API Keys → Copy YAML** generates this for you with the correct URL and key.
 
 ```yaml
 rest:
@@ -152,7 +152,7 @@ If you built automations against these sensors while the bug was present, they w
 
 ## Security notes
 
-- The API is **read-only**. There is no endpoint that modifies data.
+- These Home Assistant endpoints are **read-only**. The write endpoints added in v2.1.0 live under /api/ips and require a key with write scope — see [API](API).
 - The key is stored in the app's database, not in `credentials.env`, and is unrelated to your login.
 - From v2.1.0 each client can have its own key, so revoking the phone's key does not disturb Home Assistant.
 - The HA endpoints are deliberately exempt from session-cookie authentication so Home Assistant can poll them. They are protected only by the API key — so treat that key as a credential.
