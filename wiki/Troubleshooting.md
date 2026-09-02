@@ -19,6 +19,12 @@ Common issues and how to fix them.
   ```
 - Log in with those credentials, then set your own password in **Settings**.
 
+**"Too many attempts" / HTTP 429**
+- From v2.4.0, ten failed sign-ins from one address within fifteen minutes triggers a fifteen-minute throttle. Wait it out, or clear it immediately by restarting the service: `systemctl restart ip-manager-api`. Counters are held in memory only.
+
+**Signed out unexpectedly**
+- From v2.4.0 sessions expire after seven days without use, or thirty days regardless. Using the app resets the seven-day clock. Sessions are also cleared whenever the service restarts, including after an update.
+
 **Stuck on Change Password screen**
 - This appears when the server detects `admin`/`admin` credentials. Enter `admin` as the current password and set a new one.
 - If you've already changed your password but still see this screen, check `credentials.env` — the file may be empty or malformed.
@@ -176,4 +182,4 @@ If you've worked through the above and are still stuck, [open an issue on GitHub
 
 The quickest way to gather all of this is **Settings → Support → Download support bundle**, which packages system info, service status, and recent logs into a single file.
 
-> **Before sharing a support bundle**, open it and check the log section. On a recently installed server it can still contain the generated startup password.
+> From **v2.4.0** the bundle redacts passwords, hashes, API keys and tokens automatically. On earlier versions it could contain the generated startup password — if you shared one, treat those credentials as exposed and change them.

@@ -10,23 +10,14 @@ Items are roughly ordered by priority but nothing here is a firm commitment or t
 
 Known defects and hardening work, in the order they should be tackled. These come ahead of new features.
 
-### Security hardening
-- **Argument-safe shell invocation** — `subnet` and `cidr` are interpolated into shell strings for `arp-scan`, and the rclone password is quoted with `JSON.stringify`, which is not shell-safe. Move to `execFile` with argument arrays.
-- **Support-bundle redaction** — the bundle embeds recent journal lines, which on a recently installed server still contain the generated startup password. Strip credential lines before writing.
-- **Login rate limiting** — no throttle on failed logins, and each attempt runs a bcrypt comparison, making it both brute-forceable and a cheap CPU drain.
-- **Session expiry** — sessions never expire and the session map grows without bound.
-
-### Correctness
-- **Proxmox sync refresh** — `loadData()` is called but never defined, so the IP list stops refreshing after a sync.
-- **Card expansion state** — tracked by list index rather than IP, so sorting or a status poll expands the wrong card.
-- **Read-modify-write race** — Proxmox sync rewrites the whole entry array, discarding edits made while it was running.
-
-### Performance
-- Memoise list rows — a status poll currently re-renders every entry three times a minute.
-- Virtualise long lists; debounce the full-dataset save on each mutation.
-
-### Maintainability — next up (v2.4.0)
+### Maintainability — next up (v2.5.0)
 - Split `server/index.js` into route modules and `src/IPAddressManager.jsx` into components. Planned as a pure code-movement release with no behaviour change, so that any smoke-test failure unambiguously indicates a refactor mistake.
+
+### Performance — follows the split
+- **Memoise list rows** — a status poll re-renders every entry three times a minute because nothing below the root is memoised. Requires the card and row components to be extracted first, which is what the split does.
+- **Virtualise long lists** — fine at 90 entries, painful at 500, unusable on a /16. Also easier once rows are their own components.
+
+Debounced saves shipped in v2.4.0.
 
 ---
 
@@ -75,6 +66,7 @@ See [CHANGELOG.md](./CHANGELOG.md) for a full history of released features.
 
 | Version | Feature |
 |---------|---------|
+| v2.4.0 | Command-injection fixes, bundle redaction, rate limiting, session expiry, three correctness bugs |
 | v2.3.0 | Full API-key compatibility, structured errors, capabilities endpoint |
 | v2.2.0 | Outbound notifications (ntfy/webhook), activity log, accessibility pass |
 | v2.1.0 | Public API with named, scoped access keys; per-entry CRUD endpoints |

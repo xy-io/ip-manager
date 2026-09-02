@@ -875,6 +875,37 @@ async function testSecurityRegressions() {
   // so this check fails. On a long-running server the block has scrolled out of
   // range and it passes. A pass here therefore means "no credentials in this
   // bundle right now", not "the bundle can never leak credentials".
+  await test('ARP scan rejects a shell-injection subnet', async () => {
+    const attempts = [
+      '192.168.1; touch /tmp/ipmanager-pwned',
+      '$(id)',
+      '192.168.1.0/24 && echo hi',
+      '`whoami`',
+    ];
+    const accepted = [];
+    for (const subnet of attempts) {
+      const res = await POST('/api/arp/scan', { subnet });
+      // 400 is correct. Anything else means the value reached the scanner.
+      if (res.status !== 400) accepted.push(`${JSON.stringify(subnet)} → ${res.status}`);
+    }
+    return accepted.length
+      ? `subnet values reaching the scanner unvalidated: ${accepted.join(', ')}`
+      : true;
+  });
+
+  await test('ARP scan rejects an invalid interface name', async () => {
+    const res = await POST('/api/arp/scan', { subnet: '192.168.1', interface: 'eth0; rm -rf /' });
+    return expectStatus(res, 400, 'POST /api/arp/scan with a crafted interface');
+  });
+
+  await test('ARP scan still accepts a legitimate subnet', async () => {
+    const res = await POST('/api/arp/scan', { subnet: '192.168.1' });
+    // 200 whether the scan succeeds or falls back to the ARP cache; the point
+    // is that validation has not broken ordinary use.
+    if (res.status === 200) return true;
+    return `a valid subnet was rejected with HTTP ${res.status} — validation is too strict`;
+  });
+
   await test('support bundle does not leak credentials', async () => {
     const res = await GET('/api/support/bundle');
     if (res.status !== 200) return `expected HTTP 200, got ${res.status}`;

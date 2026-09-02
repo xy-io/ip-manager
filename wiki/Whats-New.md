@@ -4,6 +4,25 @@ For the full release history see the [CHANGELOG](https://github.com/xy-io/ip-man
 
 ---
 
+## v2.4.0 — Security hardening & correctness fixes
+
+No new features. This release fixes things that were wrong.
+
+**Security**
+
+- **Two command-injection paths closed.** The `subnet` field was interpolated into a shell string for `arp-scan`, and the rclone backup password was quoted with `JSON.stringify` — which quotes for JavaScript, not for a shell. Both now use argument arrays with no shell involved, plus strict validation of subnets and interface names.
+- **The support bundle no longer contains credentials.** It embeds recent log lines, which on a fresh or recovered install still hold the generated startup password. Passwords, hashes, API keys and bearer tokens are redacted before the bundle is written. **If you have shared a support bundle previously, treat the credentials in it as exposed.**
+- **Login rate limiting** — ten failures from one address in fifteen minutes triggers a fifteen-minute throttle, checked before the password comparison runs. A successful sign-in clears it, and a restart clears everything, so you can never be permanently locked out.
+- **Sessions expire** — seven days idle, thirty days absolute, on a sliding window. Continued use keeps you signed in.
+
+**Fixes**
+
+- The IP list **stopped refreshing after a Proxmox sync** — the refresh function was called but never existed.
+- **The wrong card expanded** when the list had been sorted or a status poll had just run; expansion was tracked by list position rather than by IP.
+- **Saves are debounced** and no longer echo freshly-loaded server data straight back, which could overwrite a Proxmox sync running at that moment.
+
+---
+
 ## v2.3.0 — Full API-key compatibility for native clients
 
 Groundwork for the iOS app, led by a bug fix that made key authentication largely unusable.

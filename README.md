@@ -45,6 +45,10 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
+### v2.4.0 — Security hardening and correctness fixes
+
+Closes two command-injection paths: `subnet` was interpolated into a shell string for `arp-scan`, and the rclone backup password was quoted with `JSON.stringify` (which is not shell quoting). Both now use `execFile` with argument arrays plus strict validation. The support bundle redacts credentials before writing, so a bundle from a fresh install no longer contains the generated startup password. Adds login rate limiting (ten failures per address per fifteen minutes, checked before bcrypt runs) and sliding-window session expiry. Fixes three real bugs: the IP list not refreshing after a Proxmox sync, the wrong card expanding after a sort or status poll, and saves echoing freshly-loaded server state straight back — which could overwrite a concurrent sync.
+
 ### v2.3.0 — Full API-key compatibility for native clients
 
 Fixes a significant bug: around 48 routes applied `requireAuth` directly and only accepted session cookies, so API keys were rejected on Domains, Ping, Service Health, ARP, DNS and Proxmox despite passing the middleware. Every endpoint now accepts `X-API-Key` with no cookie. Adds structured `{error, message}` JSON on every failure with correct `401`/`403`/`409` semantics, a `GET /api/capabilities` feature map, and Unix-seconds timestamps on the status endpoints (they were milliseconds, which would have made a client's refresh scheduling wrong by a factor of a thousand). The Proxmox API token is no longer returned to API keys. Smoke tests now run 99 checks including a full dashboard sweep using only a key.

@@ -6,6 +6,32 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v2.4.0
+
+**Security hardening and correctness fixes**
+
+No new features — this release fixes things that were wrong.
+
+**Security**
+
+- **Command injection in the ARP scanner.** `subnet` was interpolated into a shell string with no escaping, so a crafted value such as `192.168.1; <command>` would have been executed by the shell with the server's privileges. Both the manual scan and the scheduled discovery sweep now use `execFile` with an argument array — no shell is involved — and the subnet is validated as a plain dotted-decimal network with a prefix between 8 and 32 before it goes anywhere near the scanner. Interface names are restricted to plain device names.
+- **Command injection in cloud-backup configuration.** The rclone password was quoted with `JSON.stringify`, which quotes for JavaScript and not for a shell; a backup password containing `$(...)` or backticks would have been executed. Now passed as an argument to `execFile`.
+- **The support bundle no longer leaks credentials.** It embeds recent journal lines, which on a recently installed or recovered server still contain the generated startup password — and those bundles get pasted into issues and chats. Passwords, `IP_MANAGER_PASSWORD`, bcrypt hashes, API keys and bearer tokens are now redacted before the bundle is written. Ordinary log lines are untouched.
+- **Login rate limiting.** Ten failed sign-ins from one address within fifteen minutes triggers a fifteen-minute throttle, returning `429` with a `Retry-After` header. The check runs *before* the bcrypt comparison, so repeated attempts can no longer be used to load the CPU. A successful sign-in clears the counter immediately. Counters are held in memory only, so a restart clears everything — a misconfiguration can never lock you out permanently.
+- **Sessions now expire.** Previously they lived until the server restarted and the session map grew without bound. Sessions now use a sliding window: seven days idle, thirty days absolute, with an hourly sweep. Continued use keeps you signed in, so in normal use you will not notice.
+
+**Correctness**
+
+- **The IP list stopped refreshing after a Proxmox sync.** `loadData()` was called but never defined, throwing an unhandled rejection, so entries the sync added or changed did not appear until a manual reload. It now exists and re-fetches from the server.
+- **The wrong card expanded.** Card expansion was tracked by position in the list rather than by IP, so sorting, filtering or a background status poll could shift the list underneath it and expand a different device. Now keyed by IP.
+- **Saves are debounced and no longer echo server state back.** Every change previously wrote the entire dataset immediately, including once straight after loading — so a Proxmox sync running at that moment could be overwritten by the data the browser had just received. Writes are now debounced to 600 ms and suppressed for the render that follows a load.
+
+**Testing**
+
+Smoke tests now attempt shell injection through the ARP scanner and confirm each attempt is rejected while a legitimate subnet still scans. The subnet validator and the throttle, session-expiry and redaction logic were each unit-tested in isolation during development.
+
+---
+
 ## v2.3.0
 
 **Full API-key compatibility for native clients**

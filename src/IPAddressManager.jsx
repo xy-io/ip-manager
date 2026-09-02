@@ -1,10 +1,10 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { Search, Server, Monitor, Wifi, HardDrive, Camera, Shield, Globe, Filter, X, MapPin, Cpu, Box, CircleDot, ChevronDown, ChevronUp, Copy, Check, Zap, Download, Edit3, Plus, Trash2, Save, AlertCircle, Settings, Upload, FileText, AlertTriangle, CheckCircle, ChevronRight, Tag, ArrowUpDown, ArrowUp, ArrowDown, HelpCircle, LogOut, Moon, Sun, MoreHorizontal, Terminal, RotateCw } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import QRCode from 'qrcode';
 
 // ── App version ───────────────────────────────────────────────────────────────
-const APP_VERSION = 'v2.3.0';
+const APP_VERSION = 'v2.4.0';
 
 // Default network configuration (overridden by Settings modal / localStorage)
 const DEFAULT_NETWORK_CONFIG = {
@@ -7083,6 +7083,7 @@ export default function IPAddressManager() {
             const migrated = ipsJson.data.map(item =>
               item.networkId ? item : { ...item, networkId: 'net-1' }
             );
+            skipNextSave.current = true; // freshly loaded from the server
             setIpData(migrated);
           } else {
             // First run on this server — push local data up (tagged to net-1)
@@ -7120,14 +7121,46 @@ export default function IPAddressManager() {
     })();
   }, []);
 
+  // Debounce handle for saves, and a one-shot guard that suppresses the save
+  // which would otherwise fire immediately after loading state from the server.
+  const saveTimer = useRef(null);
+  const skipNextSave = useRef(false);
+
+  // ── Refresh entries from the server ─────────────────────────────────────────
+  // Used after a Proxmox sync, which can add or change entries behind our back.
+  const loadData = useCallback(async () => {
+    if (persistMode !== 'api') return;
+    try {
+      const json = await apiGet('/api/ips');
+      if (json && Array.isArray(json.data)) {
+        skipNextSave.current = true; // this is server state, don't echo it back
+        setIpData(json.data.map(item => (item.networkId ? item : { ...item, networkId: 'net-1' })));
+      }
+    } catch {
+      // Leave the current view in place if the refresh fails.
+    }
+  }, [persistMode]);
+
   // ── Auto-save IP data ───────────────────────────────────────────────────────
+  // Debounced, so a burst of edits produces one write rather than one per
+  // keystroke, and skipped immediately after loading server state — otherwise
+  // the first render would push what we just received straight back, which is
+  // how a concurrent Proxmox sync used to get overwritten.
   useEffect(() => {
     if (persistMode === 'loading') return;
-    if (persistMode === 'api') {
-      apiPut('/api/ips', ipData).catch(() => {});
-    } else {
+    if (skipNextSave.current) { skipNextSave.current = false; return; }
+
+    if (persistMode !== 'api') {
       try { localStorage.setItem('ip-manager-ip-data', JSON.stringify(ipData)); } catch {}
+      return;
     }
+
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      apiPut('/api/ips', ipData).catch(() => {});
+    }, 600);
+
+    return () => clearTimeout(saveTimer.current);
   }, [ipData, persistMode]);
 
   // ── Auto-save networks array ────────────────────────────────────────────────
@@ -8676,7 +8709,7 @@ export default function IPAddressManager() {
         {viewMode === 'cards' ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {sortedData.map((item, index) => {
-              const isExpanded = expandedCard === index;
+              const isExpanded = expandedCard === item.ip;
               const isReserved = item.assetName === 'Reserved';
               const isFree = item.assetName === 'Free';
               const isDHCP = isInDHCPRangeConfig(item.ip);
@@ -8690,13 +8723,13 @@ export default function IPAddressManager() {
                   tabIndex={0}
                   aria-expanded={isExpanded}
                   aria-label={`${item.assetName || item.hostname || item.ip} — ${item.ip}${isSelected ? ', selected' : ''}`}
-                  onClick={() => selectedIPs.size > 0 ? toggleSelect(item.ip, { stopPropagation: () => {} }) : setExpandedCard(isExpanded ? null : index)}
+                  onClick={() => selectedIPs.size > 0 ? toggleSelect(item.ip, { stopPropagation: () => {} }) : setExpandedCard(isExpanded ? null : item.ip)}
                   onKeyDown={e => {
                     if (e.key !== 'Enter' && e.key !== ' ') return;
                     if (e.target !== e.currentTarget) return; // let inner controls handle their own keys
                     e.preventDefault();
                     if (selectedIPs.size > 0) toggleSelect(item.ip, { stopPropagation: () => {} });
-                    else setExpandedCard(isExpanded ? null : index);
+                    else setExpandedCard(isExpanded ? null : item.ip);
                   }}
                   className={`group rounded-xl border transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
                     isSelected

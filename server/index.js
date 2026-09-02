@@ -150,23 +150,101 @@ let credentials = loadCredentials();
 // Simple in-memory map of token → expiry. Sessions are cleared on server restart.
 
 const SESSION_COOKIE = 'ip-manager-session';
-const sessions = new Map(); // token → expires timestamp (0 = browser-session only)
+const sessions = new Map(); // token → { expires, lastSeen }
+
+// Sessions used to live until the server restarted, and the map grew without
+// bound. They now expire on a sliding window: active use keeps a session alive,
+// but one left idle is discarded. Both values are generous — this is a home
+// network tool, and being logged out mid-task is its own kind of failure.
+const SESSION_IDLE_MS     = 7  * 24 * 60 * 60 * 1000; // 7 days without use
+const SESSION_ABSOLUTE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days regardless
+const SESSION_SWEEP_MS    = 60 * 60 * 1000;           // tidy up hourly
 
 function createSession() {
   const token = crypto.randomBytes(32).toString('hex');
-  sessions.set(token, 0); // 0 = no absolute expiry, lives until server restart or logout
+  const now = Date.now();
+  sessions.set(token, { expires: now + SESSION_ABSOLUTE_MS, lastSeen: now });
   return token;
 }
 
 function isValidSession(token) {
-  if (!token || !sessions.has(token)) return false;
-  const expires = sessions.get(token);
-  if (expires && Date.now() > expires) {
+  if (!token) return false;
+  const session = sessions.get(token);
+  if (!session) return false;
+
+  const now = Date.now();
+  if (now > session.expires || now - session.lastSeen > SESSION_IDLE_MS) {
     sessions.delete(token);
     return false;
   }
+  session.lastSeen = now; // sliding window: using the app keeps you signed in
   return true;
 }
+
+// Periodic sweep so expired entries are released even if nothing touches them.
+setInterval(() => {
+  const now = Date.now();
+  for (const [token, session] of sessions) {
+    if (now > session.expires || now - session.lastSeen > SESSION_IDLE_MS) sessions.delete(token);
+  }
+}, SESSION_SWEEP_MS).unref?.();
+
+// ── Login rate limiting ──────────────────────────────────────────────────────
+// Failed sign-ins are tracked per source address. Deliberately in memory only:
+// a restart clears every counter, so a misconfiguration can never permanently
+// lock anyone out. Successful sign-in clears that address immediately.
+const LOGIN_MAX_ATTEMPTS = 10;                 // failures before throttling
+const LOGIN_WINDOW_MS    = 15 * 60 * 1000;     // rolling window
+const LOGIN_LOCKOUT_MS   = 15 * 60 * 1000;     // how long throttling lasts
+const loginAttempts = new Map();               // ip → { count, first, blockedUntil }
+
+function loginClientIp(req) {
+  const fwd = req.headers['x-forwarded-for'];
+  if (fwd) return String(fwd).split(',')[0].trim();
+  return req.socket?.remoteAddress || 'unknown';
+}
+
+function loginThrottleStatus(req) {
+  const record = loginAttempts.get(loginClientIp(req));
+  if (!record) return null;
+  const now = Date.now();
+  if (record.blockedUntil && now < record.blockedUntil) {
+    return { retryAfterSeconds: Math.ceil((record.blockedUntil - now) / 1000) };
+  }
+  return null;
+}
+
+function recordLoginFailure(req) {
+  const ip = loginClientIp(req);
+  const now = Date.now();
+  const record = loginAttempts.get(ip);
+
+  if (!record || now - record.first > LOGIN_WINDOW_MS) {
+    loginAttempts.set(ip, { count: 1, first: now, blockedUntil: 0 });
+    return;
+  }
+  record.count += 1;
+  if (record.count >= LOGIN_MAX_ATTEMPTS) {
+    record.blockedUntil = now + LOGIN_LOCKOUT_MS;
+    record.count = 0;
+    record.first = now;
+    console.warn(`[auth] Too many failed sign-ins from ${ip} — throttled for ${LOGIN_LOCKOUT_MS / 60000} minutes`);
+  }
+}
+
+function clearLoginFailures(req) {
+  loginAttempts.delete(loginClientIp(req));
+}
+
+// Keep the attempt map from growing: drop records nothing has touched.
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, record] of loginAttempts) {
+    const idle = now - record.first > LOGIN_WINDOW_MS;
+    const unblocked = !record.blockedUntil || now > record.blockedUntil;
+    if (idle && unblocked) loginAttempts.delete(ip);
+  }
+}, SESSION_SWEEP_MS).unref?.();
 
 // ── Auth middleware ───────────────────────────────────────────────────────────
 // Applied to all /api/* routes except /api/auth/*
@@ -220,6 +298,15 @@ function requireNotDefault(req, res, next) {
 // ── Auth routes (unprotected) ─────────────────────────────────────────────────
 
 app.post('/api/auth/login', (req, res) => {
+  // Refuse early when throttled — before the bcrypt comparison, which is the
+  // expensive part and would otherwise make this a cheap way to load the CPU.
+  const throttled = loginThrottleStatus(req);
+  if (throttled) {
+    res.setHeader('Retry-After', String(throttled.retryAfterSeconds));
+    return apiError(res, 429, 'Too many attempts',
+      `Too many failed sign-in attempts. Try again in ${Math.ceil(throttled.retryAfterSeconds / 60)} minute(s).`);
+  }
+
   // Reload credentials on each login attempt so changes to credentials.env
   // take effect without restarting the server
   credentials = loadCredentials();
@@ -232,9 +319,11 @@ app.post('/api/auth/login', (req, res) => {
     const token = createSession();
     // httpOnly prevents JS access; sameSite=strict prevents CSRF
     res.cookie(SESSION_COOKIE, token, { httpOnly: true, sameSite: 'strict' });
+    clearLoginFailures(req);
     recordEvent({ type: 'auth.login.success', message: `Signed in as ${credentials.username}`, req });
     return res.json({ ok: true, mustChangePassword: isDefaultCreds() });
   }
+  recordLoginFailure(req);
   recordEvent({
     type: 'auth.login.failed',
     message: `Failed sign-in attempt for "${String(username || '').slice(0, 40)}"`,
@@ -988,12 +1077,42 @@ app.post('/api/import', (req, res) => {
 
 // ── ARP scanning ──────────────────────────────────────────────────────────────
 
-const { execSync }   = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 const dnsPromises    = require('dns').promises;
 
-// Escape a single shell argument safely
-function shellEsc(arg) {
-  return "'" + arg.replace(/'/g, "'\\''") + "'";
+// ── Shell-safe scan arguments ────────────────────────────────────────────────
+// arp-scan is invoked with execFile and an argument array, never a shell
+// string, so nothing supplied by a caller can be interpreted as shell syntax.
+// The validators below are belt-and-braces: they also stop a malformed subnet
+// reaching arp-scan at all, which produces a clearer error than a scan failure.
+
+// Accepts "192.168", "192.168.1", "10.0.0.0/8" and returns a normalised CIDR,
+// or null if the input is not a plain dotted-decimal network.
+//   "192.168"     → "192.168.0.0/16"
+//   "192.168.1"   → "192.168.1.0/24"
+function normaliseSubnetToCidr(subnet) {
+  const raw = String(subnet == null ? '' : subnet).trim();
+  if (!/^[0-9]{1,3}(\.[0-9]{1,3}){1,3}(\/[0-9]{1,2})?$/.test(raw)) return null;
+
+  let [addr, prefix] = raw.split('/');
+  const octets = addr.split('.');
+  if (octets.some((o) => Number(o) > 255)) return null;
+
+  if (prefix === undefined) {
+    if (octets.length === 2)      { addr = `${addr}.0.0`; prefix = '16'; }
+    else if (octets.length === 3) { addr = `${addr}.0`;   prefix = '24'; }
+    else                          { prefix = '24'; }
+  }
+  while (addr.split('.').length < 4) addr += '.0';
+
+  const p = Number(prefix);
+  if (!Number.isInteger(p) || p < 8 || p > 32) return null;
+  return `${addr}/${p}`;
+}
+
+// Network interface names: letters, digits, dot, colon, dash, underscore.
+function isValidInterface(iface) {
+  return /^[A-Za-z0-9._:-]{1,32}$/.test(String(iface));
 }
 
 // Parse arp-scan stdout — tab-separated: IP \t MAC \t Vendor
@@ -1032,17 +1151,18 @@ async function reverseLookup(ip) {
   }
 }
 
-// Build the arp-scan command from subnet + optional interface
-// Normalises "192.168.1" → "192.168.1.0/24"  and  "192.168" → "192.168.0.0/16"
-function buildArpScanCmd(subnet, iface) {
-  let cidr = subnet;
-  if (!cidr.includes('/')) {
-    const octets = cidr.split('.');
-    if (octets.length === 2)      cidr = `${cidr}.0.0/16`;
-    else if (octets.length === 3) cidr = `${cidr}.0/24`;
+// Build the arp-scan argument array from subnet + optional interface.
+// Returns null when either is invalid, so the caller can reject the request.
+function buildArpScanArgs(subnet, iface) {
+  const cidr = normaliseSubnetToCidr(subnet);
+  if (!cidr) return null;
+  const args = [];
+  if (iface) {
+    if (!isValidInterface(iface)) return null;
+    args.push('-I', iface);
   }
-  const ifaceFlag = iface ? `-I ${shellEsc(iface)} ` : '';
-  return `arp-scan ${ifaceFlag}${cidr}`;
+  args.push(cidr);
+  return args;
 }
 
 // POST /api/arp/scan
@@ -1050,16 +1170,24 @@ function buildArpScanCmd(subnet, iface) {
 // Returns: { results: [{ ip, mac, vendor, hostname, status }], method: 'arp-scan'|'arp-cache' }
 app.post('/api/arp/scan', async (req, res) => {
   const { subnet, interface: iface } = req.body || {};
-  if (!subnet) return res.status(400).json({ error: 'subnet is required' });
+  if (!subnet) {
+    return apiError(res, 400, 'Missing field', 'A "subnet" field is required, for example "192.168.1" or "10.0.0.0/8".');
+  }
+
+  const scanArgs = buildArpScanArgs(subnet, iface);
+  if (!scanArgs) {
+    return apiError(res, 400, 'Invalid subnet or interface',
+      'subnet must be a dotted-decimal network such as "192.168.1" or "10.0.0.0/8" with a prefix between 8 and 32, and interface must be a plain device name such as "eth0".');
+  }
 
   let raw = [];
   let method = 'arp-scan';
   let scanWarning = null;
 
   try {
-    const cmd = buildArpScanCmd(subnet, iface);
-    const stdout = execSync(cmd, { encoding: 'utf8', timeout: 30000,
-                                   stdio: ['pipe', 'pipe', 'pipe'] });
+    // execFileSync with an argument array — no shell, so no interpolation.
+    const stdout = execFileSync('arp-scan', scanArgs, { encoding: 'utf8', timeout: 30000,
+                                                        stdio: ['pipe', 'pipe', 'pipe'] });
     raw = parseArpScanOutput(stdout);
   } catch (err) {
     // arp-scan not installed or lacks raw socket capability — fall back to kernel ARP cache.
@@ -1156,10 +1284,18 @@ function getDiscoveryDefaults(prefixLen) {
   return { intervalMinutes: 15, bandwidthKbps: 1000 };
 }
 
-function buildDiscoveryScanCmd(cidr, iface, bandwidthKbps) {
-  const ifaceFlag = iface ? `-I ${shellEsc(iface)} ` : '';
-  const bwFlag    = bandwidthKbps ? `--bandwidth=${bandwidthKbps}K ` : '';
-  return `arp-scan ${ifaceFlag}${bwFlag}--quiet ${cidr}`;
+function buildDiscoveryScanArgs(cidr, iface, bandwidthKbps) {
+  const normalised = normaliseSubnetToCidr(cidr);
+  if (!normalised) return null;
+  const args = [];
+  if (iface) {
+    if (!isValidInterface(iface)) return null;
+    args.push('-I', iface);
+  }
+  const bw = parseInt(bandwidthKbps, 10);
+  if (Number.isInteger(bw) && bw > 0) args.push(`--bandwidth=${bw}K`);
+  args.push('--quiet', normalised);
+  return args;
 }
 
 async function runDiscoveryScan() {
@@ -1193,8 +1329,12 @@ async function runDiscoveryScan() {
 
       let raw = [];
       try {
-        const cmd    = buildDiscoveryScanCmd(cidr, config.discoveryInterface || '', bw);
-        const stdout = execSync(cmd, { encoding: 'utf8', timeout: 180000, stdio: ['pipe', 'pipe', 'pipe'] });
+        const scanArgs = buildDiscoveryScanArgs(cidr, config.discoveryInterface || '', bw);
+        if (!scanArgs) {
+          console.warn(`[discovery] Skipping ${cidr} — invalid subnet or interface name`);
+          continue;
+        }
+        const stdout = execFileSync('arp-scan', scanArgs, { encoding: 'utf8', timeout: 180000, stdio: ['pipe', 'pipe', 'pipe'] });
         raw = parseArpScanOutput(stdout);
       } catch (err) {
         console.warn(`[discovery] arp-scan failed for ${cidr}:`, err.message);
@@ -1798,6 +1938,27 @@ app.get('/api/changelog', requireAuth, (req, res) => {
 // GET /api/support/bundle — collects system diagnostics into a downloadable text file.
 // Contains NO IP data, hostnames, notes, or credentials — only system/runtime info.
 
+
+// ── Secret redaction for the support bundle ──────────────────────────────────
+// The bundle embeds recent journal lines so a user can share diagnostics. On a
+// recently installed or recovered server those lines still contain the
+// generated startup password, which people then paste into issues and chats.
+// Redact anything that looks like a credential before it leaves the server.
+function redactSecrets(text) {
+  if (!text) return text;
+  return String(text)
+    // "password : hunter2" from the first-run and recovery credential blocks
+    .replace(/^(\s*password\s*:\s*).+$/gim, '$1[redacted]')
+    // Environment-style assignments
+    .replace(/^(\s*IP_MANAGER_PASSWORD\s*=).*$/gim, '$1[redacted]')
+    .replace(/^(\s*(?:pass|password|secret|token|api[_-]?key)\s*[=:]\s*).+$/gim, '$1[redacted]')
+    // bcrypt hashes, wherever they appear
+    .replace(/\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}/g, '[redacted-hash]')
+    // Bearer tokens and X-API-Key headers echoed into logs
+    .replace(/(X-API-Key\s*:\s*)\S+/gi, '$1[redacted]')
+    .replace(/(Bearer\s+)[A-Za-z0-9._~+/-]+=*/g, '$1[redacted]');
+}
+
 app.get('/api/support/bundle', requireAuth, async (req, res) => {
   const run = (cmd) => new Promise(resolve => {
     exec(cmd, { timeout: 10000 }, (err, stdout, stderr) => {
@@ -1850,7 +2011,7 @@ app.get('/api/support/bundle', requireAuth, async (req, res) => {
     sep('LAST UPDATE RESULT'),
     updateResult,
     sep('RECENT SERVICE LOGS (last 300 lines)'),
-    svcLogs,
+    redactSecrets(svcLogs),
   ].join('\n');
 
   const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
@@ -2772,8 +2933,11 @@ app.post('/api/backup/configure-remote', requireAuth, (req, res) => {
     let obscuredPass = '';
     if (password) {
       try {
+        // execFileSync — the password is passed as an argument, never through a
+        // shell. JSON.stringify quotes for JavaScript, not for sh: a password
+        // containing $(...) or backticks would previously have been executed.
         obscuredPass = require('child_process')
-          .execSync(`rclone obscure ${JSON.stringify(password)}`, { timeout: 5000 })
+          .execFileSync('rclone', ['obscure', password], { timeout: 5000 })
           .toString().trim();
       } catch { obscuredPass = password; }
     }
