@@ -45,6 +45,10 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
+### v2.5.0 — Server code split
+
+Infrastructure only, with no functional change. `server/index.js` is down from 3,325 to ~2,350 lines, with credentials, sessions, API keys, the event system, the database layer and the Domain Tracker and backup routes moved into `server/lib/` and `server/routes/`. Verified by diffing the full 102-check smoke suite against a pre-refactor baseline after every extraction step — identical results throughout. The process caught two path bugs that would have relocated `credentials.env` and `rclone.conf`, the first of which would have locked users out on upgrade.
+
 ### v2.4.0 — Security hardening and correctness fixes
 
 Closes two command-injection paths: `subnet` was interpolated into a shell string for `arp-scan`, and the rclone backup password was quoted with `JSON.stringify` (which is not shell quoting). Both now use `execFile` with argument arrays plus strict validation. The support bundle redacts credentials before writing, so a bundle from a fresh install no longer contains the generated startup password. Adds login rate limiting (ten failures per address per fifteen minutes, checked before bcrypt runs) and sliding-window session expiry. Fixes three real bugs: the IP list not refreshing after a Proxmox sync, the wrong card expanding after a sort or status poll, and saves echoing freshly-loaded server state straight back — which could overwrite a concurrent sync.

@@ -6,6 +6,41 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v2.5.0
+
+**Server code split — no functional change**
+
+Infrastructure only. `server/index.js` had grown to 3,325 lines; the parts with the clearest boundaries now live in their own modules. **This release is pure code movement: no behaviour changes, no data changes, no API changes.**
+
+```
+server/
+├── index.js              # bootstrap, middleware, remaining routes
+├── lib/
+│   ├── db.js             # SQLite key/value store
+│   ├── http.js           # apiError, timestamp helpers
+│   ├── credentials.js    # loading, bcrypt migration, the live pair
+│   ├── sessions.js       # session store, sliding expiry, login throttle
+│   ├── apikeys.js        # named key store, scope enforcement
+│   ├── events.js         # audit log + notification dispatch
+│   └── domainStore.js    # shared domain accessors
+└── routes/
+    ├── domains.js        # Domain Tracker / RDAP
+    └── backup.js         # rclone cloud backup
+```
+
+**How this was verified.** A baseline run of the full 102-check smoke suite was captured against the real server before any code moved. After each extraction the suite was re-run and the results diffed line by line against that baseline. Every increment produced identical output — same checks, same order, same outcomes. The extraction was done in six verified steps rather than one commit.
+
+**Two bugs the verification caught**, both of which would have caused real damage:
+
+- `credentials.env` is resolved relative to the module that reads it. Moving credential loading into `server/lib/` silently changed that path to `server/lib/credentials.env`. On a real install the server would not have found existing credentials, would have treated it as a first run, and would have **generated new ones — locking the user out**, exactly as in the v2.0.0 incident. Now resolved explicitly to `server/credentials.env`.
+- The same applied to `rclone.conf`, which would have silently orphaned existing cloud-backup configuration.
+
+Both were invisible to syntax checks and to the build, and the first was initially masked by the test harness setting the path explicitly. All three data paths — `credentials.env`, `ip-manager.db` and `rclone.conf` — are now asserted to resolve to their original locations, and a boot test confirms an existing `credentials.env` is read and left byte-for-byte unchanged.
+
+**Still to do:** `src/IPAddressManager.jsx` remains a single file. See the note in the roadmap.
+
+---
+
 ## v2.4.0
 
 **Security hardening and correctness fixes**

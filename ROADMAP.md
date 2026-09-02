@@ -10,8 +10,10 @@ Items are roughly ordered by priority but nothing here is a firm commitment or t
 
 Known defects and hardening work, in the order they should be tackled. These come ahead of new features.
 
-### Maintainability — next up (v2.5.0)
-- Split `server/index.js` into route modules and `src/IPAddressManager.jsx` into components. Planned as a pure code-movement release with no behaviour change, so that any smoke-test failure unambiguously indicates a refactor mistake.
+### Maintainability — frontend split remains
+The server split shipped in v2.5.0. `src/IPAddressManager.jsx` (~9,400 lines) has not been split yet, and deliberately so: the smoke suite exercises the API, not the interface, so a frontend extraction can only be verified as far as "it still builds". The v2.5.0 server split turned up two path bugs that both a syntax check and a successful build would have missed — the equivalent mistakes in the frontend would reach users.
+
+Doing it safely needs one of: a component test setup, or extraction restricted to pure helpers and leaf components one at a time with manual checking between each.
 
 ### Performance — follows the split
 - **Memoise list rows** — a status poll re-renders every entry three times a minute because nothing below the root is memoised. Requires the card and row components to be extracted first, which is what the split does.
@@ -66,6 +68,7 @@ See [CHANGELOG.md](./CHANGELOG.md) for a full history of released features.
 
 | Version | Feature |
 |---------|---------|
+| v2.5.0 | Server split into lib/ and routes/ modules — pure code movement |
 | v2.4.0 | Command-injection fixes, bundle redaction, rate limiting, session expiry, three correctness bugs |
 | v2.3.0 | Full API-key compatibility, structured errors, capabilities endpoint |
 | v2.2.0 | Outbound notifications (ntfy/webhook), activity log, accessibility pass |

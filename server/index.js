@@ -4,7 +4,6 @@
 // ============================================================
 
 const express = require('express');
-const Database = require('better-sqlite3');
 const cookieParser = require('cookie-parser');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
@@ -13,8 +12,6 @@ const http  = require('http');
 const path = require('path');
 const fs = require('fs');
 const { exec, execFile } = require('child_process');
-
-const BCRYPT_ROUNDS = 12; // cost factor — ~300ms per hash on modest hardware
 
 // Installed version, read once from package.json (the single source of truth).
 const APP_VERSION = (() => {
@@ -30,238 +27,27 @@ app.use(express.json({ limit: '2mb' }));
 app.use(cookieParser());
 
 // ── Credentials ───────────────────────────────────────────────────────────────
-// Priority order:
-//   1. IP_MANAGER_USERNAME / IP_MANAGER_PASSWORD environment variables
-//   2. credentials.env file (path overridable via CREDENTIALS_FILE env var)
-//   3a. File exists but is empty/invalid → existing install upgrading from old
-//       version — fall back to admin/admin. The lockout middleware (below) will
-//       force the user to set a real password through the UI on next login.
-//   3b. File does not exist at all → fresh install — generate a unique random
-//       password, persist it, and log it to the service journal.
+// See lib/credentials.js — loading, the bcrypt migration, and the live pair.
 
-// Resolve the credentials file path once at startup.
-const CREDENTIALS_FILE = process.env.CREDENTIALS_FILE || path.join(__dirname, 'credentials.env');
+const {
+  BCRYPT_ROUNDS, CREDENTIALS_FILE, reloadCredentials,
+  getCredentials, setCredentials, isDefaultCreds,
+} = require('./lib/credentials');
 
-function loadCredentials() {
-  // ── 1. Environment variable override (highest priority) ──────────────────────
-  if (process.env.IP_MANAGER_USERNAME && process.env.IP_MANAGER_PASSWORD) {
-    return {
-      username: process.env.IP_MANAGER_USERNAME,
-      password: process.env.IP_MANAGER_PASSWORD,
-    };
-  }
+// ── Sessions and login rate limiting ──────────────────────────────────────────
+// See lib/sessions.js — in-memory session store with sliding expiry, and a
+// per-address failed-login throttle.
 
-  const envFile = CREDENTIALS_FILE;
-
-  // ── 2. credentials.env exists ─────────────────────────────────────────────────
-  if (fs.existsSync(envFile)) {
-    const lines = fs.readFileSync(envFile, 'utf8').split('\n');
-    const env = {};
-    lines.forEach(line => {
-      if (line.startsWith('#')) return; // skip comment lines
-      const [k, ...rest] = line.split('=');
-      if (k && rest.length) env[k.trim()] = rest.join('=').trim();
-    });
-
-    if (env.IP_MANAGER_USERNAME && env.IP_MANAGER_PASSWORD) {
-      const username = env.IP_MANAGER_USERNAME;
-      const storedPassword = env.IP_MANAGER_PASSWORD;
-
-      // ── Bcrypt migration (v2.0.0+) ──────────────────────────────────────────
-      // If the password is plaintext (not a bcrypt hash), hash it now and
-      // rewrite the file. Runs once per install on first start after upgrade.
-      // The user logs in with the same password — nothing changes for them.
-      if (!storedPassword.startsWith('$2')) {
-        console.log('[auth] Migrating plaintext password to bcrypt hash (one-time upgrade to v2.0.0)…');
-        const hashed = bcrypt.hashSync(storedPassword, BCRYPT_ROUNDS);
-        const content = `# IP Manager credentials — password is bcrypt-hashed (v2.0.0+)\nIP_MANAGER_USERNAME=${username}\nIP_MANAGER_PASSWORD=${hashed}\n`;
-        try {
-          fs.writeFileSync(envFile, content, { mode: 0o600 });
-          console.log('[auth] Password hashed and saved successfully.');
-        } catch (e) {
-          console.error(`[auth] Could not write hashed credentials (${envFile}): ${e.message}`);
-        }
-        return { username, password: hashed };
-      }
-
-      // ── Double-hash recovery (v2.0.1) ────────────────────────────────────────
-      // A bug in v2.0.0 caused bcryptjs's $2a$ hashes to be mistaken for
-      // plaintext and re-hashed on every login attempt, producing a hash-of-hash
-      // that no real password can ever match. Detect this by checking whether the
-      // stored hash is itself a bcrypt hash of another bcrypt hash — i.e. the
-      // 60-char $2... value starts with the prefix bcrypt uses for its own output.
-      // We can't reverse a hash-of-hash, so generate a fresh password and log it.
-      if (bcrypt.getRounds(storedPassword) && bcrypt.compareSync(storedPassword.substring(0, 72), storedPassword)) {
-        // The stored "hash" successfully verifies against the first 72 chars of
-        // itself — a hallmark of a hash-of-hash. Generate fresh credentials.
-        console.error('[auth] WARNING: double-hashed password detected (v2.0.0 bug). Generating new credentials…');
-        const newPlain = crypto.randomBytes(12).toString('base64url');
-        const newHash  = bcrypt.hashSync(newPlain, BCRYPT_ROUNDS);
-        const content  = `# IP Manager credentials — password is bcrypt-hashed (v2.0.0+)\nIP_MANAGER_USERNAME=${username}\nIP_MANAGER_PASSWORD=${newHash}\n`;
-        try { fs.writeFileSync(envFile, content, { mode: 0o600 }); } catch (e) { /* best effort */ }
-        console.log('═══════════════════════════════════════════════════════════════');
-        console.log(' IP Manager — NEW credentials generated (v2.0.0 double-hash recovery)');
-        console.log(`   username : ${username}`);
-        console.log(`   password : ${newPlain}`);
-        console.log(' Log in with these credentials, then change your password in Settings.');
-        console.log(' To retrieve later:');
-        console.log('   journalctl -u ip-manager-api | grep -A5 "double-hash recovery"');
-        console.log('═══════════════════════════════════════════════════════════════');
-        return { username, password: newHash };
-      }
-
-      return { username, password: storedPassword };
-    }
-
-    // File exists but contains no valid credentials — pre-v1.29 install that
-    // had an empty file created by install.sh. Fall back to admin/admin so the
-    // lockout middleware can prompt the user to set a real password.
-    console.warn('[auth] credentials.env exists but contains no credentials — treating as admin/admin. Login will require a password change.');
-    return { username: 'admin', password: 'admin' };
-  }
-
-  // ── 3. No file — genuine first run ───────────────────────────────────────────
-  // Generate a unique random password, hash it before writing to disk, and
-  // log the plaintext once to the journal for the user to retrieve.
-  // Recovery: journalctl -u ip-manager-api | grep -A5 "initial credentials"
-  const username = 'admin';
-  const plainPassword = crypto.randomBytes(12).toString('base64url'); // 96-bit, URL-safe
-  const hashedPassword = bcrypt.hashSync(plainPassword, BCRYPT_ROUNDS);
-  try {
-    const content = `# IP Manager credentials — password is bcrypt-hashed (v2.0.0+)\nIP_MANAGER_USERNAME=${username}\nIP_MANAGER_PASSWORD=${hashedPassword}\n`;
-    fs.writeFileSync(envFile, content, { mode: 0o600 });
-  } catch (e) {
-    console.error(`[auth] Could not write credentials file (${envFile}): ${e.message}`);
-  }
-  console.log('═══════════════════════════════════════════════════════════════');
-  console.log(' IP Manager — initial credentials (change after first login):');
-  console.log(`   username : ${username}`);
-  console.log(`   password : ${plainPassword}`);
-  console.log(' Saved to: ' + envFile + ' (password stored as bcrypt hash)');
-  console.log(' To retrieve later:');
-  console.log('   journalctl -u ip-manager-api | grep -A5 "initial credentials"');
-  console.log('═══════════════════════════════════════════════════════════════');
-  return { username, password: hashedPassword };
-}
-
-let credentials = loadCredentials();
-
-// ── Session store ─────────────────────────────────────────────────────────────
-// Simple in-memory map of token → expiry. Sessions are cleared on server restart.
-
-const SESSION_COOKIE = 'ip-manager-session';
-const sessions = new Map(); // token → { expires, lastSeen }
-
-// Sessions used to live until the server restarted, and the map grew without
-// bound. They now expire on a sliding window: active use keeps a session alive,
-// but one left idle is discarded. Both values are generous — this is a home
-// network tool, and being logged out mid-task is its own kind of failure.
-const SESSION_IDLE_MS     = 7  * 24 * 60 * 60 * 1000; // 7 days without use
-const SESSION_ABSOLUTE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days regardless
-const SESSION_SWEEP_MS    = 60 * 60 * 1000;           // tidy up hourly
-
-function createSession() {
-  const token = crypto.randomBytes(32).toString('hex');
-  const now = Date.now();
-  sessions.set(token, { expires: now + SESSION_ABSOLUTE_MS, lastSeen: now });
-  return token;
-}
-
-function isValidSession(token) {
-  if (!token) return false;
-  const session = sessions.get(token);
-  if (!session) return false;
-
-  const now = Date.now();
-  if (now > session.expires || now - session.lastSeen > SESSION_IDLE_MS) {
-    sessions.delete(token);
-    return false;
-  }
-  session.lastSeen = now; // sliding window: using the app keeps you signed in
-  return true;
-}
-
-// Periodic sweep so expired entries are released even if nothing touches them.
-setInterval(() => {
-  const now = Date.now();
-  for (const [token, session] of sessions) {
-    if (now > session.expires || now - session.lastSeen > SESSION_IDLE_MS) sessions.delete(token);
-  }
-}, SESSION_SWEEP_MS).unref?.();
-
-// ── Login rate limiting ──────────────────────────────────────────────────────
-// Failed sign-ins are tracked per source address. Deliberately in memory only:
-// a restart clears every counter, so a misconfiguration can never permanently
-// lock anyone out. Successful sign-in clears that address immediately.
-const LOGIN_MAX_ATTEMPTS = 10;                 // failures before throttling
-const LOGIN_WINDOW_MS    = 15 * 60 * 1000;     // rolling window
-const LOGIN_LOCKOUT_MS   = 15 * 60 * 1000;     // how long throttling lasts
-const loginAttempts = new Map();               // ip → { count, first, blockedUntil }
-
-function loginClientIp(req) {
-  const fwd = req.headers['x-forwarded-for'];
-  if (fwd) return String(fwd).split(',')[0].trim();
-  return req.socket?.remoteAddress || 'unknown';
-}
-
-function loginThrottleStatus(req) {
-  const record = loginAttempts.get(loginClientIp(req));
-  if (!record) return null;
-  const now = Date.now();
-  if (record.blockedUntil && now < record.blockedUntil) {
-    return { retryAfterSeconds: Math.ceil((record.blockedUntil - now) / 1000) };
-  }
-  return null;
-}
-
-function recordLoginFailure(req) {
-  const ip = loginClientIp(req);
-  const now = Date.now();
-  const record = loginAttempts.get(ip);
-
-  if (!record || now - record.first > LOGIN_WINDOW_MS) {
-    loginAttempts.set(ip, { count: 1, first: now, blockedUntil: 0 });
-    return;
-  }
-  record.count += 1;
-  if (record.count >= LOGIN_MAX_ATTEMPTS) {
-    record.blockedUntil = now + LOGIN_LOCKOUT_MS;
-    record.count = 0;
-    record.first = now;
-    console.warn(`[auth] Too many failed sign-ins from ${ip} — throttled for ${LOGIN_LOCKOUT_MS / 60000} minutes`);
-  }
-}
-
-function clearLoginFailures(req) {
-  loginAttempts.delete(loginClientIp(req));
-}
-
-// Keep the attempt map from growing: drop records nothing has touched.
-setInterval(() => {
-  const now = Date.now();
-  for (const [ip, record] of loginAttempts) {
-    const idle = now - record.first > LOGIN_WINDOW_MS;
-    const unblocked = !record.blockedUntil || now > record.blockedUntil;
-    if (idle && unblocked) loginAttempts.delete(ip);
-  }
-}, SESSION_SWEEP_MS).unref?.();
+const {
+  SESSION_COOKIE, createSession, isValidSession, destroySession, clearAllSessions,
+  loginThrottleStatus, recordLoginFailure, clearLoginFailures,
+} = require('./lib/sessions');
 
 // ── Auth middleware ───────────────────────────────────────────────────────────
 // Applied to all /api/* routes except /api/auth/*
 
-// Structured error responses. Every API failure returns the same shape so a
-// client can show something useful without parsing prose:
-//   { "error": "Short error", "message": "Human-readable explanation" }
-function apiError(res, status, error, message) {
-  return res.status(status).json({ error, message });
-}
-
-// Cache timestamps are exposed to clients as Unix seconds, and countdowns as
-// seconds, rather than the milliseconds used internally. Clients schedule
-// refreshes off these values, so the unit has to be unambiguous.
-const toEpochSeconds = (ms) => (ms ? Math.floor(ms / 1000) : 0);
-const toSecondsRemaining = (intervalMs, sinceMs) =>
-  Math.max(0, Math.round((intervalMs - (Date.now() - sinceMs)) / 1000));
+const { apiError, toEpochSeconds, toSecondsRemaining } = require('./lib/http');
+const { getDomains, saveDomains } = require('./lib/domainStore');
 
 function requireAuth(req, res, next) {
   if (isValidSession(req.cookies[SESSION_COOKIE])) return next();
@@ -278,14 +64,6 @@ function requireAuth(req, res, next) {
 // If the live credentials are still admin/admin, every API route except
 // /api/auth/* returns 423 Locked until the password is changed.
 // This catches old installs that haven't yet migrated away from the default.
-
-function isDefaultCreds() {
-  // Handles both plaintext 'admin' (pre-v2.0 fallback path) and bcrypt hash of 'admin'
-  if (credentials.username !== 'admin') return false;
-  if (credentials.password === 'admin') return true;
-  if (credentials.password.startsWith('$2')) return bcrypt.compareSync('admin', credentials.password);
-  return false;
-}
 
 function requireNotDefault(req, res, next) {
   if (isDefaultCreds()) {
@@ -309,7 +87,7 @@ app.post('/api/auth/login', (req, res) => {
 
   // Reload credentials on each login attempt so changes to credentials.env
   // take effect without restarting the server
-  credentials = loadCredentials();
+  const credentials = reloadCredentials();
   const { username, password } = req.body || {};
   // Username comparison is case-insensitive; password remains case-sensitive.
   const passwordMatch = credentials.password.startsWith('$2')
@@ -335,7 +113,7 @@ app.post('/api/auth/login', (req, res) => {
 
 app.post('/api/auth/logout', (req, res) => {
   const token = req.cookies[SESSION_COOKIE];
-  if (token) sessions.delete(token);
+  if (token) destroySession(token);
   res.clearCookie(SESSION_COOKIE);
   res.json({ ok: true });
 });
@@ -355,7 +133,7 @@ app.post('/api/auth/change-password', (req, res) => {
     return res.status(400).json({ error: 'currentPassword, newUsername and newPassword are required' });
   }
   // Reload to pick up any manual edits to credentials.env
-  credentials = loadCredentials();
+  const credentials = reloadCredentials();
   const currentMatch = credentials.password.startsWith('$2')
     ? bcrypt.compareSync(currentPassword, credentials.password)
     : currentPassword === credentials.password; // fallback for admin/admin pre-migration path
@@ -368,10 +146,10 @@ app.post('/api/auth/change-password', (req, res) => {
   const content = `# IP Manager credentials — password is bcrypt-hashed (v2.0.0+)\nIP_MANAGER_USERNAME=${newUsername}\nIP_MANAGER_PASSWORD=${hashedNew}\n`;
   try {
     fs.writeFileSync(envFile, content, 'utf8');
-    credentials = { username: newUsername, password: hashedNew };
+    setCredentials({ username: newUsername, password: hashedNew });
     recordEvent({ type: 'auth.password_changed', message: `Credentials changed (username: ${newUsername})`, req });
     // Invalidate all existing sessions so everyone must re-login
-    sessions.clear();
+    clearAllSessions();
     res.clearCookie(SESSION_COOKIE);
     res.json({ ok: true });
   } catch (err) {
@@ -541,27 +319,10 @@ app.post('/api/proxmox/discover', requireNotDefault, requireAuth, async (req, re
   }
 });
 
-// ── Database setup ────────────────────────────────────────────────────────────
+// ── Database ──────────────────────────────────────────────────────────────────
+// See lib/db.js — a single key/value store table holding JSON values.
 
-const DB_PATH = path.join(__dirname, 'ip-manager.db');
-const db = new Database(DB_PATH);
-
-// Single key/value store table — simple and flexible
-db.exec(`
-  CREATE TABLE IF NOT EXISTS store (
-    key   TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-  )
-`);
-
-const dbGet = (key) => {
-  const row = db.prepare('SELECT value FROM store WHERE key = ?').get(key);
-  return row ? JSON.parse(row.value) : null;
-};
-
-const dbSet = (key, value) => {
-  db.prepare('INSERT OR REPLACE INTO store (key, value) VALUES (?, ?)').run(key, JSON.stringify(value));
-};
+const { db, dbGet, dbSet, DB_PATH } = require('./lib/db');
 
 // ── One-time data migration ───────────────────────────────────────────────────
 // Extracts the "VMID: X | Node: Y | Status: Z" system metadata that was
@@ -602,224 +363,24 @@ const dbSet = (key, value) => {
 })();
 
 // ── Events: audit log and outbound notifications ──────────────────────────────
-// One path for anything worth recording. recordEvent() appends to a capped
-// audit log and, if the event type is enabled, pushes a notification out to a
-// webhook or an ntfy topic. Everything is best-effort: a failing webhook must
-// never break the request that triggered it.
+// See lib/events.js — recordEvent() writes to the audit log and dispatches
+// notifications for the event types the user has enabled.
 
-const AUDIT_LIMIT = 500; // entries kept; oldest are discarded
+const {
+  AUDIT_LIMIT, NOTIFY_EVENTS, getNotificationConfig, getAuditLog,
+  recordEvent, dispatchNotification,
+} = require('./lib/events');
 
-const NOTIFY_EVENTS = {
-  'device.offline':  'A tracked device stops responding to ping',
-  'device.online':   'A device that was offline comes back',
-  'health.down':     'A service health check starts failing',
-  'health.up':       'A failing health check recovers',
-  'domain.expiring': 'A tracked domain is within 30 days of expiry',
-  'backup.failed':   'A scheduled cloud backup fails',
-  'update.completed':'An app update finishes',
-  'auth.login.failed': 'A failed login attempt',
-};
-
-const defaultNotificationConfig = () => ({
-  enabled: false,
-  type: 'ntfy',            // 'ntfy' | 'webhook'
-  url: '',
-  events: Object.fromEntries(Object.keys(NOTIFY_EVENTS).map((k) => [
-    k, ['device.offline', 'health.down', 'domain.expiring', 'backup.failed'].includes(k),
-  ])),
-  minOfflineCycles: 2,     // consecutive failed cycles before alerting (flap guard)
-});
-
-function getNotificationConfig() {
-  return { ...defaultNotificationConfig(), ...(dbGet('notification_config') || {}) };
-}
-
-function getAuditLog() { return dbGet('audit_log') || []; }
-
-/**
- * Record something noteworthy.
- *   type     dot-separated event id, e.g. 'auth.login.failed'
- *   message  human-readable one-liner
- *   meta     optional structured detail
- *   req      optional request, used to record the actor and source IP
- */
-function recordEvent({ type, message, meta = {}, req = null }) {
-  const event = {
-    id: crypto.randomUUID(),
-    ts: new Date().toISOString(),
-    type,
-    message,
-    meta,
-    actor: req ? (req.apiKey ? `key:${req.apiKey.label}` : 'session') : 'system',
-    source: req ? (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || null) : null,
-  };
-
-  try {
-    const log = getAuditLog();
-    log.unshift(event);
-    dbSet('audit_log', log.slice(0, AUDIT_LIMIT));
-  } catch (e) {
-    console.error(`[audit] Could not write audit entry: ${e.message}`);
-  }
-
-  dispatchNotification(event);
-  return event;
-}
-
-// Fire-and-forget delivery. Never throws into the caller.
-function dispatchNotification(event) {
-  let cfg;
-  try { cfg = getNotificationConfig(); } catch { return; }
-  if (!cfg.enabled || !cfg.url) return;
-  if (!cfg.events || !cfg.events[event.type]) return;
-
-  const priority = ['device.offline', 'health.down', 'backup.failed'].includes(event.type) ? 'high' : 'default';
-
-  try {
-    const target = new URL(cfg.url);
-    const lib = target.protocol === 'http:' ? http : https;
-
-    let body, headers;
-    if (cfg.type === 'ntfy') {
-      body = event.message;
-      headers = {
-        'Content-Type': 'text/plain; charset=utf-8',
-        'Title': 'IP Manager',
-        'Priority': priority,
-        'Tags': event.type.startsWith('device') ? 'satellite' : 'warning',
-      };
-    } else {
-      body = JSON.stringify({
-        type: event.type,
-        message: event.message,
-        meta: event.meta,
-        timestamp: event.ts,
-        source: 'ip-manager',
-      });
-      headers = { 'Content-Type': 'application/json' };
-    }
-
-    const payload = Buffer.from(body, 'utf8');
-    headers['Content-Length'] = payload.length;
-
-    const request = lib.request({
-      hostname: target.hostname,
-      port: target.port || (target.protocol === 'http:' ? 80 : 443),
-      path: target.pathname + target.search,
-      method: 'POST',
-      headers,
-      timeout: 8000,
-    }, (res) => {
-      res.resume(); // drain
-      if (res.statusCode >= 400) {
-        console.warn(`[notify] ${cfg.type} responded ${res.statusCode} for ${event.type}`);
-      }
-    });
-
-    request.on('timeout', () => { request.destroy(new Error('timeout')); });
-    request.on('error', (err) => console.warn(`[notify] delivery failed for ${event.type}: ${err.message}`));
-    request.write(payload);
-    request.end();
-  } catch (err) {
-    console.warn(`[notify] could not dispatch ${event.type}: ${err.message}`);
-  }
-}
 
 // ── API keys ──────────────────────────────────────────────────────────────────
-// Named, scoped keys let external clients (the iOS app, Home Assistant, scripts)
-// talk to the API without handling the account password. Each key can be revoked
-// on its own, so losing a phone does not mean rotating every other integration.
-//
-// Stored as: [{ id, label, key, scope, createdAt, lastUsedAt }]
-//   scope 'read'  → GET requests only
-//   scope 'write' → all methods (implies read)
-//
-// Keys are bearer credentials. They grant whatever their scope allows, with no
-// expiry, so they are compared in constant time, never accepted as a query
-// parameter on writes (query strings are recorded in Nginx access logs), and
-// refused outright on the account-management routes listed below.
+// See lib/apikeys.js — the named key store, scope enforcement, and the
+// one-time migration of the standalone Home Assistant key.
 
-const API_KEY_SESSION_ONLY = [
-  '/auth', '/keys', '/update', '/support', '/backup', '/ha/key',
-  // The audit log records failed-login usernames and source addresses, and the
-  // notification config could be repointed at a destination of the caller's
-  // choosing. Both stay behind a browser session.
-  '/audit-log', '/notifications',
-];
+const {
+  API_KEY_SESSION_ONLY, getApiKeys, setApiKeys, generateApiKey,
+  touchApiKey, checkApiKey,
+} = require('./lib/apikeys');
 
-const getApiKeys = () => dbGet('api_keys') || [];
-const setApiKeys = (keys) => dbSet('api_keys', keys);
-
-function generateApiKey() {
-  return crypto.randomBytes(24).toString('base64url'); // 192-bit, URL-safe
-}
-
-function safeEqual(a, b) {
-  const ab = Buffer.from(String(a));
-  const bb = Buffer.from(String(b));
-  if (ab.length !== bb.length) return false;
-  return crypto.timingSafeEqual(ab, bb);
-}
-
-function findApiKey(candidate) {
-  if (!candidate) return null;
-  return getApiKeys().find((k) => safeEqual(k.key, candidate)) || null;
-}
-
-// Record last use, but at most once a minute per key — otherwise a 60-second
-// Home Assistant poll would mean a database write on every request.
-function touchApiKey(id) {
-  const keys = getApiKeys();
-  const entry = keys.find((k) => k.id === id);
-  if (!entry) return;
-  const now = Date.now();
-  if (entry.lastUsedAt && now - new Date(entry.lastUsedAt).getTime() < 60000) return;
-  entry.lastUsedAt = new Date(now).toISOString();
-  setApiKeys(keys);
-}
-
-// Returns null when no key was presented, otherwise an outcome object.
-function checkApiKey(req) {
-  const headerKey = req.headers['x-api-key'];
-  const queryKey  = req.query.api_key;
-  const candidate = headerKey || queryKey;
-  if (!candidate) return null;
-
-  const found = findApiKey(candidate);
-  if (!found) return { ok: false, status: 401, error: 'Invalid API key',
-    message: 'The supplied API key was not recognised. Check it in Settings → API Keys, or create a new one.' };
-
-  const isRead = req.method === 'GET' || req.method === 'HEAD';
-  if (!isRead && found.scope !== 'write') {
-    return { ok: false, status: 403, error: 'Read-only API key',
-      message: `The key "${found.label}" has read-only scope and cannot make changes. Give it read & write scope in Settings → API Keys, or use a different key.` };
-  }
-  if (!isRead && !headerKey) {
-    return { ok: false, status: 400, error: 'Key must be sent as a header',
-      message: 'Write requests must send the key in the X-API-Key header rather than an api_key query parameter, because query strings are recorded in access logs.' };
-  }
-  return { ok: true, key: found };
-}
-
-// One-time migration: fold the standalone Home Assistant key (v1.33–v2.0.x)
-// into the named key store as a read-scoped key, so existing Home Assistant
-// configurations keep working untouched.
-(function migrateHaKeyIntoApiKeys() {
-  const legacy = dbGet('ha_api_key');
-  if (!legacy) return;
-  const keys = getApiKeys();
-  if (keys.some((k) => k.key === legacy)) return;
-  keys.push({
-    id: crypto.randomUUID(),
-    label: 'Home Assistant',
-    key: legacy,
-    scope: 'read',
-    createdAt: new Date().toISOString(),
-    lastUsedAt: null,
-  });
-  setApiKeys(keys);
-  console.log('[api-keys] Existing Home Assistant key migrated into the named key store (scope: read).');
-})();
 
 // ── Protected routes ──────────────────────────────────────────────────────────
 // Everything below requires either a valid session cookie or a valid API key.
@@ -2300,289 +1861,8 @@ app.get('/api/dns-status', requireAuth, async (req, res) => {
   });
 });
 
-// ── Domain Tracker ────────────────────────────────────────────────────────────
-// Tracks domain expirations via RDAP (Registration Data Access Protocol)
-
-let rdapBootstrap = null; // { services: [[tlds], [urls]], fetchedAt }
-
-async function getRdapEndpoint(domain) {
-  // Fetch IANA RDAP bootstrap data if cache is >24h old
-  const now = Date.now();
-  if (!rdapBootstrap || (now - rdapBootstrap.fetchedAt) > 24 * 60 * 60 * 1000) {
-    try {
-      const data = await new Promise((resolve, reject) => {
-        https.get('https://data.iana.org/rdap/dns.json', (res) => {
-          let body = '';
-          res.on('data', chunk => body += chunk);
-          res.on('end', () => {
-            try {
-              resolve(JSON.parse(body));
-            } catch (e) {
-              reject(e);
-            }
-          });
-        }).on('error', reject);
-      });
-      rdapBootstrap = { services: data.services || [], fetchedAt: now };
-    } catch (err) {
-      console.error('[rdap] Failed to fetch bootstrap data:', err.message);
-      throw new Error('Could not fetch RDAP bootstrap data');
-    }
-  }
-
-  // Extract TLD from domain (handle subdomains)
-  const parts = domain.toLowerCase().split('.');
-  const tld = parts[parts.length - 1];
-
-  // Find matching entry in services array
-  for (const service of rdapBootstrap.services) {
-    const [tlds, urls] = service;
-    if (tlds && tlds.includes(tld) && urls && urls.length > 0) {
-      return urls[0];
-    }
-  }
-  throw new Error(`No RDAP endpoint found for TLD: ${tld}`);
-}
-
-// Fetch a URL following redirects, returning parsed JSON
-function rdapFetch(url, maxRedirects = 5) {
-  return new Promise((resolve, reject) => {
-    if (maxRedirects <= 0) return reject(new Error('Too many redirects'));
-    const lib = url.startsWith('http://') ? http : https;
-    lib.get(url, { headers: { 'Accept': 'application/rdap+json, application/json' } }, (res) => {
-      // Follow redirects
-      if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
-        res.resume();
-        const redirectUrl = res.headers.location.startsWith('http')
-          ? res.headers.location
-          : new URL(res.headers.location, url).href;
-        return resolve(rdapFetch(redirectUrl, maxRedirects - 1));
-      }
-      if (res.statusCode === 404) {
-        res.resume();
-        return reject(new Error(`Domain not found in registry (404)`));
-      }
-      if (res.statusCode !== 200) {
-        res.resume();
-        return reject(new Error(`HTTP ${res.statusCode} from RDAP server`));
-      }
-      let body = '';
-      res.on('data', chunk => body += chunk);
-      res.on('end', () => {
-        const trimmed = body.trim();
-        if (!trimmed) return reject(new Error('Empty response from RDAP server'));
-        try {
-          resolve(JSON.parse(trimmed));
-        } catch (e) {
-          reject(new Error('Invalid JSON from RDAP server'));
-        }
-      });
-    }).on('error', reject);
-  });
-}
-
-async function rdapLookup(domain) {
-  try {
-    const endpoint = await getRdapEndpoint(domain);
-    const url = `${endpoint.replace(/\/?$/, '/')}domain/${domain.toLowerCase()}`;
-
-    const data = await rdapFetch(url);
-
-    // Parse RDAP response
-    let expiry = null;
-    let registered = null;
-    let nameservers = [];
-    let registrar = null;
-    let registrarUrl = null;
-    let status = [];
-
-    if (data.events) {
-      const expiryEvent = data.events.find(e => e.eventAction === 'expiration');
-      if (expiryEvent && expiryEvent.eventDate) expiry = expiryEvent.eventDate;
-
-      const regEvent = data.events.find(e => e.eventAction === 'registration');
-      if (regEvent && regEvent.eventDate) registered = regEvent.eventDate;
-    }
-
-    if (data.nameservers) {
-      // Normalize to lowercase
-      nameservers = data.nameservers
-        .map(ns => (ns.ldhName || ns.unicodeName || '').toLowerCase())
-        .filter(Boolean);
-    }
-
-    if (data.entities) {
-      const registrarEntity = data.entities.find(e => e.roles && e.roles.includes('registrar'));
-      if (registrarEntity) {
-        // Parse vcardArray for human-readable name (fn) and URL first
-        if (registrarEntity.vcardArray && Array.isArray(registrarEntity.vcardArray[1])) {
-          const vcard = registrarEntity.vcardArray[1];
-          const fnEntry = vcard.find(item => Array.isArray(item) && item[0] === 'fn');
-          if (fnEntry && fnEntry[3]) registrar = fnEntry[3];
-          const urlEntry = vcard.find(item => Array.isArray(item) && item[0] === 'url');
-          if (urlEntry && urlEntry[3]) registrarUrl = urlEntry[3];
-        }
-        // Fall back to legalName, then handle (which may be a numeric IANA ID)
-        if (!registrar) registrar = registrarEntity.legalName || null;
-        // Only use handle if it looks like a name (not a pure number)
-        if (!registrar && registrarEntity.handle && !/^\d+$/.test(registrarEntity.handle)) {
-          registrar = registrarEntity.handle;
-        }
-      }
-    }
-
-    if (data.status) {
-      status = data.status;
-    }
-
-    return {
-      domain,
-      registrar: registrar || null,
-      registrarUrl: registrarUrl || null,
-      expiry,
-      registered,
-      nameservers,
-      status,
-      lastChecked: new Date().toISOString(),
-    };
-  } catch (err) {
-    throw new Error(`RDAP lookup failed for ${domain}: ${err.message}`);
-  }
-}
-
-// Domain storage helpers
-function getDomains() {
-  return dbGet('domains') || [];
-}
-
-function saveDomains(domains) {
-  dbSet('domains', domains);
-}
-
-// API endpoints for domains
-app.get('/api/domains', requireAuth, (req, res) => {
-  // Envelope for consistency with /api/ips and /api/networks.
-  res.json({ data: getDomains() });
-});
-
-app.post('/api/domains', requireAuth, async (req, res) => {
-  const { domain } = req.body || {};
-
-  // Basic domain validation
-  if (!domain || typeof domain !== 'string' || !/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*\.[a-z]{2,}$/i.test(domain)) {
-    return res.status(400).json({ error: 'Invalid domain format' });
-  }
-
-  const domains = getDomains();
-  const id = crypto.randomUUID();
-  let entry = { id, domain: domain.toLowerCase(), error: null };
-  let errorFlag = false;
-
-  try {
-    const result = await rdapLookup(domain);
-    entry = { ...entry, ...result, error: null };
-  } catch (err) {
-    errorFlag = true;
-    entry = {
-      ...entry,
-      registrar: null,
-      registrarUrl: null,
-      expiry: null,
-      registered: null,
-      nameservers: [],
-      status: [],
-      lastChecked: new Date().toISOString(),
-      error: err.message,
-    };
-  }
-
-  domains.push(entry);
-  saveDomains(domains);
-  res.json({ ...entry, errorFlag });
-});
-
-app.delete('/api/domains/:id', requireAuth, (req, res) => {
-  const { id } = req.params;
-  let domains = getDomains();
-  domains = domains.filter(d => d.id !== id);
-  saveDomains(domains);
-  res.json({ ok: true });
-});
-
-app.post('/api/domains/:id/refresh', requireAuth, async (req, res) => {
-  const { id } = req.params;
-  let domains = getDomains();
-  const index = domains.findIndex(d => d.id === id);
-
-  if (index === -1) {
-    return res.status(404).json({ error: 'Domain not found' });
-  }
-
-  const entry = domains[index];
-
-  try {
-    const result = await rdapLookup(entry.domain);
-    domains[index] = { ...entry, ...result, error: null };
-  } catch (err) {
-    domains[index] = {
-      ...entry,
-      lastChecked: new Date().toISOString(),
-      error: err.message,
-    };
-  }
-
-  saveDomains(domains);
-  res.json(domains[index]);
-});
-
-// Daily auto-refresh of domains
-async function refreshDomainsCache() {
-  const domains = getDomains();
-  console.log(`[domains] Starting auto-refresh of ${domains.length} domain(s)...`);
-
-  for (let i = 0; i < domains.length; i++) {
-    const entry = domains[i];
-    try {
-      const result = await rdapLookup(entry.domain);
-      domains[i] = { ...entry, ...result, error: null };
-    } catch (err) {
-      domains[i] = {
-        ...entry,
-        lastChecked: new Date().toISOString(),
-        error: err.message,
-      };
-    }
-    // Small delay to avoid hammering the RDAP server
-    await new Promise(resolve => setTimeout(resolve, 500));
-  }
-
-  saveDomains(domains);
-
-  // Alert once per refresh cycle for anything expiring within 30 days. The
-  // cycle runs daily, so this is a daily reminder rather than a per-poll spam.
-  try {
-    const now = Date.now();
-    for (const d of domains) {
-      if (!d.expiry) continue;
-      const days = Math.ceil((new Date(d.expiry) - now) / 86400000);
-      if (days >= 0 && days <= 30) {
-        recordEvent({
-          type: 'domain.expiring',
-          message: `${d.domain} expires in ${days} day${days === 1 ? '' : 's'}`,
-          meta: { domain: d.domain, daysUntilExpiry: days, expiry: d.expiry },
-        });
-      }
-    }
-  } catch (e) {
-    console.warn(`[notify] domain expiry check failed: ${e.message}`);
-  }
-
-  console.log('[domains] Auto-refresh complete');
-}
-
-// Auto-refresh every 24 hours
-const DOMAINS_INTERVAL = 24 * 60 * 60 * 1000;
-setInterval(refreshDomainsCache, DOMAINS_INTERVAL);
+// ── Domains routes — see routes/domains.js ──
+require('./routes/domains')(app, { dbGet, dbSet, recordEvent, requireAuth });
 
 // ── ARP Presence API ──────────────────────────────────────────────────────────
 // Settings and status for "Last Seen Timestamps" and "Background Discovery Scan"
@@ -2731,262 +2011,8 @@ app.get('/api/mac/vendor', requireAuth, (req, res) => {
   res.json({ mac, vendor: vendor || null });
 });
 
-// ── Cloud Backup ──────────────────────────────────────────────────────────────
-// Uses rclone for cloud storage (S3-compatible, SFTP, Dropbox, Google Drive).
-// rclone config is stored at server/rclone.conf (owned by www-data, mode 600).
-// Scheduling is handled in-process with setTimeout (no system cron needed).
-
-const RCLONE_CONF = path.join(__dirname, 'rclone.conf');
-
-function getBackupConfig() {
-  return dbGet('backup_config') || {
-    enabled:     false,
-    schedule:    'daily',   // 'daily' | 'weekly' | 'manual'
-    time:        '02:00',
-    dayOfWeek:   0,         // 0=Sunday … 6=Saturday (weekly only)
-    remoteName:  '',
-    remotePath:  'ip-manager-backups/',
-    retention:   7,
-    lastRun:     null,
-    lastStatus:  null,      // 'ok' | 'error'
-    lastError:   null,
-  };
-}
-
-function isRcloneAvailable() {
-  try { require('child_process').execSync('which rclone', { timeout: 3000 }); return true; }
-  catch { return false; }
-}
-
-// Build the backup payload (same schema as the manual browser backup)
-function buildBackupPayload() {
-  return JSON.stringify({
-    version:    '1.8',
-    exportedAt: new Date().toISOString(),
-    networks:   dbGet('networks')  || [],
-    ipData:     dbGet('ip_data')   || [],
-  }, null, 2);
-}
-
-let backupTimer   = null;
-let backupRunning = false;
-
-// Delete files in a remote path that exceed the retention count.
-// File names embed a sortable timestamp so lexicographic order = age order.
-async function pruneOldBackups(remoteName, remotePath) {
-  const retention = getBackupConfig().retention;
-  if (!retention || retention <= 0) return;
-  return new Promise((resolve) => {
-    execFile('rclone', ['--config', RCLONE_CONF, 'lsf', `${remoteName}:${remotePath}`],
-      { timeout: 20000 }, (err, stdout) => {
-        if (err) return resolve();
-        const files = stdout.trim().split('\n')
-          .map(f => f.trim())
-          .filter(f => f.startsWith('ip-manager-backup-') && f.endsWith('.json'))
-          .sort(); // lexicographic = chronological for our filename format
-        if (files.length <= retention) return resolve();
-        const toDelete = files.slice(0, files.length - retention);
-        let pending = toDelete.length;
-        if (!pending) return resolve();
-        toDelete.forEach(file => {
-          execFile('rclone', ['--config', RCLONE_CONF, 'deletefile', `${remoteName}:${remotePath}${file}`],
-            { timeout: 15000 }, () => { if (--pending === 0) resolve(); });
-        });
-      });
-  });
-}
-
-async function runBackup() {
-  if (backupRunning) return { ok: false, message: 'Backup already running' };
-  const config = getBackupConfig();
-  if (!config.remoteName) return { ok: false, message: 'No remote configured' };
-  if (!isRcloneAvailable()) return { ok: false, message: 'rclone not installed' };
-
-  backupRunning = true;
-  const ts      = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 19);
-  const fname   = `ip-manager-backup-${ts}.json`;
-  const tmpFile = `/tmp/${fname}`;
-  const remotePath = config.remotePath.endsWith('/') ? config.remotePath : config.remotePath + '/';
-
-  try {
-    fs.writeFileSync(tmpFile, buildBackupPayload());
-
-    await new Promise((resolve, reject) => {
-      execFile('rclone', ['--config', RCLONE_CONF, 'copy', tmpFile,
-        `${config.remoteName}:${remotePath}`, '--log-level', 'ERROR'],
-        { timeout: 60000 }, (err, _out, stderr) => {
-          err ? reject(new Error((stderr || err.message).trim())) : resolve();
-        });
-    });
-
-    await pruneOldBackups(config.remoteName, remotePath);
-
-    const now     = new Date().toISOString();
-    const updated = { ...config, lastRun: now, lastStatus: 'ok', lastError: null };
-    dbSet('backup_config', updated);
-    console.log(`[backup] Uploaded ${fname} → ${config.remoteName}:${remotePath}`);
-    return { ok: true };
-  } catch (err) {
-    const now     = new Date().toISOString();
-    const updated = { ...config, lastRun: now, lastStatus: 'error', lastError: err.message };
-    dbSet('backup_config', updated);
-    console.error('[backup] Failed:', err.message);
-    return { ok: false, message: err.message };
-  } finally {
-    backupRunning = false;
-    try { fs.unlinkSync(tmpFile); } catch {}
-  }
-}
-
-function scheduleBackup() {
-  if (backupTimer) { clearTimeout(backupTimer); backupTimer = null; }
-  const config = getBackupConfig();
-  if (!config.enabled || !config.remoteName || config.schedule === 'manual') return;
-
-  const now  = new Date();
-  const [h, m] = (config.time || '02:00').split(':').map(Number);
-  const next = new Date(now);
-  next.setHours(h, m, 0, 0);
-  if (next <= now) next.setDate(next.getDate() + 1);
-
-  if (config.schedule === 'weekly') {
-    const target = config.dayOfWeek ?? 0;
-    while (next.getDay() !== target) next.setDate(next.getDate() + 1);
-  }
-
-  const delay = next - now;
-  console.log(`[backup] Next run: ${next.toISOString()} (in ${Math.round(delay / 60000)} min)`);
-  backupTimer = setTimeout(async () => {
-    await runBackup();
-    scheduleBackup(); // reschedule for next run
-  }, delay);
-}
-
-// GET /api/backup/config
-app.get('/api/backup/config', requireAuth, (req, res) => {
-  const c = getBackupConfig();
-  res.json({ ...c, rcloneAvailable: isRcloneAvailable(), rcloneConfExists: fs.existsSync(RCLONE_CONF) });
-});
-
-// POST /api/backup/config — save and reschedule
-app.post('/api/backup/config', requireAuth, (req, res) => {
-  const { enabled, schedule, time, dayOfWeek, remoteName, remotePath, retention } = req.body || {};
-  const updated = {
-    ...getBackupConfig(),
-    enabled:    enabled === true,
-    schedule:   ['daily', 'weekly', 'manual'].includes(schedule) ? schedule : 'daily',
-    time:       /^\d{1,2}:\d{2}$/.test(time) ? time : '02:00',
-    dayOfWeek:  Math.min(6, Math.max(0, parseInt(dayOfWeek) || 0)),
-    remoteName: (remoteName || '').trim(),
-    remotePath: (remotePath || 'ip-manager-backups/').trim(),
-    retention:  Math.max(0, parseInt(retention) || 7),
-  };
-  dbSet('backup_config', updated);
-  scheduleBackup();
-  res.json({ ok: true });
-});
-
-// GET /api/backup/status
-app.get('/api/backup/status', requireAuth, (req, res) => {
-  const c = getBackupConfig();
-  res.json({ running: backupRunning, lastRun: c.lastRun, lastStatus: c.lastStatus, lastError: c.lastError });
-});
-
-// POST /api/backup/run — manual trigger (fire-and-forget; poll /status)
-app.post('/api/backup/run', requireAuth, (req, res) => {
-  if (backupRunning) return res.json({ ok: false, message: 'Backup already running' });
-  res.json({ ok: true, message: 'Backup started' });
-  runBackup();
-});
-
-// GET /api/backup/remotes — list rclone remotes from rclone.conf
-app.get('/api/backup/remotes', requireAuth, (req, res) => {
-  if (!fs.existsSync(RCLONE_CONF)) return res.json({ remotes: [] });
-  execFile('rclone', ['--config', RCLONE_CONF, 'listremotes'], { timeout: 8000 }, (err, stdout) => {
-    if (err) return res.json({ remotes: [] });
-    const remotes = stdout.trim().split('\n').filter(r => r.endsWith(':')).map(r => r.slice(0, -1));
-    res.json({ remotes });
-  });
-});
-
-// POST /api/backup/configure-remote — write rclone config section for GUI-configurable providers
-app.post('/api/backup/configure-remote', requireAuth, (req, res) => {
-  const { provider, name, config: cfg } = req.body || {};
-  if (!name || !provider) return res.status(400).json({ error: 'name and provider required' });
-
-  const remoteName = name.replace(/[^a-zA-Z0-9_-]/g, '-');
-  let lines = [];
-
-  if (provider === 's3') {
-    const { accessKey, secretKey, endpoint, region, s3Provider } = cfg || {};
-    lines = [
-      `[${remoteName}]`, `type = s3`,
-      `provider = ${s3Provider || 'Other'}`,
-      `access_key_id = ${(accessKey || '').trim()}`,
-      `secret_access_key = ${(secretKey || '').trim()}`,
-    ];
-    if (endpoint && endpoint.trim()) lines.push(`endpoint = ${endpoint.trim()}`);
-    if (region  && region.trim())   lines.push(`region = ${region.trim()}`);
-  } else if (provider === 'sftp') {
-    const { host, port, user, password } = cfg || {};
-    // Obscure the password using rclone's own tool (XOR-based, reversible)
-    let obscuredPass = '';
-    if (password) {
-      try {
-        // execFileSync — the password is passed as an argument, never through a
-        // shell. JSON.stringify quotes for JavaScript, not for sh: a password
-        // containing $(...) or backticks would previously have been executed.
-        obscuredPass = require('child_process')
-          .execFileSync('rclone', ['obscure', password], { timeout: 5000 })
-          .toString().trim();
-      } catch { obscuredPass = password; }
-    }
-    lines = [
-      `[${remoteName}]`, `type = sftp`,
-      `host = ${(host || '').trim()}`,
-      `port = ${parseInt(port) || 22}`,
-      `user = ${(user || '').trim()}`,
-    ];
-    if (obscuredPass) lines.push(`pass = ${obscuredPass}`);
-  } else if (provider === 'local') {
-    const { localPath } = cfg || {};
-    lines = [`[${remoteName}]`, `type = alias`, `remote = ${(localPath || '/mnt/backup').trim()}`];
-  } else if (provider === 'dropbox' || provider === 'gdrive') {
-    // OAuth providers: token pasted in by the user
-    const { token } = cfg || {};
-    if (!token) return res.status(400).json({ error: 'token required for OAuth providers' });
-    const rcloneType = provider === 'gdrive' ? 'drive' : 'dropbox';
-    lines = [`[${remoteName}]`, `type = ${rcloneType}`, `token = ${token.trim()}`];
-    if (provider === 'gdrive') lines.push('scope = drive.file');
-  } else {
-    return res.status(400).json({ error: `Unknown provider: ${provider}` });
-  }
-
-  // Merge into existing config file — replace any section with the same name
-  let existing = fs.existsSync(RCLONE_CONF) ? fs.readFileSync(RCLONE_CONF, 'utf8') : '';
-  // Strip the old section (everything from [remoteName] to the next [ or EOF)
-  existing = existing.replace(new RegExp(`\\[${remoteName}\\][^\\[]*`, 'g'), '').trim();
-  const newConf = (existing ? existing + '\n\n' : '') + lines.join('\n') + '\n';
-  fs.writeFileSync(RCLONE_CONF, newConf, { mode: 0o600 });
-
-  res.json({ ok: true, remoteName });
-});
-
-// POST /api/backup/test — verify rclone can reach the configured remote
-app.post('/api/backup/test', requireAuth, (req, res) => {
-  const { remoteName, remotePath } = req.body || {};
-  if (!remoteName) return res.status(400).json({ error: 'remoteName required' });
-  if (!fs.existsSync(RCLONE_CONF)) return res.status(400).json({ error: 'No rclone config found — add a remote first' });
-  const dest = `${remoteName}:${(remotePath || '').trim()}`;
-  execFile('rclone', ['--config', RCLONE_CONF, 'lsd', dest, '--max-depth', '1'],
-    { timeout: 20000 }, (err, _out, stderr) => {
-      if (err) return res.json({ ok: false, error: (stderr || err.message).trim() });
-      res.json({ ok: true });
-    });
-});
-
-// Restore backup schedule on server startup
-scheduleBackup();
+// ── Backup routes — see routes/backup.js ──
+require('./routes/backup')(app, { dbGet, dbSet, recordEvent, requireAuth });
 
 // ── Home Assistant API ────────────────────────────────────────────────────────
 // Read-only JSON API authenticated by a static API key.
@@ -3321,5 +2347,5 @@ const HOST = '127.0.0.1'; // only accessible via Nginx proxy, not directly from 
 app.listen(PORT, HOST, () => {
   console.log(`IP Manager API listening on ${HOST}:${PORT}`);
   console.log(`Database: ${DB_PATH}`);
-  console.log(`Auth: username="${credentials.username}"`);
+  console.log(`Auth: username="${getCredentials().username}"`);
 });

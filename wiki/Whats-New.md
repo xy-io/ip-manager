@@ -4,6 +4,18 @@ For the full release history see the [CHANGELOG](https://github.com/xy-io/ip-man
 
 ---
 
+## v2.5.0 — Server code split
+
+Infrastructure only. **Nothing changes for you** — no new features, no behaviour changes, no data changes.
+
+`server/index.js` had reached 3,325 lines. Credentials, sessions, API keys, the event system, the database layer, and the Domain Tracker and cloud-backup routes now live in `server/lib/` and `server/routes/`, taking the main file down to about 2,350 lines. Everything else is byte-for-byte the same logic in a different file.
+
+The full 102-check smoke suite was run against the real server before the refactor and after every extraction step, with the results diffed each time. All identical.
+
+Worth knowing: the process caught a bug where moving credential loading into a subdirectory would have changed where the server looks for `credentials.env` — it would have found nothing, assumed a fresh install, and generated new credentials, locking you out. That is now explicitly guarded and tested.
+
+---
+
 ## v2.4.0 — Security hardening & correctness fixes
 
 No new features. This release fixes things that were wrong.
