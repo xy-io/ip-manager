@@ -269,6 +269,26 @@ async function testProtectedRoutes() {
       : `topology has ${topo.json?.nodes?.length} nodes for ${real.length} real entries`;
   });
 
+  await test('topology reports hints so an empty diagram is explained', async () => {
+    const res = await GET('/api/topology');
+    if (!res.json?.hints) return 'response has no hints object';
+    if (!Array.isArray(res.json.hints.untrackedHosts)) return 'hints.untrackedHosts is not an array';
+    return true;
+  });
+
+  await test('gateway inference is off by default and on with ?gateway=1', async () => {
+    const [off, on] = await Promise.all([GET('/api/topology'), GET('/api/topology?gateway=1')]);
+    if (off.json?.stats?.gatewayLinks !== 0) return 'gateway links appeared without being asked for';
+    if (typeof on.json?.stats?.gatewayLinks !== 'number') return 'gatewayLinks missing when requested';
+    if (on.json.stats.gatewayLinks < off.json.stats.gatewayLinks) {
+      return 'enabling gateway inference removed edges';
+    }
+    // Whichever mode is in use, no edge may point at a node that is not drawn.
+    const ids = new Set(on.json.nodes.map((n) => n.id));
+    const dangling = on.json.edges.filter((e) => !ids.has(e.from) || !ids.has(e.to));
+    return dangling.length ? `${dangling.length} dangling gateway edge(s)` : true;
+  });
+
   await test('GET /api/ips/:ip/history returns a timeline for a real entry', async () => {
     const ips = await GET('/api/ips');
     const first = (ips.json?.data || []).find((e) => e.ip && e.assetName !== 'Free');

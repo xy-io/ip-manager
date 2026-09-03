@@ -23,7 +23,7 @@ const loadQRCode = () => {
 };
 
 // ── App version ───────────────────────────────────────────────────────────────
-const APP_VERSION = 'v2.9.0';
+const APP_VERSION = 'v2.9.1';
 
 // Default network configuration (overridden by Settings modal / localStorage)
 const DEFAULT_NETWORK_CONFIG = {
@@ -750,19 +750,23 @@ function TopologyModal({ onClose }) {
   const [error, setError] = useState(null);
   const [selected, setSelected] = useState(null);
   const [impact, setImpact] = useState(null);
+  const [showGateway, setShowGateway] = useState(false);
+
+  const query = showGateway ? '?gateway=1' : '';
 
   useEffect(() => {
-    fetch('/api/topology')
+    setData(null);
+    fetch(`/api/topology${query}`)
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(setData)
       .catch(() => setError('Could not load the topology'));
-  }, []);
+  }, [query]);
 
   useEffect(() => {
     if (!selected) { setImpact(null); return; }
-    fetch(`/api/topology/impact/${encodeURIComponent(selected)}`)
+    fetch(`/api/topology/impact/${encodeURIComponent(selected)}${query}`)
       .then(r => r.json()).then(setImpact).catch(() => setImpact(null));
-  }, [selected]);
+  }, [selected, query]);
 
   // ── Layout ────────────────────────────────────────────────────────────────
   // Deterministic rather than force-directed: devices are laid out in columns
@@ -805,13 +809,22 @@ function TopologyModal({ onClose }) {
             <h2 className="text-lg font-bold text-slate-800">Network Topology</h2>
             <p className="text-xs text-slate-500 mt-0.5">
               {data
-                ? `${data.stats.devices} devices · ${data.stats.dependencyLinks} dependency links · ${data.stats.hypervisorLinks} hypervisor links`
+                ? `${data.stats.devices} devices · ${data.stats.dependencyLinks} dependency · ${data.stats.hypervisorLinks} hypervisor`
+                  + (data.stats.gatewayLinks ? ` · ${data.stats.gatewayLinks} gateway` : '')
                 : 'Loading…'}
             </p>
           </div>
-          <button onClick={onClose} aria-label="Close" className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
-            <X className="w-5 h-5 text-slate-400" />
-          </button>
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer select-none">
+              <input type="checkbox" checked={showGateway}
+                     onChange={e => setShowGateway(e.target.checked)}
+                     className="rounded border-slate-300" />
+              Show gateway links
+            </label>
+            <button onClick={onClose} aria-label="Close" className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
+              <X className="w-5 h-5 text-slate-400" />
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-auto p-4 bg-slate-50">
@@ -820,6 +833,27 @@ function TopologyModal({ onClose }) {
 
           {data && data.nodes.length === 0 && (
             <p className="text-sm text-slate-400 italic">No devices to show yet.</p>
+          )}
+
+          {/* Why the picture may look sparse. Without this the diagram just
+              looks broken — the user has no way to know the map is waiting on
+              information only they can supply. */}
+          {data?.hints?.untrackedHosts?.length > 0 && (
+            <div className="mb-3 text-xs bg-amber-50 border border-amber-200 text-amber-800 rounded-lg px-3 py-2">
+              {data.hints.untrackedHosts.length === 1 ? 'Hypervisor ' : 'Hypervisors '}
+              <span className="font-mono font-semibold">{data.hints.untrackedHosts.join(', ')}</span>
+              {data.hints.untrackedHosts.length === 1 ? ' has' : ' have'} guests here but
+              {data.hints.untrackedHosts.length === 1 ? ' is' : ' are'} not in your inventory.
+              Add an entry named the same as the node to link the guests to it.
+            </div>
+          )}
+
+          {data?.hints?.noLinks && (
+            <div className="mb-3 text-xs bg-slate-100 border border-slate-200 text-slate-600 rounded-lg px-3 py-2">
+              No relationships yet. Set <span className="font-semibold">Dependencies</span> on a few
+              entries — a NAS on its switch, a service on its database — and they will appear here.
+              Guests imported from Proxmox link to their host automatically.
+            </div>
           )}
 
           {data && layout && data.nodes.length > 0 && (
@@ -847,9 +881,11 @@ function TopologyModal({ onClose }) {
                     key={i}
                     d={`M ${a.x + 150} ${a.y + 14} C ${a.x + 180} ${a.y + 14}, ${b.x - 30} ${b.y + 14}, ${b.x} ${b.y + 14}`}
                     fill="none"
-                    stroke={highlighted ? '#6366f1' : edge.kind === 'hypervisor' ? '#cbd5e1' : '#94a3b8'}
+                    stroke={highlighted ? '#6366f1'
+                      : edge.kind === 'hypervisor' ? '#cbd5e1'
+                      : edge.kind === 'gateway' ? '#e2e8f0' : '#94a3b8'}
                     strokeWidth={highlighted ? 2 : 1}
-                    strokeDasharray={edge.kind === 'hypervisor' ? '3 3' : undefined}
+                    strokeDasharray={edge.kind === 'hypervisor' ? '3 3' : edge.kind === 'gateway' ? '1 4' : undefined}
                   />
                 );
               })}
@@ -885,6 +921,9 @@ function TopologyModal({ onClose }) {
           <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-slate-300" /> unknown</span>
           <span className="flex items-center gap-1.5"><svg width="20" height="4"><line x1="0" y1="2" x2="20" y2="2" stroke="#94a3b8" strokeWidth="1"/></svg> depends on</span>
           <span className="flex items-center gap-1.5"><svg width="20" height="4"><line x1="0" y1="2" x2="20" y2="2" stroke="#cbd5e1" strokeWidth="1" strokeDasharray="3 3"/></svg> hypervisor</span>
+          {showGateway && (
+            <span className="flex items-center gap-1.5"><svg width="20" height="4"><line x1="0" y1="2" x2="20" y2="2" stroke="#e2e8f0" strokeWidth="1" strokeDasharray="1 4"/></svg> gateway</span>
+          )}
           {selected && impact && (
             <span className="ml-auto text-slate-600">
               {impact.count === 0

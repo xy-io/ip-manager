@@ -136,8 +136,8 @@ They are omitted for session-authenticated requests, because the web UI writes t
 | `POST` | `/api/proxmox-sync/run` | write | Start a sync |
 | `GET` | `/api/proxmox-vm-status` | read | Cached guest status |
 | `GET` | `/api/capabilities` | read | Feature map, see above |
-| `GET` | `/api/topology` | read | Nodes, edges, groups and stats derived from the inventory |
-| `GET` | `/api/topology/impact/:ip` | read | Devices that would be affected if this one went down, following dependency chains |
+| `GET` | `/api/topology?gateway=1` | read | Nodes, edges, groups, stats and hints derived from the inventory. `gateway=1` additionally infers a link from every device to its subnet's router; omitted by default |
+| `GET` | `/api/topology/impact/:ip?gateway=1` | read | Devices that would be affected if this one went down, following dependency chains. Pass the same `gateway` value used to draw the graph |
 | `GET` | `/api/ips/:ip/history?days=30` | read | That device's status-change timeline, outage count and last-seen time |
 
 ### Status

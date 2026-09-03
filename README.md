@@ -45,6 +45,10 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
+### v2.9.1 — Hypervisor links that actually appear
+
+v2.9.0 matched the Proxmox node name against your entry with an exact, case-sensitive comparison, so on most installs no hypervisor links were drawn at all. Matching is now case-insensitive, ignores domain suffixes, and copes with descriptive names — `PVE-01`, `pve-01.example.lan` and `Proxmox (pve-01)` all match node `pve-01`. Guests referencing a hypervisor that is not in your inventory are now reported rather than silently dropped. Adds an optional **Show gateway links** toggle, off by default, drawing every device as depending on its subnet's router where exactly one router-like entry exists.
+
 ### v2.9.0 — Device history and network topology
 
 Expand any IP card for that device's recent history — last seen, outage count over 30 days, and a timeline of status changes. Only transitions are recorded, so stable devices cost nothing. Adds **Tools → Topology**, a diagram of every device and the relationships between them, derived from the dependency links and Proxmox data already in the app. Click a device to trace transitively what would be affected if it went down. Both are exposed via `GET /api/ips/:ip/history` and `GET /api/topology`.

@@ -6,6 +6,30 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v2.9.1
+
+**Hypervisor links now actually appear**
+
+v2.9.0 matched the Proxmox node name against your entry's asset name or hostname with an exact, case-sensitive string comparison. That works only when the host entry is named precisely as Proxmox reports the node — so on most real installs no hypervisor links were drawn at all, and the topology view looked emptier than it should have.
+
+Matching is now forgiving of the ways a host actually gets named:
+
+- **Case-insensitive** — `PVE-01` matches `pve-01`
+- **Domain suffixes ignored** — `pve-01.example.lan` matches `pve-01`
+- **Descriptive names** — `Proxmox (pve-01)` matches `pve-01`
+- A guest can no longer be mistaken for the host it runs on
+- A host entry that carries its own node name but no VM ID stays eligible as a host
+
+**Untracked hypervisors are now explained.** If guests reference a Proxmox node that is not in your inventory, the topology view says so and tells you what to add, rather than silently drawing nothing.
+
+**Optional gateway links.** A new *Show gateway links* toggle draws every device on a subnet as depending on that subnet's router. It is **off by default** — on an 87-device network it produces a star with one node in the middle, which is true but not informative. It is only applied where exactly one router-like entry exists on a network; two candidates means guessing, and a wrong inferred link is worse than none. Guests already linked to their hypervisor are not also linked to the router, since that path is already drawn.
+
+Impact analysis follows whichever set of links you are looking at, so the highlighted devices always match the diagram.
+
+No data changes, no configuration, nothing to migrate.
+
+---
+
 ## v2.9.0
 
 **Device history and network topology**

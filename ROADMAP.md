@@ -68,6 +68,7 @@ See [CHANGELOG.md](./CHANGELOG.md) for a full history of released features.
 
 | Version | Feature |
 |---------|---------|
+| v2.9.1 | Forgiving hypervisor name matching, untracked-host hints, optional gateway links |
 | v2.9.0 | Per-device history timeline and network topology view with impact analysis |
 | v2.8.0 | Optional two-factor authentication (TOTP) with recovery codes |
 | v2.7.0 | Unit test suite (53 tests) over auth, network and redaction logic |

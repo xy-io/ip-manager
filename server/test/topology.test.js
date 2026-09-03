@@ -190,3 +190,105 @@ test('impactOf returns nothing for a device nothing depends on', () => {
   const { edges } = buildTopology(entries, networks, {}, {});
   assert.deepEqual(impactOf('10.0.0.2', edges), []);
 });
+
+// ── Hypervisor name matching (v2.9.1) ───────────────────────────────────────
+// v2.9.0 compared the Proxmox node name against assetName and hostname with
+// ===, so every install whose host entry was named anything other than the
+// exact node string drew no hypervisor links at all. Each case below is a
+// realistic way a host gets named.
+
+test('the hypervisor host is matched case-insensitively', () => {
+  const entries = [
+    { ip: '10.0.0.1', assetName: 'PVE-01' },
+    { ip: '10.0.0.2', assetName: 'VM one', proxmoxNode: 'pve-01', proxmoxVmid: 100 },
+  ];
+  const t = buildTopology(entries, networks, {}, {});
+  assert.equal(t.stats.hypervisorLinks, 1);
+});
+
+test('a fully qualified hostname matches a bare node name', () => {
+  const entries = [
+    { ip: '10.0.0.1', assetName: 'Proxmox host', hostname: 'pve-01.the-allens.uk' },
+    { ip: '10.0.0.2', assetName: 'VM one', proxmoxNode: 'pve-01', proxmoxVmid: 100 },
+  ];
+  const t = buildTopology(entries, networks, {}, {});
+  assert.equal(t.stats.hypervisorLinks, 1);
+  assert.equal(t.edges[0].to, '10.0.0.1');
+});
+
+test('a descriptive asset name containing the node name matches', () => {
+  const entries = [
+    { ip: '10.0.0.1', assetName: 'Proxmox (pve-01)' },
+    { ip: '10.0.0.2', assetName: 'VM one', proxmoxNode: 'pve-01', proxmoxVmid: 100 },
+  ];
+  const t = buildTopology(entries, networks, {}, {});
+  assert.equal(t.stats.hypervisorLinks, 1);
+});
+
+test('a guest is never treated as the hypervisor it runs on', () => {
+  // Two guests, no host entry. Neither may be chosen as the other's host.
+  const entries = [
+    { ip: '10.0.0.2', assetName: 'pve-01', proxmoxNode: 'pve-01', proxmoxVmid: 100 },
+    { ip: '10.0.0.3', assetName: 'VM two', proxmoxNode: 'pve-01', proxmoxVmid: 101 },
+  ];
+  const t = buildTopology(entries, networks, {}, {});
+  assert.equal(t.stats.hypervisorLinks, 0);
+  assert.deepEqual(t.hints.untrackedHosts, ['pve-01']);
+});
+
+test('a host entry carrying its own node name but no vmid stays eligible', () => {
+  const entries = [
+    { ip: '10.0.0.1', assetName: 'pve-01', proxmoxNode: 'pve-01' },
+    { ip: '10.0.0.2', assetName: 'VM one', proxmoxNode: 'pve-01', proxmoxVmid: 100 },
+  ];
+  const t = buildTopology(entries, networks, {}, {});
+  assert.equal(t.stats.hypervisorLinks, 1);
+  assert.equal(t.hints.untrackedHosts.length, 0);
+});
+
+test('an untracked hypervisor is reported as a hint, not silently dropped', () => {
+  const entries = [{ ip: '10.0.0.2', assetName: 'VM one', proxmoxNode: 'pve-99', proxmoxVmid: 100 }];
+  const t = buildTopology(entries, networks, {}, {});
+  assert.deepEqual(t.hints.untrackedHosts, ['pve-99']);
+  assert.equal(t.hints.noLinks, true);
+});
+
+// ── Gateway inference ───────────────────────────────────────────────────────
+
+test('gateway links are off unless explicitly requested', () => {
+  const entries = [
+    { ip: '10.0.0.1', assetName: 'Router', networkId: 'net-1' },
+    { ip: '10.0.0.5', assetName: 'NAS', networkId: 'net-1' },
+  ];
+  assert.equal(buildTopology(entries, networks, {}, {}).stats.gatewayLinks, 0);
+  assert.equal(
+    buildTopology(entries, networks, {}, {}, { inferGateway: true }).stats.gatewayLinks, 1);
+});
+
+test('gateway inference is skipped when two candidates are ambiguous', () => {
+  const entries = [
+    { ip: '10.0.0.1', assetName: 'Router', networkId: 'net-1' },
+    { ip: '10.0.0.2', assetName: 'Backup firewall', networkId: 'net-1' },
+    { ip: '10.0.0.5', assetName: 'NAS', networkId: 'net-1' },
+  ];
+  const t = buildTopology(entries, networks, {}, {}, { inferGateway: true });
+  assert.equal(t.stats.gatewayLinks, 0, 'guessing between two routers is worse than no edge');
+});
+
+test('a guest already linked to its host gets no duplicate gateway edge', () => {
+  const entries = [
+    { ip: '10.0.0.1', assetName: 'Router', networkId: 'net-1' },
+    { ip: '10.0.0.2', assetName: 'pve-01', networkId: 'net-1' },
+    { ip: '10.0.0.3', assetName: 'VM', networkId: 'net-1', proxmoxNode: 'pve-01', proxmoxVmid: 100 },
+  ];
+  const t = buildTopology(entries, networks, {}, {}, { inferGateway: true });
+  const from = t.edges.filter(e => e.from === '10.0.0.3');
+  assert.equal(from.length, 1);
+  assert.equal(from[0].kind, 'hypervisor');
+});
+
+test('the gateway does not depend on itself', () => {
+  const entries = [{ ip: '10.0.0.1', assetName: 'Router', networkId: 'net-1' }];
+  const t = buildTopology(entries, networks, {}, {}, { inferGateway: true });
+  assert.equal(t.edges.length, 0);
+});

@@ -623,8 +623,9 @@ app.get('/api/ips/:ip/history', (req, res) => {
 app.get('/api/topology', (req, res) => {
   const entries  = dbGet('ip_data') || [];
   const networks = dbGet('networks') || [];
+  const inferGateway = req.query.gateway === '1' || req.query.gateway === 'true';
   res.json({
-    ...buildTopology(entries, networks, pingCache.results || {}, serviceHealthCache.results || {}),
+    ...buildTopology(entries, networks, pingCache.results || {}, serviceHealthCache.results || {}, { inferGateway }),
     generatedAt: new Date().toISOString(),
   });
 });
@@ -633,7 +634,11 @@ app.get('/api/topology', (req, res) => {
 app.get('/api/topology/impact/:ip', (req, res) => {
   const entries  = dbGet('ip_data') || [];
   const networks = dbGet('networks') || [];
-  const { edges, nodes } = buildTopology(entries, networks, {}, {});
+  const inferGateway = req.query.gateway === '1' || req.query.gateway === 'true';
+  // Impact must be computed over the same graph the user is looking at,
+  // otherwise turning gateway links on would highlight devices that the
+  // diagram shows no path to.
+  const { edges, nodes } = buildTopology(entries, networks, {}, {}, { inferGateway });
   const affectedIps = impactOf(req.params.ip, edges);
   const byIp = new Map(nodes.map((n) => [n.id, n]));
   res.json({

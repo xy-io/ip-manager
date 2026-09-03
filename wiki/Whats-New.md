@@ -4,6 +4,16 @@ For the full release history see the [CHANGELOG](https://github.com/xy-io/ip-man
 
 ---
 
+## v2.9.1 — Hypervisor links that actually appear
+
+If your topology view looked emptier than expected, this is why. v2.9.0 only linked a guest to its Proxmox host when your entry was named *exactly* as Proxmox reports the node — same spelling, same case, no domain. Most inventories do not name things that way, so the links were quietly missing.
+
+Matching is now forgiving: `PVE-01`, `pve-01.example.lan` and `Proxmox (pve-01)` all match node `pve-01`. And if guests point at a hypervisor that is not in your inventory at all, the view now names it and tells you to add it, instead of showing nothing.
+
+**Show gateway links** is a new toggle at the top of the view. Every device on a subnet does depend on its router, so this draws that — but it is off by default, because on a large network it produces a star with one node in the middle and buries the relationships you actually recorded. It only applies where one unambiguous router exists on a network.
+
+---
+
 ## v2.9.0 — Device history & network topology
 
 Two new views over information the app already had.
