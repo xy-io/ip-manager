@@ -22,6 +22,7 @@ Deploy it as a lightweight LXC container on Proxmox and get a live dashboard sho
 | 🔔 [Notifications](Notifications) | Alerts via ntfy or webhook when something breaks |
 | 📋 [Activity Log](Activity-Log) | Who signed in and what changed |
 | 🕸 [Topology](Topology) | How your devices depend on each other |
+| 📡 [mDNS Discovery](mDNS-Discovery) | Friendly names, straight from the network |
 | 💾 [Backup & Restore](Backup-and-Restore) | Export and restore your data |
 | 🔄 [Updating](Updating) | Keep the app up to date |
 | ✅ [Testing](Testing) | Verify an install end-to-end |
@@ -48,6 +49,7 @@ Deploy it as a lightweight LXC container on Proxmox and get a live dashboard sho
 - **Activity log** — system-level record of sign-ins, key changes, and configuration updates
 - **Device history** — per-device timeline of outages and health changes
 - **Topology view** — auto-derived diagram of device relationships, with impact analysis
+- **mDNS discovery** — friendly names for Apple devices, printers, Chromecasts and NAS boxes, straight from the network
 - **SSH quick-launch** — open a terminal session to any device, with an optional per-entry username
 - **Secure by default** — unique random password generated on first install, stored as a bcrypt hash; lockout enforced if defaults are detected
 - **Optional two-factor authentication** — TOTP codes from any authenticator app, with recovery codes and an SSH escape hatch

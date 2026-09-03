@@ -289,6 +289,45 @@ async function testProtectedRoutes() {
     return dangling.length ? `${dangling.length} dangling gateway edge(s)` : true;
   });
 
+  await test('GET /api/mdns/status returns a well-formed shape before any scan', async () => {
+    const res = await GET('/api/mdns/status');
+    const statusCheck = expectStatus(res, 200, 'GET /api/mdns/status');
+    if (statusCheck !== true) return statusCheck;
+    const keyCheck = expectKeys(res.json, ['running', 'scannedAt', 'deviceCount', 'suggestions'], 'mdns status');
+    if (keyCheck !== true) return keyCheck;
+    return Array.isArray(res.json.suggestions) ? true : 'suggestions is not an array';
+  });
+
+  await test('an mDNS scan completes and never proposes overwriting a name', async () => {
+    // A scan on a network with nothing to find is a valid result, so this
+    // checks the contract rather than the discovery count: every suggestion
+    // must leave existing user-entered values alone.
+    const res = await req('POST', '/api/mdns/scan', { body: { timeoutMs: 1500 } });
+    const statusCheck = expectStatus(res, 200, 'POST /api/mdns/scan');
+    if (statusCheck !== true) return statusCheck;
+    if (!Array.isArray(res.json.suggestions)) return 'suggestions is not an array';
+
+    const ips = await GET('/api/ips');
+    const named = new Map((ips.json?.data || [])
+      .filter((e) => e.ip && e.assetName && e.assetName !== 'Free' && e.assetName !== 'Reserved')
+      .map((e) => [e.ip, e]));
+
+    const violations = res.json.suggestions.filter((s) => s.canFillName && named.has(s.ip));
+    return violations.length
+      ? `${violations.length} suggestion(s) would overwrite a name the user set`
+      : true;
+  });
+
+  await test('a scan does not modify the inventory', async () => {
+    // The whole safety property of discovery: it proposes, it never writes.
+    const before = await GET('/api/ips');
+    await req('POST', '/api/mdns/scan', { body: { timeoutMs: 1000 } });
+    const after = await GET('/api/ips');
+    return JSON.stringify(before.json?.data) === JSON.stringify(after.json?.data)
+      ? true
+      : 'the inventory changed as a result of an mDNS scan';
+  });
+
   await test('GET /api/ips/:ip/history returns a timeline for a real entry', async () => {
     const ips = await GET('/api/ips');
     const first = (ips.json?.data || []).find((e) => e.ip && e.assetName !== 'Free');
@@ -973,6 +1012,8 @@ async function testTwoFactor() {
 const MUST_REQUIRE_AUTH = [
   { method: 'POST', path: '/api/proxmox/discover', body: {} },
   { method: 'GET',  path: '/api/topology' },
+  { method: 'GET',  path: '/api/mdns/status' },
+  { method: 'POST', path: '/api/mdns/scan', body: {} },
   { method: 'GET',  path: '/api/topology/impact/10.0.0.1' },
   { method: 'GET',  path: '/api/ips/10.0.0.1/history' },
   { method: 'POST', path: '/api/arp/scan',         body: {} },

@@ -4,6 +4,18 @@ For the full release history see the [CHANGELOG](https://github.com/xy-io/ip-man
 
 ---
 
+## v2.10.0 — mDNS discovery
+
+Your network is already full of devices telling anyone who asks what they are called. **Tools → mDNS Discovery** asks.
+
+Apple devices, HomePods, Chromecasts, printers, NAS boxes and anything running Avahi announce a name and a list of services over multicast DNS. The scan runs for about five seconds, collects what answers, and matches it against your inventory — so an IP you only know as `192.168.0.42` can become "Kitchen HomePod" without you typing it.
+
+**It only fills blanks.** A name you entered is never replaced by whatever a device claims to be called, and nothing is written to the server by the scan itself: applying suggestions is a local edit you review and Save like any other.
+
+**Finding nothing is a normal result.** Multicast does not cross VLANs or subnets by default, and many networks have nothing that announces itself. The view says so rather than implying something is broken.
+
+---
+
 ## v2.9.1 — Hypervisor links that actually appear
 
 If your topology view looked emptier than expected, this is why. v2.9.0 only linked a guest to its Proxmox host when your entry was named *exactly* as Proxmox reports the node — same spelling, same case, no domain. Most inventories do not name things that way, so the links were quietly missing.

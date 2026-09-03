@@ -37,7 +37,8 @@ Grant the narrowest scope that works. Home Assistant only ever reads, so a read-
     "domains": true, "domainWrite": true, "arpScan": true, "arpPresence": true,
     "dns": true, "subnetBlocks": true, "proxmox": true,
     "notifications": true, "activityLog": true,
-    "deviceHistory": true, "topology": true, "pushNotifications": false
+    "deviceHistory": true, "topology": true, "mdns": true,
+    "pushNotifications": false
   }
 }
 ```
@@ -139,6 +140,8 @@ They are omitted for session-authenticated requests, because the web UI writes t
 | `GET` | `/api/topology?gateway=1` | read | Nodes, edges, groups, stats and hints derived from the inventory. `gateway=1` additionally infers a link from every device to its subnet's router; omitted by default |
 | `GET` | `/api/topology/impact/:ip?gateway=1` | read | Devices that would be affected if this one went down, following dependency chains. Pass the same `gateway` value used to draw the graph |
 | `GET` | `/api/ips/:ip/history?days=30` | read | That device's status-change timeline, outage count and last-seen time |
+| `GET` | `/api/mdns/status` | read | The most recent mDNS scan, matched against the inventory |
+| `POST` | `/api/mdns/scan` | write | Run a discovery sweep. Optional `timeoutMs` (1000–15000, default 4000). Returns suggestions only — it never modifies any entry |
 
 ### Status
 

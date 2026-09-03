@@ -6,6 +6,28 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v2.10.0
+
+**mDNS discovery — friendly names, asked for rather than guessed**
+
+Most devices on a home network already announce what they are called. Apple kit, Chromecasts, printers, NAS boxes and anything running Avahi broadcast a name and a list of services over multicast DNS. **Tools → mDNS Discovery** asks, and offers what it hears as suggestions.
+
+- Discovers a hostname, a friendly instance name (`Kitchen HomePod`, `Study Printer`) and the services each device offers
+- Matches results against your inventory and shows what could be filled in
+- **Only fills blanks.** A name you typed is never replaced by something a device claims to be called
+- Nothing is written to the server by the scan itself — applying suggestions is a local edit you review and Save, exactly like any other change
+- Exposed to API clients as `GET /api/mdns/status` and `POST /api/mdns/scan`
+
+**On-demand, not a background listener.** The scan runs for a few seconds when you ask for it, then closes its socket. A persistent listener would find marginally more at the cost of a socket held open for the life of the process and a failure mode nobody would ever notice.
+
+**No new dependency.** The DNS-SD implementation is about 400 lines on Node's built-in `dgram`, in the same spirit as the TOTP work in v2.8.0.
+
+**Written for hostile input.** This is the only code in the app that parses unsolicited packets from the local network, so the parser assumes every byte is adversarial: bounds-checked reads, a strict budget on name-compression pointers (a two-byte self-reference is otherwise an infinite loop), caps on record counts and name lengths regardless of what a packet's header claims, and a malformed record that ends parsing rather than throwing. 38 unit tests cover the parser, most of them malformed and hostile packets, and the scan loop is tested end-to-end through an injected socket. The suite was validated by reintroducing four plausible bugs — including removing the compression-pointer guard, which hangs the test run outright.
+
+**If nothing is found, that is often correct.** Multicast does not cross VLANs or subnets by default, and plenty of networks have nothing that announces itself. The view says so rather than implying a fault.
+
+---
+
 ## v2.9.1
 
 **Hypervisor links now actually appear**

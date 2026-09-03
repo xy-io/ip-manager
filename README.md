@@ -45,6 +45,10 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
+### v2.10.0 — mDNS discovery
+
+**Tools → mDNS Discovery** asks the network what its devices call themselves. Apple devices, Chromecasts, printers, NAS boxes and anything running Avahi announce a name and their services over multicast DNS; the scan collects them, matches them against your inventory, and offers to fill in what is missing. It only ever fills blanks — a name you typed is never replaced — and applying suggestions is a local edit you review and Save. Implemented directly on Node's `dgram` with no new dependency, and written defensively: this is the only parser in the app fed unsolicited packets from the LAN, so name-compression pointers are budgeted, record counts capped, and every read bounds-checked. 38 unit tests, most of them malformed packets.
+
 ### v2.9.1 — Hypervisor links that actually appear
 
 v2.9.0 matched the Proxmox node name against your entry with an exact, case-sensitive comparison, so on most installs no hypervisor links were drawn at all. Matching is now case-insensitive, ignores domain suffixes, and copes with descriptive names — `PVE-01`, `pve-01.example.lan` and `Proxmox (pve-01)` all match node `pve-01`. Guests referencing a hypervisor that is not in your inventory are now reported rather than silently dropped. Adds an optional **Show gateway links** toggle, off by default, drawing every device as depending on its subnet's router where exactly one router-like entry exists.

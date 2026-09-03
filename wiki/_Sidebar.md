@@ -20,6 +20,7 @@
 - [Home Assistant API](Home-Assistant-API)
 - [Notifications](Notifications)
 - [Topology](Topology)
+- [mDNS Discovery](mDNS-Discovery)
 - [Backup & Restore](Backup-and-Restore)
 
 ---

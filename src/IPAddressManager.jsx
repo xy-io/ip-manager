@@ -23,7 +23,7 @@ const loadQRCode = () => {
 };
 
 // ── App version ───────────────────────────────────────────────────────────────
-const APP_VERSION = 'v2.9.1';
+const APP_VERSION = 'v2.10.0';
 
 // Default network configuration (overridden by Settings modal / localStorage)
 const DEFAULT_NETWORK_CONFIG = {
@@ -932,6 +932,220 @@ function TopologyModal({ onClose }) {
             </span>
           )}
           {!selected && <span className="ml-auto text-slate-400">Click a device to trace what depends on it</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Friendly labels for the DNS-SD service types worth naming. Anything not
+// listed is shown as its raw type rather than guessed at.
+const MDNS_SERVICE_LABELS = {
+  '_airplay._tcp': 'AirPlay',
+  '_raop._tcp': 'AirPlay audio',
+  '_companion-link._tcp': 'Apple device',
+  '_googlecast._tcp': 'Chromecast',
+  '_ipp._tcp': 'Printer',
+  '_ipps._tcp': 'Printer',
+  '_printer._tcp': 'Printer',
+  '_pdl-datastream._tcp': 'Printer',
+  '_smb._tcp': 'File share',
+  '_afpovertcp._tcp': 'File share',
+  '_nfs._tcp': 'File share',
+  '_ssh._tcp': 'SSH',
+  '_sftp-ssh._tcp': 'SFTP',
+  '_http._tcp': 'Web',
+  '_https._tcp': 'Web',
+  '_workstation._tcp': 'Workstation',
+  '_device-info._tcp': 'Device info',
+  '_homekit._tcp': 'HomeKit',
+  '_hap._tcp': 'HomeKit',
+  '_esphomelib._tcp': 'ESPHome',
+  '_hue._tcp': 'Philips Hue',
+  '_spotify-connect._tcp': 'Spotify Connect',
+};
+
+function MdnsModal({ onClose, onApply }) {
+  const modalRef = useModalA11y(typeof onClose === 'function' ? onClose : null);
+  const [status, setStatus] = useState(null);
+  const [scanning, setScanning] = useState(false);
+  const [error, setError] = useState(null);
+  const [chosen, setChosen] = useState(() => new Set());
+  const [applied, setApplied] = useState(0);
+
+  useEffect(() => {
+    fetch('/api/mdns/status').then(r => r.json()).then(setStatus).catch(() => {});
+  }, []);
+
+  const runScan = async () => {
+    setScanning(true);
+    setError(null);
+    setApplied(0);
+    try {
+      const res = await fetch('/api/mdns/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ timeoutMs: 5000 }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.message || json.error || 'The scan failed');
+      setStatus(json);
+      // Pre-select everything that is safe to fill, since that is what the user
+      // came here for — but nothing is written until they press Apply.
+      setChosen(new Set(
+        (json.suggestions || [])
+          .filter(s => s.canFillName || s.canFillHostname)
+          .map(s => s.ip)
+      ));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const suggestions = status?.suggestions || [];
+  const fillable = suggestions.filter(s => s.canFillName || s.canFillHostname);
+
+  const toggle = (ip) => setChosen(prev => {
+    const next = new Set(prev);
+    if (next.has(ip)) next.delete(ip); else next.add(ip);
+    return next;
+  });
+
+  const apply = () => {
+    const updates = fillable
+      .filter(s => chosen.has(s.ip))
+      .map(s => ({
+        ip: s.ip,
+        assetName: s.canFillName ? s.suggestedName : undefined,
+        hostname: s.canFillHostname ? s.hostname : undefined,
+      }));
+    if (!updates.length) return;
+    onApply(updates);
+    setApplied(updates.length);
+  };
+
+  return (
+    <div ref={modalRef} role="dialog" aria-modal="true" aria-label="mDNS discovery" tabIndex={-1}
+         className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 outline-none" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
+          <div>
+            <h2 className="text-lg font-bold text-slate-800">mDNS Discovery</h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Asks the network what its devices call themselves
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={runScan} disabled={scanning}
+                    className="px-3 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors">
+              {scanning ? 'Scanning…' : 'Scan'}
+            </button>
+            <button onClick={onClose} aria-label="Close" className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
+              <X className="w-5 h-5 text-slate-400" />
+            </button>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-auto p-4 bg-slate-50">
+          {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
+          {status?.error && (
+            <p className="text-xs bg-amber-50 border border-amber-200 text-amber-800 rounded-lg px-3 py-2 mb-3">
+              {status.error}
+            </p>
+          )}
+
+          {applied > 0 && (
+            <p className="text-xs bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg px-3 py-2 mb-3">
+              {applied} {applied === 1 ? 'entry' : 'entries'} updated. Nothing is saved until you
+              press <span className="font-semibold">Save</span> in the main view.
+            </p>
+          )}
+
+          {!status?.scannedAt && !scanning && (
+            <div className="text-sm text-slate-500 space-y-2">
+              <p>No scan run yet. Press <span className="font-semibold">Scan</span> to ask the network.</p>
+              <p className="text-xs text-slate-400">
+                Apple devices, printers, Chromecasts, NAS boxes and anything running Avahi announce
+                a name over multicast DNS. Discovery only ever fills in blanks — a name you typed is
+                never replaced.
+              </p>
+            </div>
+          )}
+
+          {scanning && <p className="text-sm text-slate-400">Listening for about five seconds…</p>}
+
+          {status?.scannedAt && !scanning && suggestions.length === 0 && (
+            <div className="text-sm text-slate-500 space-y-2">
+              <p>Nothing answered.</p>
+              <p className="text-xs text-slate-400">
+                That is a normal result on a network with no Apple, Google or Avahi devices — and
+                also what you see if multicast does not cross your VLANs, which is common. It does
+                not indicate a fault.
+              </p>
+            </div>
+          )}
+
+          {suggestions.length > 0 && (
+            <>
+              <div className="flex items-center justify-between mb-2 text-xs text-slate-500">
+                <span>{suggestions.length} discovered · {fillable.length} with something to fill in</span>
+                {fillable.length > 0 && (
+                  <button onClick={() => setChosen(chosen.size === fillable.length
+                            ? new Set() : new Set(fillable.map(s => s.ip)))}
+                          className="text-indigo-600 hover:underline">
+                    {chosen.size === fillable.length ? 'Select none' : 'Select all'}
+                  </button>
+                )}
+              </div>
+
+              <div className="bg-white border border-slate-200 rounded-xl divide-y divide-slate-100">
+                {suggestions.map(s => {
+                  const canFill = s.canFillName || s.canFillHostname;
+                  return (
+                    <div key={s.ip} className="flex items-start gap-3 px-3 py-2.5">
+                      <input type="checkbox" disabled={!canFill} checked={chosen.has(s.ip)}
+                             onChange={() => toggle(s.ip)} className="mt-1 rounded border-slate-300 disabled:opacity-30"
+                             aria-label={`Apply discovered details to ${s.ip}`} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline gap-2 flex-wrap">
+                          <span className="font-mono text-sm text-slate-700">{s.ip}</span>
+                          {s.suggestedName && <span className="text-sm text-slate-800 font-medium">{s.suggestedName}</span>}
+                          {s.hostname && <span className="text-xs text-slate-400 font-mono">{s.hostname}.local</span>}
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                          {s.services.map(svc => (
+                            <span key={svc} className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">
+                              {MDNS_SERVICE_LABELS[svc] || svc}
+                            </span>
+                          ))}
+                          {!s.inInventory && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">
+                              not in your inventory
+                            </span>
+                          )}
+                          {s.inInventory && !canFill && (
+                            <span className="text-[10px] text-slate-400">
+                              already named{s.currentName ? ` — ${s.currentName}` : ''}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="px-5 py-3 border-t border-slate-200 bg-white flex items-center gap-3 text-xs text-slate-500">
+          {status?.scannedAt && <span>Last scan {new Date(status.scannedAt).toLocaleTimeString()}</span>}
+          <button onClick={apply} disabled={chosen.size === 0}
+                  className="ml-auto px-3 py-1.5 text-sm rounded-lg bg-slate-800 text-white hover:bg-slate-900 disabled:opacity-40 transition-colors">
+            Fill in {chosen.size > 0 ? chosen.size : ''} selected
+          </button>
         </div>
       </div>
     </div>
@@ -7572,6 +7786,7 @@ export default function IPAddressManager() {
   const [showCIDR, setShowCIDR] = useState(false);
   const [showSubnet, setShowSubnet] = useState(false);
   const [showTopology, setShowTopology] = useState(false);
+  const [showMdns, setShowMdns] = useState(false);
   const [showDomains, setShowDomains] = useState(false);
   const [domains, setDomains] = useState([]);
   const [showToolsMenu, setShowToolsMenu] = useState(false);
@@ -7785,6 +8000,7 @@ export default function IPAddressManager() {
         if (showCIDR)          { setShowCIDR(false);          return; }
         if (showSubnet)        { setShowSubnet(false);        return; }
         if (showTopology)      { setShowTopology(false);      return; }
+        if (showMdns)          { setShowMdns(false);          return; }
         if (showDomains)       { setShowDomains(false);       return; }
         if (qrItem)            { setQrItem(null);             return; }
         if (showToolsMenu)     { setShowToolsMenu(false);     return; }
@@ -7798,7 +8014,7 @@ export default function IPAddressManager() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [editingItem, showSettings, showImport, showProxmoxImport, showARPScan, showHelp, showCIDR, showSubnet, showTopology, showDomains, qrItem, showToolsMenu, expandedCard, searchTerm]);
+  }, [editingItem, showSettings, showImport, showProxmoxImport, showARPScan, showHelp, showCIDR, showSubnet, showTopology, showMdns, showDomains, qrItem, showToolsMenu, expandedCard, searchTerm]);
 
   // Close tools menu on outside click
   useEffect(() => {
@@ -8203,6 +8419,27 @@ export default function IPAddressManager() {
         item.location === oldName ? { ...item, location: newName, updatedAt: new Date().toISOString() } : item
       )
     );
+    setHasChanges(true);
+  };
+
+  // Apply names discovered over mDNS to entries that already exist.
+  //
+  // Two deliberate constraints. Only fields the server marked fillable are
+  // written, so a name the user typed cannot be replaced by whatever a device
+  // on the network claims to be called. And the change lands in local state
+  // only — the user reviews it and presses Save, exactly as with any other
+  // edit. Discovery never writes to the server on its own.
+  const applyMdnsSuggestions = (updates) => {
+    if (!Array.isArray(updates) || updates.length === 0) return;
+    const byIp = new Map(updates.map(u => [u.ip, u]));
+    setIpData(prev => prev.map(item => {
+      const update = byIp.get(item.ip);
+      if (!update) return item;
+      const next = { ...item, updatedAt: new Date().toISOString() };
+      if (update.assetName !== undefined) next.assetName = update.assetName;
+      if (update.hostname !== undefined) next.hostname = update.hostname;
+      return next;
+    }));
     setHasChanges(true);
   };
 
@@ -8645,6 +8882,7 @@ export default function IPAddressManager() {
       {/* Subnet Visualiser */}
       {showSubnet && <SubnetVisuiserModal network={networkConfig} ipData={networkIpData} onClose={() => setShowSubnet(false)} />}
       {showTopology && <TopologyModal onClose={() => setShowTopology(false)} />}
+      {showMdns && <MdnsModal onClose={() => setShowMdns(false)} onApply={applyMdnsSuggestions} />}
 
       {/* Domains View */}
       {showDomains && <DomainsView onClose={() => setShowDomains(false)} />}
@@ -8830,6 +9068,14 @@ export default function IPAddressManager() {
                         </div>
                         <div><p className="text-sm font-medium text-slate-700">Topology</p><p className="text-xs text-slate-400">Device relationships and impact</p></div>
                       </button>
+                      {persistMode === 'api' && (
+                        <button onClick={() => { setShowMdns(true); setShowToolsMenu(false); }} className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 transition-colors text-left">
+                          <div className="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center flex-shrink-0">
+                            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4 text-violet-600"><path d="M8 13.5h.01"/><path d="M5.5 11a3.5 3.5 0 0 1 5 0"/><path d="M3 8.5a7 7 0 0 1 10 0"/><path d="M1 6a10.5 10.5 0 0 1 14 0"/></svg>
+                          </div>
+                          <div><p className="text-sm font-medium text-slate-700">mDNS Discovery</p><p className="text-xs text-slate-400">Find friendly names on the network</p></div>
+                        </button>
+                      )}
                       {persistMode === 'api' && <>
                         <div className="h-px bg-slate-100 mx-3 my-1" />
                         <button onClick={() => { setShowDomains(true); setShowToolsMenu(false); }} className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 transition-colors text-left">
@@ -9010,6 +9256,14 @@ export default function IPAddressManager() {
                 </div>
                 <div><p className="text-sm font-medium text-slate-700">Topology</p><p className="text-xs text-slate-400">Device relationships</p></div>
               </button>
+              {persistMode === 'api' && (
+                <button onClick={() => { setShowMdns(true); setShowMobileTools(false); }} className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 transition-colors text-left">
+                  <div className="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center flex-shrink-0">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4 text-violet-600"><path d="M8 13.5h.01"/><path d="M5.5 11a3.5 3.5 0 0 1 5 0"/><path d="M3 8.5a7 7 0 0 1 10 0"/><path d="M1 6a10.5 10.5 0 0 1 14 0"/></svg>
+                  </div>
+                  <div><p className="text-sm font-medium text-slate-700">mDNS Discovery</p><p className="text-xs text-slate-400">Find friendly names</p></div>
+                </button>
+              )}
 
               {/* App section */}
               <div className="h-px bg-slate-100 mx-3 my-1" />

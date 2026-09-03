@@ -56,6 +56,7 @@ const { redactSecrets } = require('./lib/redact');
 const twoFactor = require('./lib/twoFactor');
 const deviceHistory = require('./lib/deviceHistory');
 const { buildTopology, impactOf } = require('./lib/topology');
+const mdns = require('./lib/mdns');
 
 function requireAuth(req, res, next) {
   if (isValidSession(req.cookies[SESSION_COOKIE])) return next();
@@ -581,6 +582,7 @@ app.get('/api/capabilities', (req, res) => {
       activityLog:       true,
       deviceHistory:     true,
       topology:          true,
+      mdns:              true,
       pushNotifications: false, // APNs not implemented — see the roadmap
     },
   });
@@ -645,6 +647,65 @@ app.get('/api/topology/impact/:ip', (req, res) => {
     ip: req.params.ip,
     affected: affectedIps.map((ip) => byIp.get(ip)).filter(Boolean),
     count: affectedIps.length,
+  });
+});
+
+// ── mDNS discovery ────────────────────────────────────────────────────────────
+// NOTE: these must stay below the `app.use('/api', …)` authentication
+// middleware above. Registered any higher they would be public, which for a
+// route that enumerates the network is not a small mistake.
+
+// The last scan, held in memory only. It is a cache of something the network
+// will happily tell us again, so it is not worth a database row, and it must
+// not outlive a restart — stale names are worse than no names.
+let mdnsCache = { devices: [], scannedAt: null, running: false, error: null, recordCount: 0 };
+
+// GET /api/mdns/status — the most recent scan, matched against the inventory
+app.get('/api/mdns/status', (req, res) => {
+  const entries = dbGet('ip_data') || [];
+  res.json({
+    running:     mdnsCache.running,
+    scannedAt:   mdnsCache.scannedAt,
+    error:       mdnsCache.error,
+    deviceCount: mdnsCache.devices.length,
+    suggestions: mdns.suggestionsFor(mdnsCache.devices, entries),
+  });
+});
+
+// POST /api/mdns/scan — ask the network what it is called
+app.post('/api/mdns/scan', async (req, res) => {
+  if (mdnsCache.running) {
+    return apiError(res, 409, 'Scan in progress', 'An mDNS scan is already running. Wait for it to finish.');
+  }
+
+  const timeoutMs = Math.min(15000, Math.max(1000, parseInt(req.body?.timeoutMs, 10) || 4000));
+  mdnsCache = { ...mdnsCache, running: true, error: null };
+
+  try {
+    const result = await mdns.scan({
+      timeoutMs,
+      logger: (message) => console.log(message),
+    });
+    mdnsCache = {
+      devices:     result.devices,
+      scannedAt:   new Date().toISOString(),
+      running:     false,
+      error:       result.error || null,
+      recordCount: result.recordCount,
+    };
+  } catch (err) {
+    // A scan that fails must not leave `running` stuck true, or the endpoint
+    // returns 409 forever and the only fix is a restart.
+    mdnsCache = { ...mdnsCache, running: false, error: err.message };
+  }
+
+  const entries = dbGet('ip_data') || [];
+  res.json({
+    scannedAt:   mdnsCache.scannedAt,
+    error:       mdnsCache.error,
+    deviceCount: mdnsCache.devices.length,
+    recordCount: mdnsCache.recordCount,
+    suggestions: mdns.suggestionsFor(mdnsCache.devices, entries),
   });
 });
 
