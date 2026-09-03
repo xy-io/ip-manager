@@ -246,6 +246,44 @@ async function testProtectedRoutes() {
   }
 
   // /api/subnet-blocks is per-network and requires a ?network= parameter.
+  await test('GET /api/topology returns nodes, edges and stats', async () => {
+    const res = await GET('/api/topology');
+    const statusCheck = expectStatus(res, 200, 'GET /api/topology');
+    if (statusCheck !== true) return statusCheck;
+    const keyCheck = expectKeys(res.json, ['nodes', 'edges', 'groups', 'stats'], '/api/topology');
+    if (keyCheck !== true) return keyCheck;
+    if (!Array.isArray(res.json.nodes)) return 'nodes is not an array';
+    // Every edge must point at a node that exists, or the diagram draws arrows
+    // into empty space.
+    const ids = new Set(res.json.nodes.map((n) => n.id));
+    const dangling = res.json.edges.filter((e) => !ids.has(e.from) || !ids.has(e.to));
+    return dangling.length ? `${dangling.length} edge(s) reference a missing node` : true;
+  });
+
+  await test('topology node count matches the non-placeholder entries', async () => {
+    const [topo, ips] = await Promise.all([GET('/api/topology'), GET('/api/ips')]);
+    const real = (ips.json?.data || []).filter(
+      (e) => e.ip && e.assetName !== 'Free' && e.assetName !== 'Reserved');
+    return topo.json?.nodes?.length === real.length
+      ? true
+      : `topology has ${topo.json?.nodes?.length} nodes for ${real.length} real entries`;
+  });
+
+  await test('GET /api/ips/:ip/history returns a timeline for a real entry', async () => {
+    const ips = await GET('/api/ips');
+    const first = (ips.json?.data || []).find((e) => e.ip && e.assetName !== 'Free');
+    if (!first) return true; // no data to check against
+    const res = await GET(`/api/ips/${first.ip}/history`);
+    const statusCheck = expectStatus(res, 200, 'GET /api/ips/:ip/history');
+    if (statusCheck !== true) return statusCheck;
+    return expectKeys(res.json, ['ip', 'events', 'outageCount', 'currentStatus'], 'history');
+  });
+
+  await test('history for an unknown IP returns 404', async () => {
+    const res = await GET('/api/ips/203.0.113.250/history');
+    return expectStatus(res, 404, 'history for a non-existent entry');
+  });
+
   await test('GET /api/subnet-blocks rejects a missing network parameter', async () => {
     const res = await GET('/api/subnet-blocks');
     return expectStatus(res, 400, 'GET /api/subnet-blocks without ?network=');
@@ -914,6 +952,9 @@ async function testTwoFactor() {
 // /api/proxmox/discover ended up publicly reachable.
 const MUST_REQUIRE_AUTH = [
   { method: 'POST', path: '/api/proxmox/discover', body: {} },
+  { method: 'GET',  path: '/api/topology' },
+  { method: 'GET',  path: '/api/topology/impact/10.0.0.1' },
+  { method: 'GET',  path: '/api/ips/10.0.0.1/history' },
   { method: 'POST', path: '/api/arp/scan',         body: {} },
   { method: 'POST', path: '/api/import',           body: {} },
   { method: 'PUT',  path: '/api/ips',              body: [] },

@@ -39,16 +39,12 @@ Currently single-user. Allow multiple named accounts with role-based access (rea
 ### IPv6 support
 First-class support for IPv6 addresses and subnets alongside the existing IPv4 management.
 
-### Network topology map
-Visual diagram of the network showing device relationships — upstream router, switches, VLANs, connected devices. Read-only, auto-generated from existing entry data.
-
 ---
 
 ## Under Consideration
 
 - **Dark mode persistence** — remember last-used theme across sessions (currently resets on page load)
 - **Bulk tag editor** — apply or remove tags across multiple entries at once
-- **Device history log** — track when an entry was last seen online, log state changes over time
 - **SNMP / mDNS discovery** — passive discovery of new devices on the network without requiring manual entry
 
 ---
@@ -72,6 +68,7 @@ See [CHANGELOG.md](./CHANGELOG.md) for a full history of released features.
 
 | Version | Feature |
 |---------|---------|
+| v2.9.0 | Per-device history timeline and network topology view with impact analysis |
 | v2.8.0 | Optional two-factor authentication (TOTP) with recovery codes |
 | v2.7.0 | Unit test suite (53 tests) over auth, network and redaction logic |
 | v2.6.0 | On-demand loading of xlsx and qrcode — initial bundle halved |

@@ -21,6 +21,7 @@ Deploy it as a lightweight LXC container on Proxmox and get a live dashboard sho
 | 🏠 [Home Assistant API](Home-Assistant-API) | Pull network data into Home Assistant |
 | 🔔 [Notifications](Notifications) | Alerts via ntfy or webhook when something breaks |
 | 📋 [Activity Log](Activity-Log) | Who signed in and what changed |
+| 🕸 [Topology](Topology) | How your devices depend on each other |
 | 💾 [Backup & Restore](Backup-and-Restore) | Export and restore your data |
 | 🔄 [Updating](Updating) | Keep the app up to date |
 | ✅ [Testing](Testing) | Verify an install end-to-end |
@@ -45,6 +46,8 @@ Deploy it as a lightweight LXC container on Proxmox and get a live dashboard sho
 - **HTTP API** — named, scoped API keys for external clients; per-entry create/update/delete plus read-only status endpoints for Home Assistant
 - **Notifications** — push to ntfy or any webhook when a device goes offline, a health check fails, or a domain nears expiry, with flap protection
 - **Activity log** — system-level record of sign-ins, key changes, and configuration updates
+- **Device history** — per-device timeline of outages and health changes
+- **Topology view** — auto-derived diagram of device relationships, with impact analysis
 - **SSH quick-launch** — open a terminal session to any device, with an optional per-entry username
 - **Secure by default** — unique random password generated on first install, stored as a bcrypt hash; lockout enforced if defaults are detected
 - **Optional two-factor authentication** — TOTP codes from any authenticator app, with recovery codes and an SSH escape hatch

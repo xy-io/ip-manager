@@ -4,6 +4,20 @@ For the full release history see the [CHANGELOG](https://github.com/xy-io/ip-man
 
 ---
 
+## v2.9.0 — Device history & network topology
+
+Two new views over information the app already had.
+
+**Device history** — expand any IP card to see when it last responded, how many times it has dropped in the last 30 days, and a timeline of every status change. Only transitions are recorded, so a device that just stays up adds nothing.
+
+**Network topology** — a new **Tools → Topology** view showing every device and how they relate. Nothing to configure: it draws the dependency links you created in the edit modal, and works out which guests belong to which Proxmox host on its own.
+
+**Click any device to see its blast radius** — everything that would be affected if it went down, following dependency chains. Handy before rebooting a switch or a hypervisor.
+
+The more dependency links you fill in on your entries, the more useful the picture becomes.
+
+---
+
 ## v2.8.0 — Two-factor authentication
 
 Optional, and **off by default** — nothing about your sign-in changes unless you switch it on.

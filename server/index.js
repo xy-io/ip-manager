@@ -54,6 +54,8 @@ const {
 } = require('./lib/net');
 const { redactSecrets } = require('./lib/redact');
 const twoFactor = require('./lib/twoFactor');
+const deviceHistory = require('./lib/deviceHistory');
+const { buildTopology, impactOf } = require('./lib/topology');
 
 function requireAuth(req, res, next) {
   if (isValidSession(req.cookies[SESSION_COOKIE])) return next();
@@ -213,6 +215,7 @@ app.post('/api/auth/change-password', (req, res) => {
     res.status(500).json({ error: 'Could not write credentials file: ' + err.message });
   }
 });
+
 
 
 // ── Two-factor authentication ─────────────────────────────────────────────────
@@ -576,6 +579,8 @@ app.get('/api/capabilities', (req, res) => {
       proxmox:           true,
       notifications:     true,
       activityLog:       true,
+      deviceHistory:     true,
+      topology:          true,
       pushNotifications: false, // APNs not implemented — see the roadmap
     },
   });
@@ -594,6 +599,48 @@ app.put('/api/ips', (req, res) => {
   }
   dbSet('ip_data', req.body);
   res.json({ ok: true });
+});
+
+// ── Device history and topology ───────────────────────────────────────────────
+
+// GET /api/ips/:ip/history — this device's recent transitions
+app.get('/api/ips/:ip/history', (req, res) => {
+  const data = dbGet('ip_data') || [];
+  if (!data.some((e) => e.ip === req.params.ip)) {
+    return apiError(res, 404, 'Not found', `No entry exists for ${req.params.ip}.`);
+  }
+  const days = Math.min(365, Math.max(1, parseInt(req.query.days, 10) || 30));
+  const summary = deviceHistory.summarise(req.params.ip, days);
+  res.json({
+    ip: req.params.ip,
+    lastSeen: lastSeenData[req.params.ip] || null,
+    currentStatus: haPingStatus(pingCache.results[req.params.ip]),
+    ...summary,
+  });
+});
+
+// GET /api/topology — nodes and edges derived from the current inventory
+app.get('/api/topology', (req, res) => {
+  const entries  = dbGet('ip_data') || [];
+  const networks = dbGet('networks') || [];
+  res.json({
+    ...buildTopology(entries, networks, pingCache.results || {}, serviceHealthCache.results || {}),
+    generatedAt: new Date().toISOString(),
+  });
+});
+
+// GET /api/topology/impact/:ip — what else would be affected if this went down
+app.get('/api/topology/impact/:ip', (req, res) => {
+  const entries  = dbGet('ip_data') || [];
+  const networks = dbGet('networks') || [];
+  const { edges, nodes } = buildTopology(entries, networks, {}, {});
+  const affectedIps = impactOf(req.params.ip, edges);
+  const byIp = new Map(nodes.map((n) => [n.id, n]));
+  res.json({
+    ip: req.params.ip,
+    affected: affectedIps.map((ip) => byIp.get(ip)).filter(Boolean),
+    count: affectedIps.length,
+  });
 });
 
 // ── Per-entry endpoints ───────────────────────────────────────────────────────
@@ -1090,6 +1137,7 @@ function detectPingTransitions(results) {
       offlineStreak.set(ip, streak);
       if (streak === threshold && !notifiedOffline.has(ip)) {
         notifiedOffline.add(ip);
+        deviceHistory.record(ip, 'offline');
         recordEvent({
           type: 'device.offline',
           message: `${nameFor(ip)} is offline`,
@@ -1100,6 +1148,7 @@ function detectPingTransitions(results) {
       offlineStreak.delete(ip);
       if (notifiedOffline.has(ip)) {
         notifiedOffline.delete(ip);
+        deviceHistory.record(ip, 'online');
         recordEvent({
           type: 'device.online',
           message: `${nameFor(ip)} is back online`,
@@ -1222,12 +1271,14 @@ async function runServiceHealthChecks() {
         const before = previous[ip];
         if (!before) continue;
         if (before.status === 'up' && current.status === 'down') {
+          deviceHistory.record(ip, 'health.down', current.code ? `HTTP ${current.code}` : null);
           recordEvent({
             type: 'health.down',
             message: `Health check failing for ${nameFor(ip)}${current.code ? ` (HTTP ${current.code})` : ''}`,
             meta: { ip, code: current.code || null },
           });
         } else if (before.status === 'down' && current.status === 'up') {
+          deviceHistory.record(ip, 'health.up');
           recordEvent({ type: 'health.up', message: `Health check recovered for ${nameFor(ip)}`, meta: { ip } });
         }
       }

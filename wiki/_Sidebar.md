@@ -19,6 +19,7 @@
 - [API](API)
 - [Home Assistant API](Home-Assistant-API)
 - [Notifications](Notifications)
+- [Topology](Topology)
 - [Backup & Restore](Backup-and-Restore)
 
 ---

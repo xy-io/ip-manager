@@ -45,6 +45,10 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
+### v2.9.0 — Device history and network topology
+
+Expand any IP card for that device's recent history — last seen, outage count over 30 days, and a timeline of status changes. Only transitions are recorded, so stable devices cost nothing. Adds **Tools → Topology**, a diagram of every device and the relationships between them, derived from the dependency links and Proxmox data already in the app. Click a device to trace transitively what would be affected if it went down. Both are exposed via `GET /api/ips/:ip/history` and `GET /api/topology`.
+
 ### v2.8.0 — Two-factor authentication
 
 Optional TOTP, off by default — nothing changes until you enable it in **Settings → Security**. Enabling requires proving a working code first, so a mis-scanned QR cannot lock you out, and ten one-time recovery codes are issued at setup. If you lose both, `scripts/disable-totp.cjs` turns it off from the server without touching your credentials or data. The algorithm is implemented on Node's crypto with no dependency and verified against the published RFC 4226 and RFC 6238 test vectors. Codes cannot be replayed, wrong codes count towards the login throttle, and API keys are unaffected.

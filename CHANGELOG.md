@@ -6,6 +6,43 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v2.9.0
+
+**Device history and network topology**
+
+Two read-only views over data the app already collects. No new data model, no configuration to fill in.
+
+**Device history**
+
+Expand any IP card and you now see that device's recent behaviour: when it last responded, how many times it has dropped in the last 30 days, and a timeline of every status change.
+
+- Records only **transitions** — offline, back online, health check failed, health check recovered — so a device that stays up writes nothing at all
+- Up to 50 events per device, kept separately from the global activity log so a busy network cannot push a quiet device's history out of view
+- Entries deleted from the app have their history pruned automatically
+- `GET /api/ips/:ip/history` exposes the same data to API clients
+
+**Network topology**
+
+A new **Tools → Topology** view, drawing every device and the relationships between them. Nothing to wire up: it is derived from what you have already entered.
+
+- **Dependency links** you created in the edit modal, drawn from the dependent to what it needs
+- **Hypervisor links** inferred from `proxmoxNode` — guests point at the host that runs them, when that host is itself a tracked entry
+- Devices grouped by hypervisor where they have one, otherwise by network
+- Live status colouring: green online, red offline, grey unknown
+- **Click any device to trace its impact** — the view highlights everything that would be affected if it went down, following dependency chains transitively. Useful before rebooting something.
+
+Layout is deterministic rather than force-directed, so the picture is the same every time you open it. A physics simulation looks better in a screenshot and makes it impossible to find the same device twice.
+
+`GET /api/topology` and `GET /api/topology/impact/:ip` expose the graph to API clients. `GET /api/capabilities` gains `deviceHistory` and `topology`.
+
+**Testing**
+
+19 new unit tests (107 total) over the graph derivation, covering the cases that would draw a wrong picture: dependencies pointing at deleted entries, self-references, duplicate links, placeholder rows, and — importantly — a **circular dependency, which must terminate rather than hang the server**. Four new smoke checks confirm the endpoints return well-formed graphs with no edges pointing at missing nodes.
+
+A mistake caught during development: the new endpoints were initially registered above the authentication middleware, which would have exposed the entire inventory unauthenticated. They now sit below it, and there are smoke tests asserting all three require authentication — the same check that caught `/api/proxmox/discover` in v2.0.2.
+
+---
+
 ## v2.8.0
 
 **Two-factor authentication (optional, off by default)**

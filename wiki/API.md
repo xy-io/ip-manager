@@ -36,7 +36,8 @@ Grant the narrowest scope that works. Home Assistant only ever reads, so a read-
     "inventory": true, "networks": true, "ping": true, "serviceHealth": true,
     "domains": true, "domainWrite": true, "arpScan": true, "arpPresence": true,
     "dns": true, "subnetBlocks": true, "proxmox": true,
-    "notifications": true, "activityLog": true, "pushNotifications": false
+    "notifications": true, "activityLog": true,
+    "deviceHistory": true, "topology": true, "pushNotifications": false
   }
 }
 ```
@@ -135,6 +136,9 @@ They are omitted for session-authenticated requests, because the web UI writes t
 | `POST` | `/api/proxmox-sync/run` | write | Start a sync |
 | `GET` | `/api/proxmox-vm-status` | read | Cached guest status |
 | `GET` | `/api/capabilities` | read | Feature map, see above |
+| `GET` | `/api/topology` | read | Nodes, edges, groups and stats derived from the inventory |
+| `GET` | `/api/topology/impact/:ip` | read | Devices that would be affected if this one went down, following dependency chains |
+| `GET` | `/api/ips/:ip/history?days=30` | read | That device's status-change timeline, outage count and last-seen time |
 
 ### Status
 
