@@ -12,6 +12,7 @@ Deploy it as a lightweight LXC container on Proxmox and get a live dashboard sho
 |---|---|
 | 🚀 [Installation](Installation) | Deploy to an LXC in under 5 minutes |
 | 🔑 [First Login & Security](First-Login) | Set up your credentials |
+| 🔐 [Two-Factor Authentication](Two-Factor-Authentication) | Optional 6-digit codes on sign-in |
 | ⚙️ [Network Configuration](Network-Configuration) | Tell the app about your subnet |
 | 📥 [Importing Devices](Importing-Devices) | ARP scan, Proxmox import, CSV/Excel |
 | 💙 [Service Health Checks](Service-Health-Checks) | HTTP/HTTPS probes per device |
@@ -46,6 +47,7 @@ Deploy it as a lightweight LXC container on Proxmox and get a live dashboard sho
 - **Activity log** — system-level record of sign-ins, key changes, and configuration updates
 - **SSH quick-launch** — open a terminal session to any device, with an optional per-entry username
 - **Secure by default** — unique random password generated on first install, stored as a bcrypt hash; lockout enforced if defaults are detected
+- **Optional two-factor authentication** — TOTP codes from any authenticator app, with recovery codes and an SSH escape hatch
 
 ---
 

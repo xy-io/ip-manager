@@ -6,6 +6,39 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v2.8.0
+
+**Two-factor authentication (optional, off by default)**
+
+An optional 6-digit code from an authenticator app, on top of your password. **Nothing changes unless you turn it on** — the update itself cannot lock anyone out, which is the property that made this safe to ship.
+
+Turn it on in **Settings → Security**. Works with Google Authenticator, Aegis, 1Password, Bitwarden or anything else that scans an `otpauth://` QR code.
+
+**Designed so you cannot lock yourself out**
+
+- **Enabling requires proving a working code.** The QR is shown, you enter a code from your app, and only if it verifies does two-factor switch on. A mis-scanned QR cannot leave you stranded.
+- **Ten one-time recovery codes** are generated when you enable it, shown once, and stored only as bcrypt hashes. Any one can be entered instead of an authenticator code. The count remaining is shown in Settings, with a warning when you are down to two.
+- **An SSH escape hatch** — `sudo node /opt/ip-manager/scripts/disable-totp.cjs` turns it off from the server for the case where you have lost both the authenticator and the codes. Credentials and all other data are untouched, and the action is recorded in the activity log.
+- **Turning it off in Settings requires your account password**, not merely a live session.
+
+**Security details**
+
+- The algorithm is implemented directly on Node's crypto rather than adding a dependency, and is **verified against the published RFC 4226 and RFC 6238 test vectors** — all ten HOTP values and all five TOTP timestamps reproduce exactly, which is what guarantees interoperability with any authenticator app.
+- Codes are compared in constant time, with one step of clock drift tolerated either way.
+- **A code cannot be replayed** — once used for sign-in it will not work again, even inside its 30-second window.
+- **Wrong codes count towards the existing login throttle.** Six digits is only a million possibilities and would be brute-forceable otherwise.
+- The secret lives in the database, not `credentials.env` — that file has been deleted by stray git operations twice, and losing the second factor with it would mean a lockout.
+- Two-factor applies to the browser login only. **API keys are unaffected**, so Home Assistant and any other client carry on unchanged.
+- Every related action — enabling, disabling, failed codes, recovery code use — is recorded in the activity log.
+
+**Testing**
+
+35 new unit tests (88 total), including the RFC vectors, replay rejection, recovery code consumption, and that a failed verification never enables anything. The full enrolment-to-disable cycle was exercised against a running server: enable, sign in with a code, sign in with a recovery code, confirm that code cannot be reused, disable, and confirm password-only sign-in returns.
+
+One bug was found and fixed during that testing: the replay guard originally consumed the enrolment code, so signing in during the same 30-second window was rejected with the baffling message that a brand new code had already been used. Enrolment no longer counts as a sign-in.
+
+---
+
 ## v2.7.0
 
 **Unit test suite**

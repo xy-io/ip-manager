@@ -25,6 +25,20 @@ Common issues and how to fix them.
 **Signed out unexpectedly**
 - From v2.4.0 sessions expire after seven days without use, or thirty days regardless. Using the app resets the seven-day clock. Sessions are also cleared whenever the service restarts, including after an update.
 
+**Two-factor code not accepted**
+- Check the server clock: `timedatectl`. TOTP requires both ends to agree on the time, and drift is the usual cause.
+- Each code works once — if it says "already been used", wait for the next one.
+- You can enter a **recovery code** instead of an authenticator code at the sign-in screen.
+
+**Locked out with two-factor enabled**
+- Use a recovery code at the sign-in prompt, then re-enrol in **Settings → Security**.
+- If you have lost those too, disable it from the server:
+  ```bash
+  sudo node /opt/ip-manager/scripts/disable-totp.cjs
+  sudo systemctl restart ip-manager-api
+  ```
+  Your username, password and data are untouched. See [Two-Factor Authentication](Two-Factor-Authentication).
+
 **Stuck on Change Password screen**
 - This appears when the server detects `admin`/`admin` credentials. Enter `admin` as the current password and set a new one.
 - If you've already changed your password but still see this screen, check `credentials.env` — the file may be empty or malformed.
@@ -161,6 +175,9 @@ grep version /opt/ip-manager/package.json
 
 # Run update manually
 ip-manager-update
+
+# Emergency: turn off two-factor authentication (needs a service restart after)
+node /opt/ip-manager/scripts/disable-totp.cjs
 
 # Verify the install end-to-end (add --read-only to skip the write tests)
 cd /opt/ip-manager && SMOKE_USER=yourname SMOKE_PASS='yourpassword' node scripts/smoke-test.cjs

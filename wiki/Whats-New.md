@@ -4,6 +4,26 @@ For the full release history see the [CHANGELOG](https://github.com/xy-io/ip-man
 
 ---
 
+## v2.8.0 — Two-factor authentication
+
+Optional, and **off by default** — nothing about your sign-in changes unless you switch it on.
+
+Turn it on in **Settings → Security**. Scan the QR with Google Authenticator, Aegis, 1Password or similar, enter the code it shows to prove it works, and save the ten recovery codes you are given.
+
+**You cannot lock yourself out.** Three ways back in:
+
+1. **Settings → Security**, while signed in — turn it off with your password
+2. **A recovery code**, entered instead of an authenticator code at sign-in
+3. **`sudo node /opt/ip-manager/scripts/disable-totp.cjs`** on the server, then restart the service — for when you have lost both. Your password and data are untouched.
+
+Worth turning on if your instance is reachable from the internet. Not really necessary if it only ever answers on your LAN.
+
+**Home Assistant and any other API client are unaffected** — two-factor applies to the browser login only.
+
+See [Two-Factor Authentication](Two-Factor-Authentication).
+
+---
+
 ## v2.7.0 — Unit test suite
 
 Developer-facing only; nothing changes in the app.

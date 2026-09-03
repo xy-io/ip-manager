@@ -7,6 +7,7 @@
 **Getting Started**
 - [Installation](Installation)
 - [First Login & Security](First-Login)
+- [Two-Factor Authentication](Two-Factor-Authentication)
 - [Network Configuration](Network-Configuration)
 
 ---

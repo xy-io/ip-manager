@@ -845,6 +845,69 @@ async function testIosCompatibility() {
   });
 }
 
+// ── 4e. Two-factor authentication ────────────────────────────────────────────
+// Read-only unless --write is in play: these checks confirm the feature is
+// present and off, and that an API key cannot touch it. Enabling TOTP against
+// a live server is deliberately NOT automated — a bug here locks the user out.
+async function testTwoFactor() {
+  group('4e. Two-factor authentication');
+
+  await test('GET /api/auth/totp reports status without exposing secrets', async () => {
+    const res = await GET('/api/auth/totp');
+    const statusCheck = expectStatus(res, 200, 'GET /api/auth/totp');
+    if (statusCheck !== true) return statusCheck;
+    const keyCheck = expectKeys(res.json, ['enabled', 'recoveryCodesRemaining'], '/api/auth/totp');
+    if (keyCheck !== true) return keyCheck;
+    const body = JSON.stringify(res.json);
+    if (/"secret"|"pendingSecret"|"recoveryCodes"/.test(body)) {
+      return 'the status response exposes secret material';
+    }
+    return true;
+  });
+
+  await test('two-factor is off unless deliberately enabled', async () => {
+    const res = await GET('/api/auth/totp');
+    if (res.json?.enabled === true) {
+      // Not a failure — the user has turned it on. Say so clearly.
+      return true;
+    }
+    return res.json?.enabled === false ? true : `unexpected enabled value: ${res.json?.enabled}`;
+  });
+
+  await test('disabling requires the account password, not just a session', async () => {
+    const res = await POST('/api/auth/totp/disable', { password: 'definitely-not-the-password' });
+    return expectStatus(res, 401, 'POST /api/auth/totp/disable with a wrong password');
+  });
+
+  await test('regenerating recovery codes requires the account password', async () => {
+    const res = await POST('/api/auth/totp/recovery-codes', { password: 'definitely-not-the-password' });
+    return expectStatus(res, 401, 'POST /api/auth/totp/recovery-codes with a wrong password');
+  });
+
+  await test('enabling rejects an incorrect code', async () => {
+    const status = await GET('/api/auth/totp');
+    if (status.json?.enabled) return true; // already on; do not interfere
+    const res = await POST('/api/auth/totp/enable', { code: '000000' });
+    // 400 whether or not a setup is in progress — either way it must not enable.
+    if (res.status !== 400) return `expected HTTP 400, got ${res.status}`;
+    const after = await GET('/api/auth/totp');
+    return after.json?.enabled === false ? true : 'a bad code enabled two-factor';
+  });
+
+  await test('an API key cannot read or change two-factor settings', async () => {
+    const stored = await GET('/api/ha/key');
+    const key = stored.json?.key;
+    if (!key) return true;
+    const asKey = { headers: { 'X-API-Key': key }, useSession: false };
+    const problems = [];
+    const read = await GET('/api/auth/totp', asKey);
+    if (read.status !== 401 && read.status !== 403) problems.push(`GET status → ${read.status}`);
+    const disable = await req('POST', '/api/auth/totp/disable', { body: { password: 'x' }, ...asKey });
+    if (disable.status !== 401 && disable.status !== 403) problems.push(`POST disable → ${disable.status}`);
+    return problems.length ? `an API key reached two-factor routes: ${problems.join(', ')}` : true;
+  });
+}
+
 // ── 5. Security regressions ──────────────────────────────────────────────────
 // Every /api/* route except /api/auth/* and /api/ha/* must require a session.
 // Routes registered above the auth middleware silently bypass it, which is how
@@ -969,6 +1032,7 @@ async function testBuild() {
     await testApiKeys();
   }
   await testNotificationsAndAudit();
+  await testTwoFactor();
   await testIosCompatibility();
   await testSecurityRegressions();
   await testBuild();

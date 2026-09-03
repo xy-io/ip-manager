@@ -23,7 +23,7 @@ const loadQRCode = () => {
 };
 
 // ── App version ───────────────────────────────────────────────────────────────
-const APP_VERSION = 'v2.7.0';
+const APP_VERSION = 'v2.8.0';
 
 // Default network configuration (overridden by Settings modal / localStorage)
 const DEFAULT_NETWORK_CONFIG = {
@@ -668,6 +668,238 @@ function ActivityTab() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function SecurityTab() {
+  const [status, setStatus] = useState(null);
+  const [setup, setSetup] = useState(null);        // { secret, uri } during enrolment
+  const [qrSrc, setQrSrc] = useState('');
+  const [code, setCode] = useState('');
+  const [password, setPassword] = useState('');
+  const [recoveryCodes, setRecoveryCodes] = useState(null); // shown once, after enabling
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState(null);
+
+  const load = () => fetch('/api/auth/totp').then(r => r.json()).then(setStatus).catch(() => {});
+  useEffect(() => { load(); }, []);
+
+  // The QR is rendered client-side with the same lazily-loaded library the IP
+  // cards use, so the secret never travels anywhere it does not already go.
+  useEffect(() => {
+    if (!setup?.uri) { setQrSrc(''); return; }
+    let cancelled = false;
+    loadQRCode()
+      .then(QRCode => QRCode.toDataURL(setup.uri, { width: 200, margin: 1 }))
+      .then(src => { if (!cancelled) setQrSrc(src); })
+      .catch(() => { if (!cancelled) setQrSrc(''); });
+    return () => { cancelled = true; };
+  }, [setup]);
+
+  const post = async (path, body) => {
+    const r = await fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body || {}),
+    });
+    return { ok: r.ok, data: await r.json().catch(() => ({})) };
+  };
+
+  const beginSetup = async () => {
+    setBusy(true); setMessage(null);
+    const { ok, data } = await post('/api/auth/totp/setup');
+    setBusy(false);
+    if (!ok) return setMessage({ kind: 'error', text: data.message || 'Could not start setup' });
+    setSetup(data);
+  };
+
+  const confirmSetup = async () => {
+    setBusy(true); setMessage(null);
+    const { ok, data } = await post('/api/auth/totp/enable', { code });
+    setBusy(false);
+    if (!ok) return setMessage({ kind: 'error', text: data.message || 'That code was not correct' });
+    setRecoveryCodes(data.recoveryCodes);
+    setSetup(null);
+    setCode('');
+    load();
+  };
+
+  const cancelSetup = async () => {
+    await post('/api/auth/totp/cancel');
+    setSetup(null); setCode(''); setMessage(null);
+    load();
+  };
+
+  const disable = async () => {
+    if (!password) return setMessage({ kind: 'error', text: 'Enter your account password to confirm' });
+    if (!confirm('Turn off two-factor authentication?\n\nYou will sign in with your password alone.')) return;
+    setBusy(true); setMessage(null);
+    const { ok, data } = await post('/api/auth/totp/disable', { password });
+    setBusy(false);
+    setPassword('');
+    if (!ok) return setMessage({ kind: 'error', text: data.message || 'Could not disable' });
+    setMessage({ kind: 'ok', text: 'Two-factor authentication is off.' });
+    load();
+  };
+
+  const regenerate = async () => {
+    if (!password) return setMessage({ kind: 'error', text: 'Enter your account password to confirm' });
+    setBusy(true); setMessage(null);
+    const { ok, data } = await post('/api/auth/totp/recovery-codes', { password });
+    setBusy(false);
+    setPassword('');
+    if (!ok) return setMessage({ kind: 'error', text: data.message || 'Could not generate new codes' });
+    setRecoveryCodes(data.recoveryCodes);
+    load();
+  };
+
+  const copyCodes = () => navigator.clipboard.writeText(recoveryCodes.join('\n'));
+  const downloadCodes = () => {
+    const blob = new Blob(
+      [`IP Manager — two-factor recovery codes\nGenerated ${new Date().toLocaleString()}\n\n${recoveryCodes.join('\n')}\n\nEach code can be used once, instead of an authenticator code, to sign in.\nKeep these somewhere safe and separate from your password manager.\n`],
+      { type: 'text/plain' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'ip-manager-recovery-codes.txt';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  if (!status) return <div className="text-sm text-slate-400">Loading…</div>;
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-sm font-semibold text-slate-700 mb-1">Two-factor authentication</h3>
+        <p className="text-xs text-slate-500 leading-relaxed">
+          Adds a 6-digit code from an authenticator app to your sign-in. Optional and off by default.
+          Worth turning on if this server is reachable from the internet.
+        </p>
+      </div>
+
+      {message && (
+        <div className={`text-xs rounded-lg px-3 py-2 border ${
+          message.kind === 'ok'
+            ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+            : 'text-red-600 bg-red-50 border-red-200'
+        }`}>{message.text}</div>
+      )}
+
+      {/* Recovery codes — shown once, immediately after they are generated */}
+      {recoveryCodes && (
+        <div className="border-2 border-amber-300 bg-amber-50 rounded-xl p-4">
+          <h4 className="text-sm font-semibold text-amber-900 mb-1">Save your recovery codes now</h4>
+          <p className="text-xs text-amber-800 mb-3">
+            This is the only time these will be shown. Each one can be used once instead of an
+            authenticator code. Without them, losing your phone means recovering over SSH.
+          </p>
+          <div className="grid grid-cols-2 gap-1.5 font-mono text-sm bg-white rounded-lg p-3 border border-amber-200 mb-3">
+            {recoveryCodes.map(c => <div key={c} className="text-slate-700">{c}</div>)}
+          </div>
+          <div className="flex gap-2">
+            <button onClick={copyCodes} className="px-3 py-1.5 bg-white border border-amber-300 text-amber-800 rounded-lg text-xs font-medium hover:bg-amber-100 transition-colors">Copy</button>
+            <button onClick={downloadCodes} className="px-3 py-1.5 bg-white border border-amber-300 text-amber-800 rounded-lg text-xs font-medium hover:bg-amber-100 transition-colors">Download</button>
+            <button onClick={() => setRecoveryCodes(null)} className="ml-auto px-3 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-medium hover:bg-amber-700 transition-colors">I have saved them</button>
+          </div>
+        </div>
+      )}
+
+      {/* Enrolment */}
+      {setup && (
+        <div className="border border-slate-200 rounded-xl p-4 space-y-3">
+          <h4 className="text-sm font-semibold text-slate-700">Scan this with your authenticator</h4>
+          {qrSrc
+            ? <img src={qrSrc} alt="QR code for two-factor setup" className="rounded-lg border border-slate-200" width={200} height={200} />
+            : <div className="w-[200px] h-[200px] bg-slate-100 rounded-lg animate-pulse" />}
+          <details className="text-xs text-slate-500">
+            <summary className="cursor-pointer hover:text-slate-700">Can't scan? Enter this key manually</summary>
+            <code className="block mt-2 font-mono bg-slate-100 rounded p-2 break-all">{setup.secret}</code>
+          </details>
+          <div>
+            <label htmlFor="totp-verify" className="block text-xs font-medium text-slate-600 mb-1">
+              Enter the code it shows, to confirm it works
+            </label>
+            <input
+              id="totp-verify"
+              type="text"
+              inputMode="numeric"
+              value={code}
+              onChange={e => setCode(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && confirmSetup()}
+              placeholder="000000"
+              className="w-40 px-3 py-2 border border-slate-300 rounded-lg text-center font-mono tracking-[0.25em] outline-none focus:ring-2 focus:ring-emerald-500"
+            />
+          </div>
+          <div className="flex gap-2">
+            <button onClick={confirmSetup} disabled={busy || !code} className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50 transition-colors">
+              {busy ? 'Verifying…' : 'Verify and enable'}
+            </button>
+            <button onClick={cancelSetup} className="px-4 py-2 bg-slate-100 border border-slate-200 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-200 transition-colors">Cancel</button>
+          </div>
+          <p className="text-xs text-slate-400">
+            Nothing changes until a code verifies — you cannot lock yourself out by mis-scanning.
+          </p>
+        </div>
+      )}
+
+      {/* Current state */}
+      {!setup && (
+        <div className="border border-slate-200 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <span className={`w-2 h-2 rounded-full ${status.enabled ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+            <span className="text-sm font-medium text-slate-700">
+              {status.enabled ? 'Enabled' : 'Not enabled'}
+            </span>
+            {status.enabled && (
+              <span className="text-xs text-slate-400 ml-auto">
+                {status.recoveryCodesRemaining} recovery code{status.recoveryCodesRemaining === 1 ? '' : 's'} left
+              </span>
+            )}
+          </div>
+
+          {!status.enabled ? (
+            <button onClick={beginSetup} disabled={busy} className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50 transition-colors">
+              {busy ? 'Starting…' : 'Set up two-factor authentication'}
+            </button>
+          ) : (
+            <div className="space-y-3">
+              {status.recoveryCodesRemaining <= 2 && (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  Only {status.recoveryCodesRemaining} recovery code{status.recoveryCodesRemaining === 1 ? '' : 's'} left — generate a fresh set.
+                </p>
+              )}
+              <div>
+                <label htmlFor="confirm-pw" className="block text-xs font-medium text-slate-600 mb-1">
+                  Account password (required for the actions below)
+                </label>
+                <input
+                  id="confirm-pw"
+                  type="password"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  className="w-56 px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                  placeholder="••••••••"
+                />
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                <button onClick={regenerate} disabled={busy} className="px-3 py-1.5 bg-amber-50 border border-amber-200 text-amber-700 rounded-lg text-xs font-medium hover:bg-amber-100 disabled:opacity-50 transition-colors">
+                  New recovery codes
+                </button>
+                <button onClick={disable} disabled={busy} className="px-3 py-1.5 bg-red-50 border border-red-200 text-red-600 rounded-lg text-xs font-medium hover:bg-red-100 disabled:opacity-50 transition-colors">
+                  Turn off
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="text-xs text-slate-400 leading-relaxed border-t border-slate-100 pt-4">
+        <strong className="text-slate-500">Locked out?</strong> Use a recovery code at the sign-in screen.
+        If you have lost those too, run <code className="font-mono bg-slate-100 px-1 rounded">sudo node /opt/ip-manager/scripts/disable-totp.cjs</code> on
+        the server and restart the service. Your data and password are untouched.
+      </div>
     </div>
   );
 }
@@ -2111,6 +2343,7 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
     { id: 'manage',   label: 'Locations & Tags' },
     { id: 'presence', label: 'ARP & Presence' },
     { id: 'api',      label: 'API Keys' },
+    { id: 'security', label: 'Security' },
     { id: 'notifications', label: 'Notifications' },
     { id: 'activity', label: 'Activity' },
     { id: 'account',  label: 'Account' },
@@ -2788,6 +3021,11 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
             {/* ── API KEYS TAB ── */}
             {activeTab === 'api' && (
               <ApiKeysTab />
+            )}
+
+            {/* ── SECURITY TAB ── */}
+            {activeTab === 'security' && (
+              <SecurityTab />
             )}
 
             {/* ── NOTIFICATIONS TAB ── */}
@@ -3756,6 +3994,9 @@ function LoginScreen({ onLogin }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  // Set once the server confirms the password but asks for a second factor.
+  const [totpRequired, setTotpRequired] = useState(false);
+  const [totpCode, setTotpCode] = useState('');
   // Only show the first-run hint if the user hasn't successfully changed their
   // password yet. Set by ForceChangePasswordScreen on successful save.
   const showFirstRunHint = !localStorage.getItem('ip-manager-credentials-set');
@@ -3768,10 +4009,35 @@ function LoginScreen({ onLogin }) {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+        // The password is re-sent with the code so the server never holds a
+        // half-authenticated state. No session exists until both factors pass.
+        body: JSON.stringify(totpRequired ? { username, password, totpCode } : { username, password }),
       });
-      if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+
+      // Password was right, but a second factor is needed.
+      if (res.ok && data.totpRequired) {
+        setTotpRequired(true);
+        setError('');
+        setLoading(false);
+        return;
+      }
+
+      if (res.ok && data.ok) {
+        if (data.usedRecoveryCode) {
+          // Worth saying out loud — they have one fewer way back in.
+          alert(`Signed in with a recovery code. You have ${data.recoveryCodesRemaining} left.\n\n` +
+                `Generate a fresh set in Settings → Security when convenient.`);
+        }
         onLogin();
+        return;
+      }
+
+      if (res.status === 429) {
+        setError(data.message || 'Too many attempts. Please wait and try again.');
+      } else if (totpRequired) {
+        setError(data.message || 'That code was not correct.');
+        setTotpCode('');
       } else {
         setError('Invalid username or password');
       }
@@ -3813,10 +4079,33 @@ function LoginScreen({ onLogin }) {
               autoComplete="current-password"
               value={password}
               onChange={e => setPassword(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+              disabled={totpRequired}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent disabled:bg-slate-50 disabled:text-slate-400"
               placeholder="••••••••"
             />
           </div>
+
+          {totpRequired && (
+            <div>
+              <label htmlFor="totp-code" className="block text-sm font-medium text-slate-700 mb-1">
+                Authentication code
+              </label>
+              <input
+                id="totp-code"
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                autoFocus
+                value={totpCode}
+                onChange={e => setTotpCode(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-center text-lg font-mono tracking-[0.3em] focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                placeholder="000000"
+              />
+              <p className="text-xs text-slate-400 mt-1.5">
+                Enter the 6-digit code from your authenticator app, or one of your recovery codes.
+              </p>
+            </div>
+          )}
 
           {error && (
             <div className="flex items-center gap-2 text-red-600 text-sm bg-red-50 px-3 py-2 rounded-lg">
@@ -3827,11 +4116,21 @@ function LoginScreen({ onLogin }) {
 
           <button
             type="submit"
-            disabled={loading || !username || !password}
+            disabled={loading || !username || !password || (totpRequired && !totpCode)}
             className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-semibold py-2.5 rounded-lg transition-colors"
           >
-            {loading ? 'Signing in…' : 'Sign in'}
+            {loading ? 'Signing in…' : totpRequired ? 'Verify' : 'Sign in'}
           </button>
+
+          {totpRequired && (
+            <button
+              type="button"
+              onClick={() => { setTotpRequired(false); setTotpCode(''); setError(''); }}
+              className="w-full text-xs text-slate-400 hover:text-slate-600 transition-colors"
+            >
+              Start over
+            </button>
+          )}
         </form>
 
         {showFirstRunHint && (

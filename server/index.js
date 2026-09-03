@@ -53,6 +53,7 @@ const {
   ipSortKey, sortEntriesByIp, findEntryIndex, haPingStatus, decorateEntry,
 } = require('./lib/net');
 const { redactSecrets } = require('./lib/redact');
+const twoFactor = require('./lib/twoFactor');
 
 function requireAuth(req, res, next) {
   if (isValidSession(req.cookies[SESSION_COOKIE])) return next();
@@ -99,6 +100,57 @@ app.post('/api/auth/login', (req, res) => {
     ? bcrypt.compareSync(password, credentials.password)
     : password === credentials.password; // fallback for admin/admin pre-migration path
   if ((username || '').toLowerCase() === credentials.username.toLowerCase() && passwordMatch) {
+    // ── Second factor, when the user has switched it on ──────────────────────
+    // The password is re-sent with the code rather than the server holding a
+    // half-authenticated state, so there is no partial session to leak or
+    // expire. No session cookie is issued until both factors have passed.
+    if (twoFactor.isEnabled()) {
+      const { totpCode } = req.body || {};
+      if (!totpCode) {
+        // Not a failure: the client now knows to ask for a code. Deliberately
+        // not counted against the throttle — the password was correct.
+        return res.json({ ok: false, totpRequired: true });
+      }
+
+      const check = twoFactor.verifySecondFactor(totpCode);
+      if (!check.ok) {
+        // A wrong code counts towards the throttle: six digits is only a
+        // million possibilities, which is brute-forceable without one.
+        recordLoginFailure(req);
+        recordEvent({
+          type: 'auth.totp.failed',
+          message: check.replay
+            ? 'Two-factor code rejected — already used'
+            : 'Incorrect two-factor code',
+          req,
+        });
+        return apiError(res, 401, 'Incorrect code',
+          check.replay
+            ? 'That code has already been used. Wait for your authenticator to show the next one.'
+            : 'That two-factor code was not correct. You can also enter one of your recovery codes.');
+      }
+
+      if (check.usedRecoveryCode) {
+        recordEvent({
+          type: 'auth.totp.recovery_used',
+          message: `Signed in with a recovery code — ${check.recoveryCodesRemaining} remaining`,
+          meta: { remaining: check.recoveryCodesRemaining },
+          req,
+        });
+      }
+
+      const token = createSession();
+      res.cookie(SESSION_COOKIE, token, { httpOnly: true, sameSite: 'strict' });
+      clearLoginFailures(req);
+      recordEvent({ type: 'auth.login.success', message: `Signed in as ${credentials.username} (two-factor)`, req });
+      return res.json({
+        ok: true,
+        mustChangePassword: isDefaultCreds(),
+        usedRecoveryCode: check.usedRecoveryCode,
+        recoveryCodesRemaining: check.recoveryCodesRemaining,
+      });
+    }
+
     const token = createSession();
     // httpOnly prevents JS access; sameSite=strict prevents CSRF
     res.cookie(SESSION_COOKIE, token, { httpOnly: true, sameSite: 'strict' });
@@ -160,6 +212,78 @@ app.post('/api/auth/change-password', (req, res) => {
   } catch (err) {
     res.status(500).json({ error: 'Could not write credentials file: ' + err.message });
   }
+});
+
+
+// ── Two-factor authentication ─────────────────────────────────────────────────
+// Optional, off by default, and session-only: an API key can never enable,
+// disable or inspect it.
+
+// GET /api/auth/totp — current state, with no secrets in the response
+app.get('/api/auth/totp', requireAuth, (req, res) => {
+  res.json(twoFactor.getStatus());
+});
+
+// POST /api/auth/totp/setup — begin enrolment, returns the QR payload
+app.post('/api/auth/totp/setup', requireAuth, (req, res) => {
+  if (twoFactor.isEnabled()) {
+    return apiError(res, 409, 'Already enabled',
+      'Two-factor authentication is already on. Turn it off first if you want to enrol a different authenticator.');
+  }
+  const { secret, uri } = twoFactor.beginSetup(getCredentials().username);
+  recordEvent({ type: 'auth.totp.setup_started', message: 'Two-factor setup started', req });
+  res.json({ secret, uri });
+});
+
+// POST /api/auth/totp/enable — verify a code, then switch it on
+app.post('/api/auth/totp/enable', requireAuth, (req, res) => {
+  const { code } = req.body || {};
+  const result = twoFactor.completeSetup(code);
+  if (!result.ok) return apiError(res, 400, result.error, result.message);
+
+  recordEvent({ type: 'auth.totp.enabled', message: 'Two-factor authentication enabled', req });
+  // The recovery codes are returned exactly once and never stored in plaintext.
+  res.json({ ok: true, recoveryCodes: result.recoveryCodes });
+});
+
+// POST /api/auth/totp/cancel — abandon a half-finished enrolment
+app.post('/api/auth/totp/cancel', requireAuth, (req, res) => {
+  twoFactor.cancelSetup();
+  res.json({ ok: true });
+});
+
+// POST /api/auth/totp/disable — requires the account password, not just a session
+app.post('/api/auth/totp/disable', requireAuth, (req, res) => {
+  const { password } = req.body || {};
+  const credentials = reloadCredentials();
+  const matches = credentials.password.startsWith('$2')
+    ? bcrypt.compareSync(String(password || ''), credentials.password)
+    : password === credentials.password;
+  if (!matches) {
+    return apiError(res, 401, 'Password required',
+      'Enter your account password to turn off two-factor authentication.');
+  }
+  twoFactor.disable();
+  recordEvent({ type: 'auth.totp.disabled', message: 'Two-factor authentication disabled', req });
+  res.json({ ok: true });
+});
+
+// POST /api/auth/totp/recovery-codes — issue a fresh set, invalidating the old
+app.post('/api/auth/totp/recovery-codes', requireAuth, (req, res) => {
+  const { password } = req.body || {};
+  const credentials = reloadCredentials();
+  const matches = credentials.password.startsWith('$2')
+    ? bcrypt.compareSync(String(password || ''), credentials.password)
+    : password === credentials.password;
+  if (!matches) {
+    return apiError(res, 401, 'Password required', 'Enter your account password to generate new recovery codes.');
+  }
+  const codes = twoFactor.regenerateRecoveryCodes();
+  if (!codes) {
+    return apiError(res, 409, 'Not enabled', 'Two-factor authentication is not switched on.');
+  }
+  recordEvent({ type: 'auth.totp.recovery_regenerated', message: 'Recovery codes regenerated', req });
+  res.json({ ok: true, recoveryCodes: codes });
 });
 
 // ── Proxmox integration ───────────────────────────────────────────────────────

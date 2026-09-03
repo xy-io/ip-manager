@@ -33,9 +33,6 @@ Replace (or supplement) the username/password login with passkey support. Passke
 
 Should come **after** the session-expiry and rate-limiting work above — building it on the current session handling would mean redoing it.
 
-### Two-factor authentication (TOTP)
-TOTP (Google Authenticator / Aegis / similar) as an optional second factor on top of the existing password login.
-
 ### Multi-user support
 Currently single-user. Allow multiple named accounts with role-based access (read-only viewer vs. full admin). Useful for shared home lab environments.
 
@@ -75,6 +72,7 @@ See [CHANGELOG.md](./CHANGELOG.md) for a full history of released features.
 
 | Version | Feature |
 |---------|---------|
+| v2.8.0 | Optional two-factor authentication (TOTP) with recovery codes |
 | v2.7.0 | Unit test suite (53 tests) over auth, network and redaction logic |
 | v2.6.0 | On-demand loading of xlsx and qrcode — initial bundle halved |
 | v2.5.0 | Server split into lib/ and routes/ modules — pure code movement |
