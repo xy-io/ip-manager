@@ -4,6 +4,18 @@ For the full release history see the [CHANGELOG](https://github.com/xy-io/ip-man
 
 ---
 
+## v2.6.0 — Faster first load
+
+The app's JavaScript bundle has been **halved** — from 277 kB to 127 kB gzipped.
+
+Two libraries, `xlsx` (spreadsheet import/export) and `qrcode`, were being downloaded on every single page load despite being used by only three features. They now load the first time you actually use them.
+
+**What changes for you:** the app loads faster, particularly on a phone or a slow connection. The first time in a session that you open the QR modal, import a spreadsheet or export to Excel, there is a brief pause while that library downloads; it is then cached and every later use is instant.
+
+Nothing else changes — same features, same data, same API.
+
+---
+
 ## v2.5.0 — Server code split
 
 Infrastructure only. **Nothing changes for you** — no new features, no behaviour changes, no data changes.

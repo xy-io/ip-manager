@@ -15,9 +15,12 @@ The server split shipped in v2.5.0. `src/IPAddressManager.jsx` (~9,400 lines) ha
 
 Doing it safely needs one of: a component test setup, or extraction restricted to pure helpers and leaf components one at a time with manual checking between each.
 
-### Performance — follows the split
-- **Memoise list rows** — a status poll re-renders every entry three times a minute because nothing below the root is memoised. Requires the card and row components to be extracted first, which is what the split does.
-- **Virtualise long lists** — fine at 90 entries, painful at 500, unusable on a /16. Also easier once rows are their own components.
+### Performance — what is left
+Bundle size was the only user-visible performance problem, and v2.6.0 halved it by loading `xlsx` and `qrcode` on demand. What remains is not urgent at present scale:
+
+- **Lazy-load the heavy modals** — Help (714 lines), Subnet Visualiser, Import, Backup and the calculators are all rarely opened and could be split out the same way. Worth roughly another 15–20% of the main chunk. Easier once components are extracted, but achievable with `React.lazy` beforehand.
+- **Memoise list rows** — three status polls a minute each re-render all entries. At 87 entries this is tens of milliseconds and imperceptible; it matters north of ~500 entries or on older hardware. Needs the card and row components extracted first.
+- **Virtualise long lists** — same trigger point, same prerequisite.
 
 Debounced saves shipped in v2.4.0.
 
@@ -68,6 +71,7 @@ See [CHANGELOG.md](./CHANGELOG.md) for a full history of released features.
 
 | Version | Feature |
 |---------|---------|
+| v2.6.0 | On-demand loading of xlsx and qrcode — initial bundle halved |
 | v2.5.0 | Server split into lib/ and routes/ modules — pure code movement |
 | v2.4.0 | Command-injection fixes, bundle redaction, rate limiting, session expiry, three correctness bugs |
 | v2.3.0 | Full API-key compatibility, structured errors, capabilities endpoint |

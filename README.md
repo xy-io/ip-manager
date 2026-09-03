@@ -45,6 +45,10 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
+### v2.6.0 — Half the bundle removed from first load
+
+`xlsx` and `qrcode` were statically imported and downloaded on every page load, despite serving only the import/export functions and one modal. Together they were 48% of the bundle. Both now load on demand: the initial download drops from 277 kB gzipped to 127 kB. The first use of import, export or the QR modal in a session pauses briefly to fetch the library, then caches it. No functional change.
+
 ### v2.5.0 — Server code split
 
 Infrastructure only, with no functional change. `server/index.js` is down from 3,325 to ~2,350 lines, with credentials, sessions, API keys, the event system, the database layer and the Domain Tracker and backup routes moved into `server/lib/` and `server/routes/`. Verified by diffing the full 102-check smoke suite against a pre-refactor baseline after every extraction step — identical results throughout. The process caught two path bugs that would have relocated `credentials.env` and `rclone.conf`, the first of which would have locked users out on upgrade.

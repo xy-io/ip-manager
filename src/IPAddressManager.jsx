@@ -1,10 +1,29 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { Search, Server, Monitor, Wifi, HardDrive, Camera, Shield, Globe, Filter, X, MapPin, Cpu, Box, CircleDot, ChevronDown, ChevronUp, Copy, Check, Zap, Download, Edit3, Plus, Trash2, Save, AlertCircle, Settings, Upload, FileText, AlertTriangle, CheckCircle, ChevronRight, Tag, ArrowUpDown, ArrowUp, ArrowDown, HelpCircle, LogOut, Moon, Sun, MoreHorizontal, Terminal, RotateCw } from 'lucide-react';
-import * as XLSX from 'xlsx';
-import QRCode from 'qrcode';
+
+// ── On-demand libraries ──────────────────────────────────────────────────────
+// xlsx and qrcode were previously imported statically. Together they accounted
+// for roughly half the JavaScript bundle (939 kB → 489 kB raw, 277 kB → 126 kB
+// gzipped) and were downloaded on every page load, but they are only needed by
+// the import/export functions and the QR modal — features most sessions never
+// touch. Loading them on first use keeps them out of the initial download.
+//
+// Each loader caches its promise, so the chunk is fetched at most once per
+// session no matter how many times the feature is used.
+let xlsxPromise = null;
+const loadXLSX = () => {
+  if (!xlsxPromise) xlsxPromise = import('xlsx');
+  return xlsxPromise;
+};
+
+let qrcodePromise = null;
+const loadQRCode = () => {
+  if (!qrcodePromise) qrcodePromise = import('qrcode').then(m => m.default || m);
+  return qrcodePromise;
+};
 
 // ── App version ───────────────────────────────────────────────────────────────
-const APP_VERSION = 'v2.5.0';
+const APP_VERSION = 'v2.6.0';
 
 // Default network configuration (overridden by Settings modal / localStorage)
 const DEFAULT_NETWORK_CONFIG = {
@@ -3343,9 +3362,12 @@ function QRModal({ item, onClose }) {
   const content = mode === 'ip' ? item.ip : smartUrl;
 
   useEffect(() => {
-    QRCode.toDataURL(content, { width: 260, margin: 2, color: { dark: '#1e293b', light: '#ffffff' } })
-      .then(setQrSrc)
-      .catch(() => setQrSrc(''));
+    let cancelled = false;
+    loadQRCode()
+      .then(QRCode => QRCode.toDataURL(content, { width: 260, margin: 2, color: { dark: '#1e293b', light: '#ffffff' } }))
+      .then(src => { if (!cancelled) setQrSrc(src); })
+      .catch(() => { if (!cancelled) setQrSrc(''); });
+    return () => { cancelled = true; };
   }, [content]);
 
   const download = () => {
@@ -5391,8 +5413,9 @@ function ImportModal({ onClose, onImport, networkConfig }) {
       return;
     }
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
+        const XLSX = await loadXLSX();
         const wb = XLSX.read(e.target.result, { type: 'binary' });
         setMultiSheetWarn(wb.SheetNames.length > 1);
         const ws = wb.Sheets[wb.SheetNames[0]];
@@ -7823,7 +7846,8 @@ export default function IPAddressManager() {
     setExpandedCard(null);
   };
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
+    const XLSX = await loadXLSX();
     // Prepare data for Excel
     const excelData = ipData.map(item => ({
       'AssetName': item.assetName,

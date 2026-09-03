@@ -6,6 +6,29 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v2.6.0
+
+**Half the JavaScript bundle removed from first load**
+
+`xlsx` and `qrcode` were imported statically at the top of the app, so every visit downloaded both — even though `xlsx` is only used by the CSV/Excel import and the Excel export, and `qrcode` by a single modal. Between them they were **48% of the bundle**.
+
+Both are now loaded on demand, the first time you actually use the feature.
+
+| | Raw | Gzipped |
+|---|---|---|
+| Before | 939 kB | 277 kB |
+| After | 490 kB | 127 kB |
+
+That is **150 kB less** on every first page load — noticeable on a phone or a slow connection, and it also clears the Vite chunk-size warning the build had been emitting.
+
+**What you will notice:** nothing, except a faster first load. The first time you open the QR modal or run an import or export in a given session there is a brief pause while the library downloads (roughly 143 kB for xlsx, 10 kB for qrcode); after that it is cached for the rest of the session. Every subsequent use is immediate.
+
+**Verification.** Both chunk contents were checked to confirm the libraries genuinely left the main bundle rather than being duplicated — the main chunk retains only the call sites, with the implementations in separate chunks fetched on demand. The dynamic-import module shapes were then exercised against the real packages: every function the call sites use is present, an Excel workbook round-trips correctly, and a QR code generates to a valid PNG data URL.
+
+No functional change, no data change, no API change.
+
+---
+
 ## v2.5.0
 
 **Server code split — no functional change**
