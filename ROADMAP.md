@@ -28,14 +28,6 @@ Debounced saves shipped in v2.4.0.
 
 ## Planned
 
-### APNs push notifications
-Server-side Apple Push Notification support, so alerts reach the iOS app when it is closed. Without it, iOS background refresh is opportunistic and cannot guarantee delivery. Requires: registering, updating and removing device tokens; per-device notification preferences; sending pushes for host down/recovered, service down, new ARP discovery, and domain expiry at 30, 15, 10 and 1 day; an event identifier, event type, IP or domain identifier, title and body in each payload; and deduplication so a repeated alert is not resent and a recovery is only sent after a genuine state transition.
-
-The v2.2.0 event system already detects and deduplicates exactly these transitions, so this is largely a delivery channel rather than new detection logic. `GET /api/capabilities` reports `pushNotifications: false` until it exists.
-
-### Automated test suite
-The smoke tests added in v2.0.2 cover the API surface. Unit coverage of the auth and IP-maths helpers would have caught the v2.0.0 bcrypt regression before release.
-
 ### Passkey / WebAuthn authentication
 Replace (or supplement) the username/password login with passkey support. Passkeys are phishing-resistant, require no password to remember, and are natively supported by all modern browsers and operating systems. The implementation would store a public key and credential ID per user, handle the WebAuthn challenge-response handshake, and fall back gracefully to password login for browsers that don't support it.
 
@@ -61,7 +53,19 @@ Visual diagram of the network showing device relationships — upstream router, 
 - **Bulk tag editor** — apply or remove tags across multiple entries at once
 - **Device history log** — track when an entry was last seen online, log state changes over time
 - **SNMP / mDNS discovery** — passive discovery of new devices on the network without requiring manual entry
-- **iOS app** — native client for at-a-glance status and quick lookups. The v2.3.0 API is the foundation; a client authenticates with a read & write key created in Settings. Siri intents would additionally want name search, a merged per-device status view, and a next-free-IP endpoint
+
+---
+
+## Not planned here — iOS client
+
+The native iOS app is developed separately and is **not** part of this roadmap. Requirements will arrive as specific requests.
+
+Recorded only so the context is not lost if that happens:
+
+- **APNs push** — server-side Apple Push Notification support, so alerts reach the app when it is closed. Needs device-token registration and removal endpoints, per-device preferences, and payloads carrying an event id, type, IP or domain, title and body. The v2.2.0 event system already detects and deduplicates the relevant transitions, so this would be a delivery channel rather than new detection logic. Also needs an Apple Developer account and push key, and the payload shape agreed with whoever builds the app. `GET /api/capabilities` reports `pushNotifications: false`.
+- **Three endpoints Siri intents would want** — search entries by name, a merged per-device status view (entry plus ping plus health in one call, currently three), and a next-free-IP endpoint (that calculation lives only in the web frontend today).
+
+Nothing here is being built unless asked for.
 
 ---
 
@@ -71,6 +75,7 @@ See [CHANGELOG.md](./CHANGELOG.md) for a full history of released features.
 
 | Version | Feature |
 |---------|---------|
+| v2.7.0 | Unit test suite (53 tests) over auth, network and redaction logic |
 | v2.6.0 | On-demand loading of xlsx and qrcode — initial bundle halved |
 | v2.5.0 | Server split into lib/ and routes/ modules — pure code movement |
 | v2.4.0 | Command-injection fixes, bundle redaction, rate limiting, session expiry, three correctness bugs |

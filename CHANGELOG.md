@@ -6,6 +6,33 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v2.7.0
+
+**Unit test suite**
+
+53 unit tests covering the logic that has historically broken, runnable with `npm test`. Uses Node's built-in test runner — no framework, no new dependencies.
+
+**What is covered**
+
+| Module | Tests | Why |
+|---|---|---|
+| `lib/net.js` | 14 | Subnet validation (the v2.4.0 shell-injection guard), IP sorting across all four octets, the ping status vocabulary that caused the v2.0.2 bug, and the derived `label`/`serviceUrl` fields |
+| `lib/redact.js` | 7 | That support bundles cannot leak passwords, hashes, API keys or tokens — and that ordinary log lines survive untouched |
+| `lib/credentials.js` | 8 | Every path through the module that locked users out in v2.0.0: an existing hash left alone, plaintext migrated, `$2a$` recognised, empty file, missing file, `admin/admin` detection, comment lines, environment override |
+| `lib/sessions.js` | 12 | Session lifetime and the login throttle: that ten failures throttle, that one address cannot throttle another, and that a successful sign-in resets the counter |
+| `lib/apikeys.js` | 12 | Scope enforcement — a read key cannot write, a key in a query string cannot write, and account routes stay session-only |
+
+**These are regression tests, not coverage theatre.** Each one corresponds to something that actually went wrong. Verified by reintroducing two historical bugs and confirming the suite catches them: restoring the v2.0.2 `alive`-only comparison fails the ping vocabulary test, and weakening the subnet validator fails three injection tests.
+
+**Supporting changes**
+
+- Pure helpers moved from `index.js` into `lib/net.js` and `lib/redact.js`. They could not be tested where they were, because requiring `index.js` starts a listening server. `index.js` is down to 2,230 lines.
+- `DB_PATH` is now overridable by environment variable, so tests use a throwaway database rather than the real one.
+
+Verified against the full 102-check smoke suite before and after the extraction — identical results.
+
+---
+
 ## v2.6.0
 
 **Half the JavaScript bundle removed from first load**

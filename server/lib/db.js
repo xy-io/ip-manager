@@ -11,7 +11,10 @@
 const path = require('path');
 const Database = require('better-sqlite3');
 
-const DB_PATH = path.join(__dirname, '..', 'ip-manager.db');
+// DB_PATH is overridable so tests can use a throwaway database. Without it,
+// requiring any module that touches the store would open — and create — the
+// real one. '..' because this module lives in server/lib/.
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'ip-manager.db');
 const db = new Database(DB_PATH);
 
 db.exec(`

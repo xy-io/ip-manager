@@ -48,6 +48,11 @@ const {
 
 const { apiError, toEpochSeconds, toSecondsRemaining } = require('./lib/http');
 const { getDomains, saveDomains } = require('./lib/domainStore');
+const {
+  normaliseSubnetToCidr, isValidInterface, buildArpScanArgs, buildDiscoveryScanArgs,
+  ipSortKey, sortEntriesByIp, findEntryIndex, haPingStatus, decorateEntry,
+} = require('./lib/net');
+const { redactSecrets } = require('./lib/redact');
 
 function requireAuth(req, res, next) {
   if (isValidSession(req.cookies[SESSION_COOKIE])) return next();
@@ -453,26 +458,6 @@ app.get('/api/capabilities', (req, res) => {
 });
 
 // IP data
-// Convenience fields for external API clients. `label` saves every client
-// reimplementing the same fallback chain, and `serviceUrl` composes the health
-// check settings into the URL a client would otherwise have to assemble.
-// Added only for key-authenticated callers: the web UI reads this endpoint and
-// writes the whole array back, so injecting derived fields there would persist
-// them into stored data.
-function decorateEntry(entry) {
-  const scheme = entry.healthScheme || 'http';
-  const port = entry.healthPort;
-  const host = entry.hostname || entry.ip;
-  const defaultPort = (scheme === 'https' && String(port) === '443') || (scheme === 'http' && String(port) === '80');
-  return {
-    ...entry,
-    label: entry.assetName || entry.hostname || entry.ip,
-    serviceUrl: port
-      ? `${scheme}://${host}${defaultPort ? '' : `:${port}`}${entry.healthPath || ''}`
-      : null,
-  };
-}
-
 app.get('/api/ips', (req, res) => {
   const data = dbGet('ip_data');
   if (data && req.apiKey) return res.json({ data: data.map(decorateEntry) });
@@ -493,15 +478,6 @@ app.put('/api/ips', (req, res) => {
 // one device would mean sending every other device back, and a concurrent
 // Proxmox sync would silently discard one side of the change. These operate on
 // a single entry and are the endpoints external clients should use.
-
-const findEntryIndex = (data, ip) => data.findIndex((e) => e.ip === ip);
-
-// Module-level numeric IP sort. (The /api/import handler has its own local
-// copy that compares only the final octet; this one orders correctly across
-// all four, which matters for /16 networks.)
-const ipSortKey = (ip) =>
-  String(ip || '').split('.').reduce((acc, octet) => (acc * 256) + (parseInt(octet, 10) || 0), 0);
-const sortEntriesByIp = (arr) => arr.sort((a, b) => ipSortKey(a.ip) - ipSortKey(b.ip));
 
 // GET /api/ips/:ip — fetch a single entry
 app.get('/api/ips/:ip', (req, res) => {
@@ -641,41 +617,6 @@ app.post('/api/import', (req, res) => {
 const { execSync, execFileSync } = require('child_process');
 const dnsPromises    = require('dns').promises;
 
-// ── Shell-safe scan arguments ────────────────────────────────────────────────
-// arp-scan is invoked with execFile and an argument array, never a shell
-// string, so nothing supplied by a caller can be interpreted as shell syntax.
-// The validators below are belt-and-braces: they also stop a malformed subnet
-// reaching arp-scan at all, which produces a clearer error than a scan failure.
-
-// Accepts "192.168", "192.168.1", "10.0.0.0/8" and returns a normalised CIDR,
-// or null if the input is not a plain dotted-decimal network.
-//   "192.168"     → "192.168.0.0/16"
-//   "192.168.1"   → "192.168.1.0/24"
-function normaliseSubnetToCidr(subnet) {
-  const raw = String(subnet == null ? '' : subnet).trim();
-  if (!/^[0-9]{1,3}(\.[0-9]{1,3}){1,3}(\/[0-9]{1,2})?$/.test(raw)) return null;
-
-  let [addr, prefix] = raw.split('/');
-  const octets = addr.split('.');
-  if (octets.some((o) => Number(o) > 255)) return null;
-
-  if (prefix === undefined) {
-    if (octets.length === 2)      { addr = `${addr}.0.0`; prefix = '16'; }
-    else if (octets.length === 3) { addr = `${addr}.0`;   prefix = '24'; }
-    else                          { prefix = '24'; }
-  }
-  while (addr.split('.').length < 4) addr += '.0';
-
-  const p = Number(prefix);
-  if (!Number.isInteger(p) || p < 8 || p > 32) return null;
-  return `${addr}/${p}`;
-}
-
-// Network interface names: letters, digits, dot, colon, dash, underscore.
-function isValidInterface(iface) {
-  return /^[A-Za-z0-9._:-]{1,32}$/.test(String(iface));
-}
-
 // Parse arp-scan stdout — tab-separated: IP \t MAC \t Vendor
 // Skips header/footer lines that don't match the IP pattern
 function parseArpScanOutput(output) {
@@ -710,20 +651,6 @@ async function reverseLookup(ip) {
   } catch {
     return '';
   }
-}
-
-// Build the arp-scan argument array from subnet + optional interface.
-// Returns null when either is invalid, so the caller can reject the request.
-function buildArpScanArgs(subnet, iface) {
-  const cidr = normaliseSubnetToCidr(subnet);
-  if (!cidr) return null;
-  const args = [];
-  if (iface) {
-    if (!isValidInterface(iface)) return null;
-    args.push('-I', iface);
-  }
-  args.push(cidr);
-  return args;
 }
 
 // POST /api/arp/scan
@@ -843,20 +770,6 @@ let discoveryTimer = null;
 function getDiscoveryDefaults(prefixLen) {
   if (prefixLen <= 16) return { intervalMinutes: 60, bandwidthKbps: 200 };
   return { intervalMinutes: 15, bandwidthKbps: 1000 };
-}
-
-function buildDiscoveryScanArgs(cidr, iface, bandwidthKbps) {
-  const normalised = normaliseSubnetToCidr(cidr);
-  if (!normalised) return null;
-  const args = [];
-  if (iface) {
-    if (!isValidInterface(iface)) return null;
-    args.push('-I', iface);
-  }
-  const bw = parseInt(bandwidthKbps, 10);
-  if (Number.isInteger(bw) && bw > 0) args.push(`--bandwidth=${bw}K`);
-  args.push('--quiet', normalised);
-  return args;
 }
 
 async function runDiscoveryScan() {
@@ -1500,26 +1413,6 @@ app.get('/api/changelog', requireAuth, (req, res) => {
 // Contains NO IP data, hostnames, notes, or credentials — only system/runtime info.
 
 
-// ── Secret redaction for the support bundle ──────────────────────────────────
-// The bundle embeds recent journal lines so a user can share diagnostics. On a
-// recently installed or recovered server those lines still contain the
-// generated startup password, which people then paste into issues and chats.
-// Redact anything that looks like a credential before it leaves the server.
-function redactSecrets(text) {
-  if (!text) return text;
-  return String(text)
-    // "password : hunter2" from the first-run and recovery credential blocks
-    .replace(/^(\s*password\s*:\s*).+$/gim, '$1[redacted]')
-    // Environment-style assignments
-    .replace(/^(\s*IP_MANAGER_PASSWORD\s*=).*$/gim, '$1[redacted]')
-    .replace(/^(\s*(?:pass|password|secret|token|api[_-]?key)\s*[=:]\s*).+$/gim, '$1[redacted]')
-    // bcrypt hashes, wherever they appear
-    .replace(/\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}/g, '[redacted-hash]')
-    // Bearer tokens and X-API-Key headers echoed into logs
-    .replace(/(X-API-Key\s*:\s*)\S+/gi, '$1[redacted]')
-    .replace(/(Bearer\s+)[A-Za-z0-9._~+/-]+=*/g, '$1[redacted]');
-}
-
 app.get('/api/support/bundle', requireAuth, async (req, res) => {
   const run = (cmd) => new Promise(resolve => {
     exec(cmd, { timeout: 10000 }, (err, stdout, stderr) => {
@@ -2018,20 +1911,6 @@ require('./routes/backup')(app, { dbGet, dbSet, recordEvent, requireAuth });
 // Read-only JSON API authenticated by a static API key.
 // No session cookie required — designed for polling by HA REST sensors.
 
-// Translate a pingCache value into the vocabulary the HA API exposes.
-// The cache stores 'up' / 'down' (see refreshPingCache). Earlier versions of
-// this file compared against 'alive' / 'unreachable', which never matched, so
-// every device was reported as "unknown". Both spellings are accepted here so
-// the two sides cannot silently drift apart again.
-function haPingStatus(value) {
-  if (value === 'up'   || value === 'alive')       return 'online';
-  if (value === 'down' || value === 'unreachable') return 'offline';
-  return 'unknown';
-}
-
-// Any valid key may read the Home Assistant endpoints; a session works too, so
-// the Settings screen can preview them. Kept separate from the blanket
-// middleware to preserve the documented 503 "not enabled" response.
 function requireHaKey(req, res, next) {
   if (isValidSession(req.cookies[SESSION_COOKIE])) return next();
 

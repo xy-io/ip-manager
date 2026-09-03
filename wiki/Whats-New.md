@@ -4,6 +4,18 @@ For the full release history see the [CHANGELOG](https://github.com/xy-io/ip-man
 
 ---
 
+## v2.7.0 — Unit test suite
+
+Developer-facing only; nothing changes in the app.
+
+53 unit tests now cover the server logic that has historically broken — subnet validation, secret redaction, the credentials bcrypt migration, session expiry, login throttling and API key scopes. Run them with `npm test`.
+
+Every test corresponds to a real past failure rather than being written for coverage. The suite was checked by deliberately reintroducing two old bugs and confirming it catches both.
+
+See [Testing](Testing).
+
+---
+
 ## v2.6.0 — Faster first load
 
 The app's JavaScript bundle has been **halved** — from 277 kB to 127 kB gzipped.

@@ -45,6 +45,10 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
+### v2.7.0 — Unit test suite
+
+53 unit tests over the logic that has historically broken — subnet validation, secret redaction, the credentials bcrypt migration, session expiry, login throttling and API key scope enforcement. Run with `npm test`; uses Node's built-in runner, no framework or dependencies. Each test corresponds to a real past failure, and the suite was verified by reintroducing two historical bugs and confirming it catches them. Pure helpers moved into `lib/net.js` and `lib/redact.js` so they can be imported without starting a server.
+
 ### v2.6.0 — Half the bundle removed from first load
 
 `xlsx` and `qrcode` were statically imported and downloaded on every page load, despite serving only the import/export functions and one modal. Together they were 48% of the bundle. Both now load on demand: the initial download drops from 277 kB gzipped to 127 kB. The first use of import, export or the QR modal in a session pauses briefly to fetch the library, then caches it. No functional change.
@@ -304,7 +308,9 @@ Exit code is `0` when everything passes and `1` on any failure, so it can gate a
 node scripts/smoke-test.cjs --build && ip-manager-update
 ```
 
-**Run it before and after any update** — particularly before asking anyone else to update. Comparing the two runs is the quickest way to catch a regression before it reaches a user.
+`npm test` runs the unit suite; `scripts/smoke-test.cjs` verifies a live install. The two are complementary — unit tests catch broken logic, smoke tests catch broken plumbing.
+
+**Run the smoke test before and after any update** — particularly before asking anyone else to update. Comparing the two runs is the quickest way to catch a regression before it reaches a user.
 
 ---
 

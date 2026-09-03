@@ -1,6 +1,35 @@
 # Testing
 
-From **v2.0.2** the repo includes `scripts/smoke-test.cjs` — a read-only script that verifies a running install end-to-end in a few seconds.
+Two complementary suites: **unit tests** catch broken logic, **smoke tests** catch broken plumbing.
+
+---
+
+## Unit tests
+
+From **v2.7.0**, `npm test` runs 53 unit tests over the parts of the server that have historically broken. Node's built-in test runner is used, so there is no framework and no extra dependency.
+
+```bash
+cd /opt/ip-manager
+npm test
+```
+
+They need no running server and no database — an overridable `DB_PATH` points them at a throwaway file.
+
+| Module | What is checked |
+|---|---|
+| `lib/net.js` | Subnet validation (the shell-injection guard), interface names, IP sorting across all four octets, the ping status vocabulary, derived `label` and `serviceUrl` |
+| `lib/redact.js` | That support bundles cannot leak passwords, hashes, API keys or tokens, and that ordinary log lines are untouched |
+| `lib/credentials.js` | Every path through credential loading and the bcrypt migration — the module that has caused two lockout incidents |
+| `lib/sessions.js` | Session lifetime, and that the login throttle engages, isolates by address, and resets on success |
+| `lib/apikeys.js` | Scope enforcement: read keys cannot write, query-string keys cannot write, account routes stay session-only |
+
+Every test corresponds to something that actually went wrong at some point. The suite was validated by reintroducing two historical bugs and confirming it catches them.
+
+---
+
+## Smoke tests
+
+`scripts/smoke-test.cjs` verifies a **running install** end-to-end in a few seconds.
 
 It is safe to run against a live server. Almost every check is read-only; the API-key group creates two temporary keys and one temporary entry at `203.0.113.253` (a reserved TEST-NET-3 address that can never be a real device) and removes all three afterwards. Pass `--read-only` to skip that group and touch nothing at all.
 
