@@ -99,6 +99,18 @@ The DHCP name is recorded separately and shown as a badge, so it is always clear
 - A Pi-hole that is unreachable **never fails a scan**. The sweep is useful without it; the failure is shown in the view instead.
 - Requires **Pi-hole v6 or later**. Earlier versions have no DHCP lease endpoint, and the view will say so.
 
+### If the connection is refused
+
+`Nothing is listening on 192.168.0.250:80` almost always means the port, not the address. Pi-hole v6 runs its own web server and it is frequently not on port 80 — especially in Docker, or where something else already uses that port.
+
+On the Pi-hole box:
+
+```bash
+pihole-FTL --config webserver.port
+```
+
+Then include the port in the address, for example `http://192.168.0.250:8080`. From **v2.13.1** the view says this rather than reporting a raw `ECONNREFUSED`.
+
 ---
 
 ## Your phones are not intruders

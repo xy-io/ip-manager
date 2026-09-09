@@ -6,6 +6,28 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v2.13.1
+
+**Pi-hole connection failures now say what to do**
+
+A failed lookup reported the raw Node error — `connect ECONNREFUSED 192.168.0.250:80` — which is accurate and useless. Network errors are now translated into the likely cause and the next step:
+
+| Failure | What it now says |
+|---|---|
+| Connection refused, no port given | Nothing is listening there, Pi-hole's interface is often on another port, try `:8080`, and `pihole-FTL --config webserver.port` shows the real one |
+| Connection refused, port given | Names the port that was tried, without suggesting a different one |
+| Name does not resolve | Use the IP address instead |
+| Host unreachable | Routing or firewall, not the port |
+| Timed out | Firewalled, or the address is wrong |
+| Certificate not trusted | Turn off "Verify the TLS certificate" for a self-signed certificate on your own network |
+| Connection reset | Pi-hole may be serving HTTPS — use an `https://` address |
+
+The original error is retained on the exception for the server log; only the guidance reaches the interface.
+
+9 new unit tests, including that a routing failure is not reported as a port problem and a timeout is not reported as a refused connection — the failure mode of a diagnostic that pattern-matches too eagerly.
+
+---
+
 ## v2.13.0
 
 **Name unrecognised devices from Pi-hole's DHCP leases (optional, off by default)**

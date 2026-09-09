@@ -286,3 +286,73 @@ test('the session id travels in a header, never in the query string', async () =
   assert.ok(fetch.sid, 'the SID should be passed for the header');
   assert.ok(!fetch.path.includes('sid='), 'a SID in the URL would be written to Pi-hole access logs');
 });
+
+// ── Connection diagnostics ──────────────────────────────────────────────────
+// "connect ECONNREFUSED 192.168.0.250:80" is accurate and useless. Each of
+// these must name the likely cause and the next step.
+
+const { describeConnectionFailure } = require('../lib/pihole');
+
+const refused = () => Object.assign(new Error('connect ECONNREFUSED 192.168.0.250:80'), { code: 'ECONNREFUSED' });
+
+test('a refused connection on a default port blames the port and suggests one', () => {
+  const advice = describeConnectionFailure(refused(), 'http://192.168.0.250');
+  assert.match(advice, /Nothing is listening on 192\.168\.0\.250:80/);
+  assert.match(advice, /8080/, 'should suggest the common alternative port');
+  assert.match(advice, /webserver\.port/, 'should say how to find the real port');
+});
+
+test('a refused connection on an explicit port does not suggest a different one', () => {
+  // The user already chose a port; telling them to try 8080 would be noise.
+  const advice = describeConnectionFailure(refused(), 'http://192.168.0.250:8080');
+  assert.match(advice, /192\.168\.0\.250:8080/);
+  assert.doesNotMatch(advice, /No port was given/);
+});
+
+test('an unresolvable name says to use the IP address', () => {
+  const advice = describeConnectionFailure(Object.assign(new Error('getaddrinfo ENOTFOUND pi.hole'), { code: 'ENOTFOUND' }), 'http://pi.hole');
+  assert.match(advice, /could not be resolved/);
+  assert.match(advice, /IP address/);
+});
+
+test('an unreachable host points at routing rather than the port', () => {
+  const advice = describeConnectionFailure(Object.assign(new Error('connect EHOSTUNREACH'), { code: 'EHOSTUNREACH' }), 'http://10.9.9.9');
+  assert.match(advice, /unreachable/);
+  assert.doesNotMatch(advice, /8080/, 'a routing problem is not a port problem');
+});
+
+test('a timeout is not reported as a refused connection', () => {
+  const advice = describeConnectionFailure(Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' }), 'http://192.168.0.250');
+  assert.match(advice, /did not respond in time/);
+  assert.doesNotMatch(advice, /Nothing is listening/);
+});
+
+test('a self-signed certificate points at the verification setting', () => {
+  const advice = describeConnectionFailure(
+    Object.assign(new Error('self signed certificate'), { code: 'DEPTH_ZERO_SELF_SIGNED_CERT' }), 'https://192.168.0.250');
+  assert.match(advice, /self-signed/i);
+  assert.match(advice, /Verify the TLS certificate/);
+});
+
+test('a reset connection suggests https', () => {
+  const advice = describeConnectionFailure(Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' }), 'http://192.168.0.250');
+  assert.match(advice, /https/);
+});
+
+test('an unrecognised error keeps its original message', () => {
+  const advice = describeConnectionFailure(new Error('something unusual'), 'http://192.168.0.250');
+  assert.equal(advice, 'something unusual');
+});
+
+test('the client reports advice, not an errno, when the connection is refused', async () => {
+  // The end-to-end property: what reaches the user is the guidance.
+  const client = createClient({ httpRequest: async () => { throw refused(); } });
+  await assert.rejects(
+    () => client.fetchLeases({ ...CONFIG, url: 'http://192.168.0.250' }),
+    (err) => {
+      assert.match(err.message, /Nothing is listening/);
+      assert.doesNotMatch(err.message, /^connect ECONNREFUSED/);
+      assert.ok(err.cause, 'the original error should be retained for the logs');
+      return true;
+    });
+});

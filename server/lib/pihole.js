@@ -161,6 +161,50 @@ function enrichSightings(sightings, leases) {
   });
 }
 
+
+/**
+ * Turn a Node network error into something a person can act on.
+ *
+ * "connect ECONNREFUSED 192.168.0.250:80" is accurate and useless. The single
+ * most common cause is the port: Pi-hole v6's own web server frequently listens
+ * somewhere other than 80, and in Docker it is usually remapped. Saying so
+ * turns a dead end into a next step.
+ */
+function describeConnectionFailure(error, baseUrl) {
+  const code = (error && error.code) || '';
+  const message = (error && error.message) || String(error || '');
+  let host = baseUrl || 'Pi-hole';
+  let port = null;
+  try {
+    const parsed = new URL(baseUrl);
+    host = parsed.hostname;
+    port = parsed.port || (parsed.protocol === 'https:' ? '443' : '80');
+  } catch { /* fall back to the raw string */ }
+
+  if (code === 'ECONNREFUSED' || /ECONNREFUSED/.test(message)) {
+    const portHint = port === '80' || port === '443'
+      ? ` No port was given, so ${port} was used. Pi-hole's web interface is often on another port — try including it, for example http://${host}:8080.`
+      : ` Check that Pi-hole's web interface is really on port ${port}.`;
+    return `Nothing is listening on ${host}:${port}.${portHint} On the Pi-hole box, "pihole-FTL --config webserver.port" shows the port it uses.`;
+  }
+  if (code === 'ENOTFOUND' || /ENOTFOUND|EAI_AGAIN/.test(message)) {
+    return `The address "${host}" could not be resolved. Use Pi-hole's IP address if its name does not resolve from this server.`;
+  }
+  if (code === 'EHOSTUNREACH' || code === 'ENETUNREACH' || /EHOSTUNREACH|ENETUNREACH/.test(message)) {
+    return `${host} is unreachable from this server. Check routing or firewall rules between the two.`;
+  }
+  if (code === 'ETIMEDOUT' || /ETIMEDOUT|did not respond within/.test(message)) {
+    return `${host} did not respond in time. It may be firewalled, or the address may be wrong.`;
+  }
+  if (/self.signed|SELF_SIGNED|DEPTH_ZERO|CERT_|ERR_TLS/.test(`${code} ${message}`)) {
+    return `${host} presented a certificate that could not be verified. If it is a self-signed certificate on your own network, turn off "Verify the TLS certificate".`;
+  }
+  if (code === 'ECONNRESET' || /ECONNRESET/.test(message)) {
+    return `${host} closed the connection. If Pi-hole is serving HTTPS, use an https:// address.`;
+  }
+  return message;
+}
+
 // ── HTTP ────────────────────────────────────────────────────────────────────
 
 function request(baseUrl, path, { method = 'GET', body = null, sid = null, verifyTls = true } = {}) {
@@ -232,12 +276,25 @@ function createClient({ httpRequest = request } = {}) {
 
   const clearSession = () => { session = null; };
 
+  // Every request goes through here so a transport-level failure is reported as
+  // advice rather than as an errno.
+  const call = async (base, path, opts) => {
+    try {
+      return await httpRequest(base, path, opts);
+    } catch (err) {
+      const described = describeConnectionFailure(err, base);
+      const wrapped = new Error(described);
+      wrapped.cause = err;
+      throw wrapped;
+    }
+  };
+
   async function login(config) {
     const base = normaliseBaseUrl(config.url);
     if (!base) throw new Error('Set a valid Pi-hole address, for example http://192.168.0.2');
     if (!config.password) throw new Error('A Pi-hole application password is required');
 
-    const res = await httpRequest(base, '/api/auth', {
+    const res = await call(base, '/api/auth', {
       method: 'POST',
       body: { password: config.password },
       verifyTls: config.verifyTls !== false,
@@ -277,7 +334,7 @@ function createClient({ httpRequest = request } = {}) {
     if (!base) throw new Error('Set a valid Pi-hole address, for example http://192.168.0.2');
 
     const current = await ensureSession(config);
-    let res = await httpRequest(base, '/api/dhcp/leases', {
+    let res = await call(base, '/api/dhcp/leases', {
       sid: current.sid,
       verifyTls: config.verifyTls !== false,
     });
@@ -288,7 +345,7 @@ function createClient({ httpRequest = request } = {}) {
     if (res.status === 401) {
       clearSession();
       const renewed = await ensureSession(config);
-      res = await httpRequest(base, '/api/dhcp/leases', {
+      res = await call(base, '/api/dhcp/leases', {
         sid: renewed.sid,
         verifyTls: config.verifyTls !== false,
       });
@@ -320,7 +377,7 @@ function createClient({ httpRequest = request } = {}) {
     // Best effort: a failed logout costs Pi-hole one session slot until it
     // times out on its own, which is not worth surfacing.
     try {
-      await httpRequest(base, '/api/auth', {
+      await call(base, '/api/auth', {
         method: 'DELETE', sid,
         verifyTls: !config || config.verifyTls !== false,
       });
@@ -335,6 +392,7 @@ function createClient({ httpRequest = request } = {}) {
 
 module.exports = {
   createClient,
+  describeConnectionFailure,
   normaliseBaseUrl,
   parseSession,
   parseLeases,

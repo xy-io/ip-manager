@@ -45,6 +45,10 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
+### v2.13.1 — Pi-hole connection failures now say what to do
+
+A failed lookup reported the raw Node error. Network failures are now translated into the likely cause and the next step — a refused connection on a default port explains that Pi-hole's web interface is often elsewhere and how to find the real port, while a routing failure or a certificate problem says so instead.
+
 ### v2.13.0 — Pi-hole DHCP names for unrecognised devices
 
 Optional and off by default. When Pi-hole is your DHCP server it already knows what each device calls itself, so Network Watch can turn an unrecognised MAC into `living-room-hue` with no typing. The application password is write-only — stored on the server, never returned to the browser. The Pi-hole session is cached and reused rather than re-authenticated per request, because Pi-hole rate-limits logins and caps concurrent sessions: 20 lease fetches produce 1 login. Leave it off if your router handles DHCP.
