@@ -33,3 +33,4 @@ xcschememanagement.plist
 # be missing on the target platform.
 package-lock.json
 /wiki/Untitled
+.render-check/

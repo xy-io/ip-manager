@@ -1,6 +1,6 @@
 {
   "name": "ip-manager",
-  "version": "2.11.3",
+  "version": "2.12.0",
   "description": "Home Network IP Address Manager",
   "type": "module",
   "scripts": {
@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "node --test server/test/*.test.js",
-    "test:watch": "node --test --watch server/test/*.test.js"
+    "test:watch": "node --test --watch server/test/*.test.js",
+    "check:modals": "mkdir -p .render-check && node scripts/render-check.mjs; rm -rf .render-check"
   },
   "dependencies": {
     "lucide-react": "^0.400.0",

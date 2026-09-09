@@ -6,6 +6,29 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v2.12.0
+
+**A quarter of the initial download removed**
+
+Eight modals that are never on screen at first paint — Help, Backup, Import, Domains, ARP Scan, Proxmox Import, Subnet Visualiser and the CIDR Calculator — now load on demand rather than in the main bundle.
+
+| | Gzipped |
+|---|---|
+| Before | 136.20 kB |
+| After | **105.00 kB** |
+
+A **23% cut** to what every page load fetches. Each modal became its own chunk, fetched once on first open and cached for the session; the largest is Help at 14.9 kB. The roadmap estimated 15–20% for this work — the figure above is measured, not projected.
+
+Shared helpers (`useModalA11y`, `parseCIDR`, the subnet arithmetic) moved to `src/shared/common.js` so the split modals can import them without dragging the whole application module back in, which would have silently undone the split.
+
+**A new check, because the build could not catch what went wrong.** Three of the eight used `<React.Fragment>` without importing `React`. Every one compiled cleanly and would have rendered a **blank modal** on open — an undefined identifier inside a function body is a runtime error, not a compile error.
+
+`npm run check:modals` now renders every lazily-loaded modal server-side and fails if one throws. It found those three, and it is the answer to the concern that has kept the wider frontend split on the roadmap: that a component move can only be verified as far as "it still builds".
+
+No functional change. No server change.
+
+---
+
 ## v2.11.3
 
 **The real reason discovery scans found nothing**

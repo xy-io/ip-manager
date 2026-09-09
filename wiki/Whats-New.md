@@ -4,6 +4,14 @@ For the full release history see the [CHANGELOG](https://github.com/xy-io/ip-man
 
 ---
 
+## v2.12.0 — Faster first load
+
+Eight screens you only open occasionally — Help, Backup, Import, Domains, ARP Scan, Proxmox Import, Subnet Visualiser and the CIDR Calculator — are no longer downloaded before the app appears. They arrive when you first open them, in a few milliseconds on a LAN.
+
+The initial download drops from 136 kB to **105 kB**, about a quarter less. Nothing looks or behaves differently.
+
+---
+
 ## v2.11.3 — The real reason discovery scans found nothing
 
 Not permissions. The background sweep ran `arp-scan --quiet`, which drops the vendor column from the output, and the parser required that column — so every device found was thrown away and the sweep reported an empty network.

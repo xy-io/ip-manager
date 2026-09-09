@@ -11,14 +11,15 @@ Items are roughly ordered by priority but nothing here is a firm commitment or t
 Known defects and hardening work, in the order they should be tackled. These come ahead of new features.
 
 ### Maintainability — frontend split remains
-The server split shipped in v2.5.0. `src/IPAddressManager.jsx` (~9,400 lines) has not been split yet, and deliberately so: the smoke suite exercises the API, not the interface, so a frontend extraction can only be verified as far as "it still builds". The v2.5.0 server split turned up two path bugs that both a syntax check and a successful build would have missed — the equivalent mistakes in the frontend would reach users.
+The server split shipped in v2.5.0. `src/IPAddressManager.jsx` has not been fully split, though v2.12.0 moved eight modals out (~10,500 → ~9,600 lines in the main file).
 
-Doing it safely needs one of: a component test setup, or extraction restricted to pure helpers and leaf components one at a time with manual checking between each.
+The blocker was that a frontend extraction could only be verified as far as "it still builds". **v2.12.0 addressed that**: `npm run check:modals` renders each extracted component server-side and fails on a missing reference — it caught three modals that compiled cleanly and would have opened blank. Extending that harness to cover more components is the prerequisite for going further.
+
+What remains in the main file is the application shell, the entry table and the edit and settings modals, which hold shared state and are harder to lift out than the leaf modals were.
 
 ### Performance — what is left
 Bundle size was the only user-visible performance problem, and v2.6.0 halved it by loading `xlsx` and `qrcode` on demand. What remains is not urgent at present scale:
 
-- **Lazy-load the heavy modals** — Help (714 lines), Subnet Visualiser, Import, Backup and the calculators are all rarely opened and could be split out the same way. Worth roughly another 15–20% of the main chunk. Easier once components are extracted, but achievable with `React.lazy` beforehand.
 - **Memoise list rows** — three status polls a minute each re-render all entries. At 87 entries this is tens of milliseconds and imperceptible; it matters north of ~500 entries or on older hardware. Needs the card and row components extracted first.
 - **Virtualise long lists** — same trigger point, same prerequisite.
 
@@ -89,6 +90,7 @@ See [CHANGELOG.md](./CHANGELOG.md) for a full history of released features.
 
 | Version | Feature |
 |---------|---------|
+| v2.12.0 | Eight modals lazily loaded — initial bundle down 23%, plus a modal render check |
 | v2.11.3 | arp-scan --quiet output parsed correctly — the actual cause of empty discovery sweeps |
 | v2.11.2 | Discovery scan failures reported rather than swallowed; Network Watch moved into Tools |
 | v2.11.1 | Network Watch discoverability — open from Settings, count badge on the header icon |

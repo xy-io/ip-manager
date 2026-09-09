@@ -32,6 +32,20 @@ Every test corresponds to something that actually went wrong at some point. The 
 
 ---
 
+## Modal render check
+
+```bash
+npm run check:modals
+```
+
+From **v2.12.0**, this renders every lazily-loaded modal server-side and fails if one throws.
+
+It exists because a build cannot catch this class of error. When those modals were extracted into their own files, three of them used `<React.Fragment>` without importing `React` — an undefined identifier inside a function body, which compiles perfectly and only fails when the component actually renders. All three would have opened as a blank modal.
+
+Run it after moving any component between files.
+
+---
+
 ## Smoke tests
 
 `scripts/smoke-test.cjs` verifies a **running install** end-to-end in a few seconds.
