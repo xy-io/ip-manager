@@ -15,7 +15,7 @@ export const loadXLSX = () => {
   return xlsxPromise;
 };
 
-export const APP_VERSION = 'v2.15.0';
+export const APP_VERSION = 'v2.15.1';
 
 // Default network configuration (overridden by Settings modal / localStorage)
 

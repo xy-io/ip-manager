@@ -864,12 +864,24 @@ app.get('/api/whats-new', (req, res) => {
   const current = APP_VERSION;
   const notes = releaseNotes.notesSince(releaseNotes.readNotesFile(), state.lastSeenVersion, current);
 
-  // A brand-new install has nothing to be "new" about, and the first run is
-  // already busy asking for a password change. Record the version silently so
-  // the next genuine update is the first thing anyone sees.
+  // No recorded version means one of two very different things: a brand-new
+  // install, or an existing one updating into this feature for the first time.
+  // Treating both as "new" made the dialog invisible on the release that
+  // introduced it — the one occasion it most needs to work.
+  //
+  // An established install is distinguishable: it already has an inventory.
   if (!state.lastSeenVersion) {
-    dbSet('whats_new_state', { lastSeenVersion: current, suppressed: state.suppressed === true });
-    return res.json({ show: false, version: current, suppressed: state.suppressed === true, releases: [] });
+    const entries = dbGet('ip_data');
+    const established = Array.isArray(entries) && entries.some(
+      (e) => e && e.assetName && e.assetName !== 'Free' && e.assetName !== 'Reserved');
+
+    if (!established) {
+      // Genuinely new. Nothing is "new" on day one, and first run is already
+      // busy asking for a password change. Record silently.
+      dbSet('whats_new_state', { lastSeenVersion: current, suppressed: state.suppressed === true });
+      return res.json({ show: false, version: current, suppressed: state.suppressed === true, releases: [] });
+    }
+    // Established: fall through and show the current release.
   }
 
   res.json({
@@ -890,8 +902,10 @@ app.post('/api/whats-new/seen', (req, res) => {
 
 // POST /api/whats-new/reset — undo "do not show again", so it is not one-way
 app.post('/api/whats-new/reset', (req, res) => {
-  const state = getWhatsNewState();
-  dbSet('whats_new_state', { lastSeenVersion: state.lastSeenVersion, suppressed: false });
+  // Clearing the recorded version as well as the suppression means the current
+  // release is shown again on the next load, so this doubles as "show me it
+  // now" rather than only "stop hiding future ones".
+  dbSet('whats_new_state', { lastSeenVersion: null, suppressed: false });
   res.json({ ok: true, suppressed: false });
 });
 

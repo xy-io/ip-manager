@@ -45,6 +45,10 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
+### v2.15.1 — The "what's new" dialog now actually appears
+
+v2.14.0 added it and then hid it: an install with no record of a previous version was treated as brand new, and every existing install updating into the feature had no record either. An established install is now recognised by already having an inventory. **Settings → Updates** also gains a **Show what's new** button available at any time.
+
 ### v2.15.0 — Add a discovered device straight to the inventory
 
 Unrecognised devices in Network Watch now have an **Add** button that opens the edit form pre-filled with the address, name, MAC and a type guessed from the vendor. The row flips to *in inventory* immediately and the unrecognised count drops. Stacking the edit form over the view exposed an older bug — `useModalA11y` bound Escape on `document` in the capture phase, so Escape would have closed the view underneath rather than the form; modals now register on a stack and only the topmost responds.

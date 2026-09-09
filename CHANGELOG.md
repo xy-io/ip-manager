@@ -6,6 +6,23 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v2.15.1
+
+**The "what's new" dialog now actually appears**
+
+v2.14.0 added a summary shown on the first load after an update, and then failed to show it.
+
+The state is keyed on the last version acknowledged. With no record, the server treated the install as brand new — recording the version silently, because there is nothing to announce on day one. But **every existing install updating into the feature has no record either**, and fell into the same branch. The result: the dialog was invisible on the release that introduced it, and would first appear one release later. The one occasion it most needed to work.
+
+The two cases are distinguishable after all: an established install already has an inventory. A install with real entries and no recorded version is one adopting the feature, and is now shown the current release; a genuinely empty one still stays quiet.
+
+- **Settings → Updates** now offers **Show what's new** at all times, not only when summaries have been suppressed, so the answer to "where is it?" is never "wait for the next release"
+- Reset clears the recorded version as well as the suppression, so it re-shows the current release rather than only unblocking future ones
+
+Verified against a live server in all three states: an established install with no record (shows), a genuinely new one (silent), and reset-on-demand (shows again).
+
+---
+
 ## v2.15.0
 
 **Add a discovered device straight to the inventory**

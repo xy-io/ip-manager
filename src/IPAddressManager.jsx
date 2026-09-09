@@ -2125,12 +2125,13 @@ function WhatsNewReset() {
           ? 'Release summaries are switched off after an update.'
           : 'A short summary is shown once after each update.'}
       </span>
-      {state.suppressed && (
-        <button onClick={reset} disabled={busy}
-                className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50 disabled:opacity-50">
-          Show them again
-        </button>
-      )}
+      {/* Available whether or not they are suppressed: "where is it?" is a
+          reasonable question, and the answer should not be "wait for the next
+          release". Resetting makes the current release show again on reload. */}
+      <button onClick={reset} disabled={busy}
+              className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50 disabled:opacity-50 flex-shrink-0">
+        {state.suppressed ? 'Show them again' : "Show what's new"}
+      </button>
     </div>
   );
 }

@@ -63,6 +63,32 @@ Full design, including the notification policy and phasing, in [wiki/Network-Wat
 
 ---
 
+### All devices view — the network as it actually is
+
+A third mode on the home view, beside cards and table: **Inventory** (the default) and **All devices**.
+
+The inventory shows what you manage, which is largely the static range. It cannot answer "what is actually on my network", because everything holding a DHCP lease is invisible to it. This merges the two into one list, marking which rows are managed and which are merely present.
+
+**Not a "DHCP" tab.** A DHCP-only view excludes every static device, so it never answers the whole question either. The useful list is everything, with provenance.
+
+**Sources, merged.** Pi-hole leases where configured (authoritative, named), plus ARP discovery results (works everywhere, no Pi-hole needed). Each row shows where it came from, and the view degrades gracefully when only one source is available.
+
+**Reuses what exists.** Search and sort carry over from the main list; the **Add** button from v2.15.0 appears on rows that are not in the inventory, so the view is an on-ramp rather than a dead end. Read-only otherwise.
+
+**The line this must hold**, or it should not be built:
+
+| View | Answers |
+|---|---|
+| Inventory | What do I manage? Editable. |
+| All devices | What is on the network right now? Reference. |
+| [Network Watch](./wiki/Network-Watch.md) | Is this expected? History and identity over time. Opt-in. |
+
+Network Watch already lists observed devices, so the risk is two places showing the same thing. If that distinction cannot be made obvious on screen, the right answer is to send people to Network Watch instead of building a second list.
+
+**Scope discipline.** A view toggle, not a new top-level concept — the inventory stays the default and this adds no settings of its own. It stops being justified the moment it grows its own configuration.
+
+---
+
 ## Under Consideration
 
 - **Dark mode persistence** — remember last-used theme across sessions (currently resets on page load)
@@ -90,6 +116,7 @@ See [CHANGELOG.md](./CHANGELOG.md) for a full history of released features.
 
 | Version | Feature |
 |---------|---------|
+| v2.15.1 | The what's new dialog appears for installs updating into the feature |
 | v2.15.0 | Add discovered devices to the inventory from Network Watch; modal Escape ordering fixed |
 | v2.14.0 | "What's new" dialog on the first load after an update, sourced from the wiki |
 | v2.13.2 | Vendor lookup fallback fixed; duplicate ARP replies flagged rather than shown as a vendor name |

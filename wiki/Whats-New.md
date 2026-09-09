@@ -4,6 +4,16 @@ For the full release history see the [CHANGELOG](https://github.com/xy-io/ip-man
 
 ---
 
+## v2.15.1 — The what's new box now actually appears
+
+v2.14.0 added a summary shown after each update, and then did not show it — because an install with no record of a previous version was treated as brand new, and a brand new install has nothing to announce. Every existing install updating into the feature fell into that gap, so the one release where it mattered was the one where it stayed silent.
+
+An established install is now recognised by the fact that it already has an inventory, and sees the summary as intended.
+
+**Settings → Updates** also has a **Show what's new** button, so you never have to wait for the next release to see it.
+
+---
+
 ## v2.15.0 — Add a discovered device straight to your inventory
 
 Network Watch used to tell you about a device and then leave you to memorise its address, close the view and type everything in again. Unrecognised devices now have an **Add** button that opens the normal edit form with the address, name, MAC and vendor already filled in.
