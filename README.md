@@ -45,6 +45,10 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
+### v2.11.2 — A scan that finds nothing now says why
+
+The background discovery sweep swallowed `arp-scan` failures, so a server without it installed reported a successful scan that found zero devices — identical to a quiet network. Failures are now collected, shown in the view, and name the remedy; discovery also falls back to the kernel ARP cache as the manual scan always has. Network Watch has moved into the **Tools** menu alongside Topology and mDNS, with the unrecognised count on the Tools button.
+
 ### v2.11.1 — Making Network Watch findable
 
 Enabling Network Watch produced no visible result — the only way in was a small unlabelled header icon, on a screen you had already left. An **Open Network Watch** button now appears in Settings the moment you enable it, and the header icon carries a count badge when there are unrecognised devices. Randomised phone MACs are excluded from that count, so the badge means something worth a look rather than a phone reconnecting.

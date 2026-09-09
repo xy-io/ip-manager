@@ -338,6 +338,25 @@ async function testProtectedRoutes() {
     return true;
   });
 
+  await test('a Network Watch scan never reports nothing without saying why', async () => {
+    // The regression this guards: discovery swallowed arp-scan failures and
+    // returned an empty result with no error, so a server without arp-scan
+    // looked identical to a network with no devices on it.
+    const status = await GET('/api/watch/status');
+    if (status.json?.enabled !== true) return true;   // nothing to scan while off
+
+    const res = await req('POST', '/api/watch/scan', { body: {} });
+    const statusCheck = expectStatus(res, 200, 'POST /api/watch/scan');
+    if (statusCheck !== true) return statusCheck;
+    if (!Array.isArray(res.json.warnings)) return 'the scan response carries no warnings array';
+
+    const foundNothing = (res.json.found || 0) === 0;
+    const explained = res.json.warnings.length > 0 || res.json.error;
+    return foundNothing && !explained
+      ? 'the scan found no devices and offered no explanation — the exact silent failure this guards against'
+      : true;
+  });
+
   await test('GET /api/mdns/status returns a well-formed shape before any scan', async () => {
     const res = await GET('/api/mdns/status');
     const statusCheck = expectStatus(res, 200, 'GET /api/mdns/status');

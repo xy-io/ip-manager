@@ -10,6 +10,7 @@ const assert = require('node:assert');
 const {
   normaliseSubnetToCidr, isValidInterface, buildArpScanArgs, buildDiscoveryScanArgs,
   ipSortKey, sortEntriesByIp, findEntryIndex, haPingStatus, decorateEntry,
+  describeScanFailure,
 } = require('../lib/net');
 
 test('normaliseSubnetToCidr expands shorthand networks', () => {
@@ -131,4 +132,37 @@ test('decorateEntry never mutates the entry it is given', () => {
   const copy = { ...original };
   decorateEntry(original);
   assert.deepEqual(original, copy, 'stored data must not gain derived fields');
+});
+
+// ── Scan failure diagnostics ────────────────────────────────────────────────
+// Discovery used to swallow arp-scan failures and report a successful scan that
+// found nothing, which is indistinguishable from a quiet network. Each message
+// below has to name the actual remedy.
+
+test('a permission failure names the setcap command', () => {
+  const advice = describeScanFailure(new Error('spawn arp-scan Operation not permitted'));
+  assert.match(advice, /setcap cap_net_raw\+ep/);
+});
+
+test('a missing binary says to install it', () => {
+  const advice = describeScanFailure(new Error('spawn arp-scan ENOENT'));
+  assert.match(advice, /not installed/);
+  assert.match(advice, /apt-get install arp-scan/);
+});
+
+test('a timeout points at the subnet size rather than a missing package', () => {
+  const advice = describeScanFailure(new Error('ETIMEDOUT'));
+  assert.match(advice, /timed out/);
+  assert.doesNotMatch(advice, /not installed/, 'a timeout is not a missing binary');
+});
+
+test('an unrecognised failure still carries the original message', () => {
+  const advice = describeScanFailure(new Error('something else entirely'));
+  assert.match(advice, /something else entirely/);
+});
+
+test('a non-Error value does not crash the diagnostic', () => {
+  assert.equal(typeof describeScanFailure('plain string'), 'string');
+  assert.equal(typeof describeScanFailure(null), 'string');
+  assert.equal(typeof describeScanFailure(undefined), 'string');
 });

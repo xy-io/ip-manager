@@ -22,9 +22,20 @@ That is deliberate rather than unfinished. A monitoring feature that cries wolf 
 
 An **Open Network Watch** button appears as soon as you tick the box — that is the quickest way in.
 
-From then on an eye icon sits in the header next to Help and Settings, carrying a count badge when there are unrecognised devices to look at. Randomised phone MACs are left out of that count, so the badge only appears when something is genuinely worth checking. On mobile it is an entry in the Tools menu instead.
+From then on it lives in the **Tools** menu, alongside Topology and mDNS Discovery. A dot appears on the Tools button when there are unrecognised devices; randomised phone MACs are left out of that count, so it only shows when something is genuinely worth checking.
 
 Populate it either by pressing **Scan now**, or by enabling the background sweep in **Settings → ARP & Presence**, which will feed the ledger on its own schedule.
+
+### If a scan finds nothing
+
+Discovery uses `arp-scan` on the server. If that is missing or lacks permission, the view will say so and name the fix:
+
+```bash
+apt-get install arp-scan
+setcap cap_net_raw+ep $(which arp-scan)
+```
+
+Without it, discovery falls back to the kernel ARP cache — which only sees devices the server has recently talked to, so results will be sparse but not empty. Before **v2.11.2** this failure was silent: the scan reported success with zero devices.
 
 ---
 

@@ -6,6 +6,27 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v2.11.2
+
+**A scan that finds nothing now says why**
+
+The background discovery sweep swallowed `arp-scan` failures. Each network that failed was logged to the console and skipped, and the scan then reported success with zero devices — indistinguishable from a network with nothing on it. On a server without `arp-scan` installed, or without `CAP_NET_RAW`, Network Watch would report "Nothing recorded yet" for ever and give no clue why.
+
+This is precisely the quiet failure mode called out as the risk when mDNS was built, and it shipped here anyway.
+
+- **Failures are collected and returned**, and shown in the Network Watch view
+- **The message names the remedy** — `apt-get install arp-scan` for a missing binary, `setcap cap_net_raw+ep $(which arp-scan)` for a permissions failure, and subnet size for a timeout
+- **Discovery now falls back to the kernel ARP cache**, as the manual ARP scan has always done. It sees fewer devices, but returning something with an explanation beats returning nothing
+- A scan that genuinely ran and found nothing says so too, rather than looking identical to a broken one
+
+Note that the manual **Tools → ARP Scan** was unaffected — it always had the fallback. Only the background sweep, which Network Watch depends on, was missing it.
+
+**Network Watch moved into the Tools menu**, alongside Topology and mDNS Discovery, replacing the header icon added in v2.11.1. It sits with the other network tools, which is where people look. The unrecognised-device count now shows on the Tools button and on the menu entry.
+
+5 new unit tests over the diagnostic messages, and a smoke check asserting a scan can never report nothing without an explanation.
+
+---
+
 ## v2.11.1
 
 **Making Network Watch findable**

@@ -50,7 +50,7 @@ const { apiError, toEpochSeconds, toSecondsRemaining } = require('./lib/http');
 const { getDomains, saveDomains } = require('./lib/domainStore');
 const {
   normaliseSubnetToCidr, isValidInterface, buildArpScanArgs, buildDiscoveryScanArgs,
-  ipSortKey, sortEntriesByIp, findEntryIndex, haPingStatus, decorateEntry,
+  ipSortKey, sortEntriesByIp, findEntryIndex, haPingStatus, decorateEntry, describeScanFailure,
 } = require('./lib/net');
 const { redactSecrets } = require('./lib/redact');
 const twoFactor = require('./lib/twoFactor');
@@ -791,6 +791,8 @@ app.post('/api/watch/scan', async (req, res) => {
     summary: watch.summarise(ledger, entries),
     scannedAt: discoveryState.lastRun,
     error: discoveryState.lastError,
+    warnings: discoveryState.warnings || [],
+    found: (discoveryState.lastResults || []).length,
   });
 });
 
@@ -1169,6 +1171,7 @@ let discoveryState = {
   lastRun:     null,
   lastResults: [],   // [{ ip, mac, vendor, networkId, tracked, inStaticRange }]
   lastError:   null,
+  warnings:    [],   // human-readable reasons a scan found less than expected
 };
 let discoveryTimer = null;
 
@@ -1191,6 +1194,11 @@ async function runDiscoveryScan({ force = false } = {}) {
     const ipData   = dbGet('ip_data')   || [];
     const inManager = new Set(ipData.map(e => e.ip));
     const allResults = [];
+    // Why a network produced nothing. Previously each failure was a console
+    // warning and a `continue`, so a box without arp-scan reported a successful
+    // scan that found zero devices — indistinguishable from a quiet network,
+    // and impossible to diagnose from the interface.
+    const warnings = [];
 
     for (const network of networks) {
       const subnetRaw = network.subnet || '';
@@ -1209,17 +1217,34 @@ async function runDiscoveryScan({ force = false } = {}) {
       const bw        = config.discoveryBandwidthKbps ?? defaults.bandwidthKbps;
 
       let raw = [];
+      const scanArgs = buildDiscoveryScanArgs(cidr, config.discoveryInterface || '', bw);
+      if (!scanArgs) {
+        const why = `${cidr}: invalid subnet or interface name — check Settings → ARP & Presence.`;
+        console.warn(`[discovery] ${why}`);
+        warnings.push(why);
+        continue;
+      }
+
       try {
-        const scanArgs = buildDiscoveryScanArgs(cidr, config.discoveryInterface || '', bw);
-        if (!scanArgs) {
-          console.warn(`[discovery] Skipping ${cidr} — invalid subnet or interface name`);
-          continue;
-        }
         const stdout = execFileSync('arp-scan', scanArgs, { encoding: 'utf8', timeout: 180000, stdio: ['pipe', 'pipe', 'pipe'] });
         raw = parseArpScanOutput(stdout);
       } catch (err) {
-        console.warn(`[discovery] arp-scan failed for ${cidr}:`, err.message);
-        continue;
+        // Fall back to the kernel ARP cache, exactly as the manual ARP scan
+        // does. It sees fewer devices — only those recently talked to — but
+        // returning something with an explanation beats returning nothing.
+        const advice = describeScanFailure(err);
+        console.warn(`[discovery] ${cidr}: ${advice} — falling back to the ARP cache`);
+        try {
+          raw = parseArpCache();
+          warnings.push(`${advice} Showing the kernel ARP cache instead, which sees fewer devices.`);
+        } catch (fallbackErr) {
+          warnings.push(`${advice} The ARP cache fallback also failed: ${fallbackErr.message}`);
+          continue;
+        }
+      }
+
+      if (raw.length === 0 && !warnings.length) {
+        warnings.push(`${cidr}: the scan ran but found no devices. Check the interface in Settings → ARP & Presence.`);
       }
 
       // Determine static range for this network (last-octet bounds for /24; full range for /16)
@@ -1244,7 +1269,10 @@ async function runDiscoveryScan({ force = false } = {}) {
     }
 
     const lastRun = new Date().toISOString();
-    discoveryState = { running: false, lastRun, lastResults: allResults, lastError: null };
+    discoveryState = {
+      running: false, lastRun, lastResults: allResults, lastError: null,
+      warnings: [...new Set(warnings)],
+    };
 
     // Feed the Network Watch ledger, if the user has switched it on. This is
     // the only place the ledger is written from the discovery path, and it is

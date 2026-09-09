@@ -23,7 +23,7 @@ const loadQRCode = () => {
 };
 
 // ── App version ───────────────────────────────────────────────────────────────
-const APP_VERSION = 'v2.11.1';
+const APP_VERSION = 'v2.11.2';
 
 // Default network configuration (overridden by Settings modal / localStorage)
 const DEFAULT_NETWORK_CONFIG = {
@@ -1238,8 +1238,8 @@ function NetworkWatchTab({ onOpen }) {
               Open Network Watch
             </button>
             <p className="text-xs text-indigo-900/70">
-              It also lives behind the <span aria-hidden="true">&#9678;</span> eye icon in the header,
-              next to Help and Settings.
+              It also lives in the <span className="font-semibold">Tools</span> menu, alongside
+              Topology and mDNS Discovery.
             </p>
           </div>
 
@@ -1311,6 +1311,7 @@ function NetworkWatchView({ onClose }) {
   const [data, setData] = useState(null);
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState(null);
+  const [warnings, setWarnings] = useState([]);
   const [filter, setFilter] = useState('all');   // all | unknown | known | random
 
   const load = () => fetch('/api/watch/devices').then(r => r.json()).then(setData).catch(() => setError('Could not load'));
@@ -1324,6 +1325,7 @@ function NetworkWatchView({ onClose }) {
       const json = await res.json();
       if (!res.ok) throw new Error(json.message || 'The scan failed');
       setData({ enabled: true, devices: json.devices, summary: json.summary });
+      setWarnings(json.warnings || []);
     } catch (err) { setError(err.message); }
     finally { setScanning(false); }
   };
@@ -1380,6 +1382,14 @@ function NetworkWatchView({ onClose }) {
         <div className="flex-1 overflow-auto p-4 bg-slate-50">
           {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
 
+          {/* A scan that found nothing must say why. Silently reporting zero
+              devices is indistinguishable from a quiet network. */}
+          {warnings.length > 0 && (
+            <div className="mb-3 text-xs bg-amber-50 border border-amber-200 text-amber-900 rounded-lg px-3 py-2 space-y-1">
+              {warnings.map((w, i) => <p key={i}>{w}</p>)}
+            </div>
+          )}
+
           {devices.length === 0 && !scanning && (
             <div className="text-sm text-slate-500 space-y-2">
               <p>Nothing recorded yet.</p>
@@ -1387,6 +1397,11 @@ function NetworkWatchView({ onClose }) {
                 Press <span className="font-semibold">Scan now</span>, or enable the background
                 discovery sweep in <span className="font-semibold">Settings → ARP &amp; Presence</span>
                 to build this up automatically.
+              </p>
+              <p className="text-xs text-slate-400">
+                Discovery needs <span className="font-mono">arp-scan</span> on the server. If a scan
+                reports nothing and shows no warning above, check that it is installed and permitted:
+                <span className="font-mono block mt-1">setcap cap_net_raw+ep $(which arp-scan)</span>
               </p>
             </div>
           )}
@@ -9326,8 +9341,16 @@ export default function IPAddressManager() {
                 <div className="relative" ref={toolsMenuRef}>
                   <button
                     onClick={() => setShowToolsMenu(v => !v)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white text-sm font-medium rounded-lg transition-colors"
-                    title="Network operations and utility tools" aria-label="Network operations and utility tools">
+                    className="relative flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white text-sm font-medium rounded-lg transition-colors"
+                    title={watchUnknown > 0
+                      ? `Network operations and utility tools · ${watchUnknown} unrecognised device${watchUnknown === 1 ? '' : 's'} on the network`
+                      : 'Network operations and utility tools'}
+                    aria-label={watchUnknown > 0
+                      ? `Network operations and utility tools, ${watchUnknown} unrecognised device${watchUnknown === 1 ? '' : 's'} on the network`
+                      : 'Network operations and utility tools'}>
+                    {/* Network Watch lives inside this menu, so its count has to
+                        show on the closed button or it is invisible until opened. */}
+                    {watchUnknown > 0 && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-amber-400 rounded-full border-2 border-white" />}
                     <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 11-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 004.486-6.336l-3.276 3.277a3.004 3.004 0 01-2.25-2.25l3.276-3.276a4.5 4.5 0 00-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085m-1.745 1.437L5.909 7.5H4.5L2.25 3.75l1.5-1.5L7.5 4.5v1.409l4.26 4.26m-1.745 1.437l1.745-1.437m6.615 8.206L15.75 15.75M4.867 19.125h.008v.008h-.008v-.008z" />
                     </svg>
@@ -9398,6 +9421,22 @@ export default function IPAddressManager() {
                           <div><p className="text-sm font-medium text-slate-700">mDNS Discovery</p><p className="text-xs text-slate-400">Find friendly names on the network</p></div>
                         </button>
                       )}
+                      {watchEnabled && (
+                        <button onClick={() => { setShowWatch(true); setShowToolsMenu(false); }} className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 transition-colors text-left">
+                          <div className="relative w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center flex-shrink-0">
+                            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4 text-violet-600"><circle cx="8" cy="8" r="2"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.5 3.5l1.4 1.4M11.1 11.1l1.4 1.4M12.5 3.5l-1.4 1.4M4.9 11.1l-1.4 1.4"/></svg>
+                            {watchUnknown > 0 && <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-400 rounded-full" />}
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-slate-700">Network Watch</p>
+                            <p className="text-xs text-slate-400">
+                              {watchUnknown > 0
+                                ? `${watchUnknown} unrecognised device${watchUnknown === 1 ? '' : 's'}`
+                                : 'Devices seen on the network'}
+                            </p>
+                          </div>
+                        </button>
+                      )}
                       {persistMode === 'api' && <>
                         <div className="h-px bg-slate-100 mx-3 my-1" />
                         <button onClick={() => { setShowDomains(true); setShowToolsMenu(false); }} className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 transition-colors text-left">
@@ -9422,22 +9461,6 @@ export default function IPAddressManager() {
                 <button onClick={() => setDarkMode(d => !d)} className="p-1.5 hover:bg-slate-100 text-slate-500 rounded-lg transition-colors" title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}>
                   {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
                 </button>
-                {watchEnabled && (
-                  <button onClick={() => setShowWatch(true)} className="relative p-1.5 hover:bg-slate-100 text-slate-500 rounded-lg transition-colors"
-                          title={watchUnknown > 0
-                            ? `Network Watch · ${watchUnknown} unrecognised device${watchUnknown === 1 ? '' : 's'}`
-                            : 'Network Watch'}
-                          aria-label={watchUnknown > 0
-                            ? `Network Watch, ${watchUnknown} unrecognised device${watchUnknown === 1 ? '' : 's'}`
-                            : 'Network Watch'}>
-                    {watchUnknown > 0 && (
-                      <span className="absolute -top-0.5 -right-0.5 min-w-[15px] h-[15px] px-1 flex items-center justify-center bg-amber-400 text-[9px] font-semibold text-amber-900 rounded-full">
-                        {watchUnknown > 9 ? '9+' : watchUnknown}
-                      </span>
-                    )}
-                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4"><circle cx="8" cy="8" r="2"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.5 3.5l1.4 1.4M11.1 11.1l1.4 1.4M12.5 3.5l-1.4 1.4M4.9 11.1l-1.4 1.4"/></svg>
-                  </button>
-                )}
                 <button onClick={() => setShowHelp(true)} className="p-1.5 hover:bg-slate-100 text-slate-500 rounded-lg transition-colors" title="Help & Reference" aria-label="Help & Reference">
                   <HelpCircle className="w-4 h-4" />
                 </button>
@@ -9602,6 +9625,20 @@ export default function IPAddressManager() {
                   <div><p className="text-sm font-medium text-slate-700">mDNS Discovery</p><p className="text-xs text-slate-400">Find friendly names</p></div>
                 </button>
               )}
+              {watchEnabled && (
+                <button onClick={() => { setShowWatch(true); setShowMobileTools(false); }} className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 transition-colors text-left">
+                  <div className="relative w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center flex-shrink-0">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4 text-violet-600"><circle cx="8" cy="8" r="2"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.5 3.5l1.4 1.4M11.1 11.1l1.4 1.4M12.5 3.5l-1.4 1.4M4.9 11.1l-1.4 1.4"/></svg>
+                    {watchUnknown > 0 && <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-400 rounded-full" />}
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-slate-700">Network Watch</p>
+                    <p className="text-xs text-slate-400">
+                      {watchUnknown > 0 ? `${watchUnknown} unrecognised` : 'Devices seen on the network'}
+                    </p>
+                  </div>
+                </button>
+              )}
 
               {/* App section */}
               <div className="h-px bg-slate-100 mx-3 my-1" />
@@ -9631,14 +9668,6 @@ export default function IPAddressManager() {
                 </div>
                 <div><p className="text-sm font-medium text-slate-700">Help</p><p className="text-xs text-slate-400">Reference guide and keyboard shortcuts</p></div>
               </button>
-              {watchEnabled && (
-                <button onClick={() => { setShowWatch(true); setShowMobileTools(false); }} className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 transition-colors text-left">
-                  <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0 text-slate-600">
-                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4"><circle cx="8" cy="8" r="2"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.5 3.5l1.4 1.4M11.1 11.1l1.4 1.4M12.5 3.5l-1.4 1.4M4.9 11.1l-1.4 1.4"/></svg>
-                  </div>
-                  <div><p className="text-sm font-medium text-slate-700">Network Watch</p><p className="text-xs text-slate-400">Devices seen on the network</p></div>
-                </button>
-              )}
               <button onClick={() => { setShowSettings(true); setShowMobileTools(false); }} className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 transition-colors text-left">
                 <div className="relative w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
                   <Settings className="w-4 h-4 text-slate-600" />

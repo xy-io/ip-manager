@@ -112,7 +112,30 @@ function decorateEntry(entry) {
   };
 }
 
+
+/**
+ * Turn an arp-scan failure into something a user can act on.
+ *
+ * Discovery previously swallowed these, so a server without arp-scan reported a
+ * successful scan that found nothing — indistinguishable from a quiet network.
+ * The remedy is nearly always one of two commands, so the message says which.
+ */
+function describeScanFailure(error) {
+  const message = (error && error.message) || String(error || '');
+  if (/Operation not permitted|EPERM/i.test(message)) {
+    return 'arp-scan lacks raw socket permission. Run: setcap cap_net_raw+ep $(which arp-scan)';
+  }
+  if (/ENOENT|not found/i.test(message)) {
+    return 'arp-scan is not installed. Run: apt-get install arp-scan && setcap cap_net_raw+ep $(which arp-scan)';
+  }
+  if (/ETIMEDOUT|timed out/i.test(message)) {
+    return 'arp-scan timed out. A large subnet can exceed the limit — narrow the range or raise the bandwidth in Settings.';
+  }
+  return `arp-scan failed: ${message}`;
+}
+
 module.exports = {
+  describeScanFailure,
   normaliseSubnetToCidr,
   isValidInterface,
   buildArpScanArgs,

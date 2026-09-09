@@ -4,6 +4,16 @@ For the full release history see the [CHANGELOG](https://github.com/xy-io/ip-man
 
 ---
 
+## v2.11.2 — A scan that finds nothing now says why
+
+If Network Watch scans returned nothing, this is why: the sweep needs `arp-scan` on the server, and when it was missing or lacked permission the failure was swallowed. The scan reported success with zero devices, which looks exactly like a network with nothing on it.
+
+Failures are now shown in the view and name the fix. Discovery also falls back to the kernel ARP cache, so it returns something even on a server where `arp-scan` is unavailable.
+
+**Network Watch has moved into the Tools menu**, next to Topology and mDNS Discovery — where the other network tools live, rather than an icon in the header.
+
+---
+
 ## v2.11.1 — Making Network Watch findable
 
 Turning Network Watch on in v2.11.0 appeared to do nothing. The only way in was a small eye icon in the header — on a screen you had just navigated away from.
