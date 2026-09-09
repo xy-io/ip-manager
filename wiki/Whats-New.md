@@ -4,6 +4,20 @@ For the full release history see the [CHANGELOG](https://github.com/xy-io/ip-man
 
 ---
 
+## v2.11.0 — Network Watch (phase 1)
+
+A record of the devices seen on your network, so you can tell something you have never seen from something that just changed address.
+
+**It is off by default and invisible until you turn it on** in Settings → Network Watch. It then appears as its own view — the address list stays the address list.
+
+**This phase watches, it does not warn.** No alerts, no notifications. The data should earn trust before it is allowed to interrupt you.
+
+**Your phones are not intruders.** Phones generate a fresh MAC address per network, which is why tools like Pi.Alert alert every time one rejoins. Network Watch identifies a randomised address for what it is and leaves it out of the "unrecognised" count.
+
+**It will not fill your disk.** One record per device, updated in place — not a row per connection. 87 devices costs about 24 KB, and a year of scanning adds nothing to that. There are hard caps on top, and turning the feature off deletes the ledger entirely.
+
+---
+
 ## v2.10.0 — mDNS discovery
 
 Your network is already full of devices telling anyone who asks what they are called. **Tools → mDNS Discovery** asks.

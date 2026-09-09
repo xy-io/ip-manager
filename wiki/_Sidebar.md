@@ -21,6 +21,7 @@
 - [Notifications](Notifications)
 - [Topology](Topology)
 - [mDNS Discovery](mDNS-Discovery)
+- [Network Watch](Network-Watch)
 - [Backup & Restore](Backup-and-Restore)
 
 ---

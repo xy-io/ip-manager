@@ -45,6 +45,10 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
+### v2.11.0 — Network Watch (phase 1)
+
+An opt-in record of the device identities seen on your network, in its own view, invisible until switched on in **Settings → Network Watch**. It observes only — no alerts, no notifications, that is phase 2. Storage was the design constraint: one row per device updated in place, so it grows with how many devices you have rather than how long you have been running. A network of 87 devices costs 24 KB; a simulated year of scanning adds no records at all; a flood of 50,000 fabricated MACs cannot push it past its cap. Randomised phone MACs are identified by the locally-administered bit and excluded from the unrecognised count, which is the structural noise source in Pi.Alert. Nothing is stored while it is off, disabling it deletes the ledger, and it is excluded from backups and support bundles.
+
 ### v2.10.0 — mDNS discovery
 
 **Tools → mDNS Discovery** asks the network what its devices call themselves. Apple devices, Chromecasts, printers, NAS boxes and anything running Avahi announce a name and their services over multicast DNS; the scan collects them, matches them against your inventory, and offers to fill in what is missing. It only ever fills blanks — a name you typed is never replaced — and applying suggestions is a local edit you review and Save. Implemented directly on Node's `dgram` with no new dependency, and written defensively: this is the only parser in the app fed unsolicited packets from the LAN, so name-compression pointers are budgeted, record counts capped, and every read bounds-checked. 38 unit tests, most of them malformed packets.

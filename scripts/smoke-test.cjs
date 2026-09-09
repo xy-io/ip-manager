@@ -289,6 +289,37 @@ async function testProtectedRoutes() {
     return dangling.length ? `${dangling.length} dangling gateway edge(s)` : true;
   });
 
+  await test('Network Watch is off by default and stores nothing while off', async () => {
+    // The core promise of the feature: an install that never turns it on pays
+    // no storage cost at all.
+    const res = await GET('/api/watch/status');
+    const statusCheck = expectStatus(res, 200, 'GET /api/watch/status');
+    if (statusCheck !== true) return statusCheck;
+    if (res.json.enabled !== false) return 'Network Watch is enabled by default — it must be opt-in';
+    if (res.json.summary?.bytes !== 0) return `ledger holds ${res.json.summary.bytes} bytes while disabled`;
+    return true;
+  });
+
+  await test('the device list is empty and scanning is refused while off', async () => {
+    const devices = await GET('/api/watch/devices');
+    if (devices.json?.enabled !== false) return 'devices endpoint reports enabled while off';
+    if ((devices.json?.devices || []).length) return 'devices returned while the feature is off';
+    const scan = await req('POST', '/api/watch/scan', { body: {} });
+    return expectStatus(scan, 409, 'POST /api/watch/scan while disabled');
+  });
+
+  await test('the ledger reports its storage cost and stays within its limits', async () => {
+    const res = await GET('/api/watch/status');
+    const limits = res.json?.limits;
+    if (!limits) return 'status does not report its limits';
+    const summary = res.json.summary || {};
+    if (typeof summary.bytes !== 'number') return 'summary does not report bytes used';
+    if (summary.bytes > limits.MAX_LEDGER_BYTES) {
+      return `ledger is ${summary.bytes} bytes, over its ${limits.MAX_LEDGER_BYTES} ceiling`;
+    }
+    return true;
+  });
+
   await test('GET /api/mdns/status returns a well-formed shape before any scan', async () => {
     const res = await GET('/api/mdns/status');
     const statusCheck = expectStatus(res, 200, 'GET /api/mdns/status');
@@ -1013,6 +1044,9 @@ const MUST_REQUIRE_AUTH = [
   { method: 'POST', path: '/api/proxmox/discover', body: {} },
   { method: 'GET',  path: '/api/topology' },
   { method: 'GET',  path: '/api/mdns/status' },
+  { method: 'GET',  path: '/api/watch/status' },
+  { method: 'GET',  path: '/api/watch/devices' },
+  { method: 'POST', path: '/api/watch/scan', body: {} },
   { method: 'POST', path: '/api/mdns/scan', body: {} },
   { method: 'GET',  path: '/api/topology/impact/10.0.0.1' },
   { method: 'GET',  path: '/api/ips/10.0.0.1/history' },

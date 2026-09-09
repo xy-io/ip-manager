@@ -23,7 +23,7 @@ const loadQRCode = () => {
 };
 
 // ── App version ───────────────────────────────────────────────────────────────
-const APP_VERSION = 'v2.10.0';
+const APP_VERSION = 'v2.11.0';
 
 // Default network configuration (overridden by Settings modal / localStorage)
 const DEFAULT_NETWORK_CONFIG = {
@@ -1146,6 +1146,282 @@ function MdnsModal({ onClose, onApply }) {
                   className="ml-auto px-3 py-1.5 text-sm rounded-lg bg-slate-800 text-white hover:bg-slate-900 disabled:opacity-40 transition-colors">
             Fill in {chosen.size > 0 ? chosen.size : ''} selected
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Network Watch ───────────────────────────────────────────────────────────
+// Deliberately separate from the inventory. IP Manager's job is the address
+// list; this is a different job, so it gets its own view rather than more
+// columns and badges on the main table. It stays entirely invisible — no tab,
+// no menu item, no nav button — until it is switched on.
+
+function NetworkWatchTab() {
+  const [config, setConfig] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState(null);
+
+  const load = () => fetch('/api/watch/status').then(r => r.json()).then(setConfig).catch(() => {});
+  useEffect(() => { load(); }, []);
+
+  const save = async (changes) => {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const res = await fetch('/api/watch/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...config, ...changes }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.message || 'Could not save');
+      await load();
+      setMessage(changes.enabled === false
+        ? 'Network Watch is off. The ledger has been deleted.'
+        : 'Saved.');
+    } catch (err) {
+      setMessage(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const clearLedger = async () => {
+    setBusy(true);
+    try {
+      await fetch('/api/watch/ledger', { method: 'DELETE' });
+      await load();
+      setMessage('Ledger cleared.');
+    } catch { setMessage('Could not clear the ledger.'); }
+    finally { setBusy(false); }
+  };
+
+  if (!config) return <p className="text-sm text-slate-400">Loading…</p>;
+
+  const kb = ((config.summary?.bytes || 0) / 1024).toFixed(1);
+  const capacityUsed = Math.round(((config.summary?.total || 0) / (config.maxIdentities || 1)) * 100);
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h3 className="text-base font-semibold text-slate-800">Network Watch</h3>
+        <p className="text-sm text-slate-500 mt-1">
+          Keeps a record of the devices seen on your network, so you can tell a device you have
+          never seen from one that simply changed address. It appears as its own view once enabled.
+        </p>
+      </div>
+
+      <label className="flex items-start gap-3 p-3 bg-slate-50 rounded-xl cursor-pointer">
+        <input type="checkbox" checked={config.enabled === true} disabled={busy}
+               onChange={e => save({ enabled: e.target.checked })}
+               className="mt-0.5 rounded border-slate-300" />
+        <span>
+          <span className="text-sm font-medium text-slate-700">Enable Network Watch</span>
+          <span className="block text-xs text-slate-500 mt-0.5">
+            Off by default. While off, nothing is recorded and no storage is used.
+          </span>
+        </span>
+      </label>
+
+      {message && <p className="text-xs text-slate-600 bg-slate-100 rounded-lg px-3 py-2">{message}</p>}
+
+      {config.enabled && (
+        <>
+          <div className="p-3 border border-slate-200 rounded-xl space-y-2">
+            <div className="flex items-baseline justify-between">
+              <span className="text-sm font-medium text-slate-700">Storage</span>
+              <span className="text-sm font-mono text-slate-600">{kb} KB</span>
+            </div>
+            <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+              <div className="h-full bg-emerald-500 rounded-full"
+                   style={{ width: `${Math.min(100, capacityUsed)}%` }} />
+            </div>
+            <p className="text-xs text-slate-500">
+              {config.summary?.total || 0} of {config.maxIdentities} devices recorded.
+              One record per device, updated in place — this does not grow as time passes,
+              only as new devices appear.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="block text-sm font-medium text-slate-700 mb-1">Forget randomised MACs after</span>
+              <div className="flex items-center gap-2">
+                <input type="number" min="1" max="3650" value={config.retainRandomDays} disabled={busy}
+                       onChange={e => setConfig({ ...config, retainRandomDays: e.target.value })}
+                       onBlur={e => save({ retainRandomDays: e.target.value })}
+                       className="w-20 px-2 py-1.5 border border-slate-300 rounded-lg text-sm" />
+                <span className="text-xs text-slate-500">days</span>
+              </div>
+              <span className="block text-xs text-slate-400 mt-1">
+                Phones randomise their address; these entries are transient.
+              </span>
+            </label>
+
+            <label className="block">
+              <span className="block text-sm font-medium text-slate-700 mb-1">Forget real MACs after</span>
+              <div className="flex items-center gap-2">
+                <input type="number" min="1" max="3650" value={config.retainKnownDays} disabled={busy}
+                       onChange={e => setConfig({ ...config, retainKnownDays: e.target.value })}
+                       onBlur={e => save({ retainKnownDays: e.target.value })}
+                       className="w-20 px-2 py-1.5 border border-slate-300 rounded-lg text-sm" />
+                <span className="text-xs text-slate-500">days</span>
+              </div>
+              <span className="block text-xs text-slate-400 mt-1">
+                Real hardware is worth remembering longer.
+              </span>
+            </label>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button onClick={clearLedger} disabled={busy}
+                    className="px-3 py-1.5 text-sm rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50 disabled:opacity-50">
+              Clear the ledger
+            </button>
+            <span className="text-xs text-slate-400">Forgets every device and starts again.</span>
+          </div>
+
+          <p className="text-xs text-slate-400 border-t border-slate-100 pt-3">
+            This phase observes only. It raises no alerts and sends no notifications.
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
+function NetworkWatchView({ onClose }) {
+  const modalRef = useModalA11y(typeof onClose === 'function' ? onClose : null);
+  const [data, setData] = useState(null);
+  const [scanning, setScanning] = useState(false);
+  const [error, setError] = useState(null);
+  const [filter, setFilter] = useState('all');   // all | unknown | known | random
+
+  const load = () => fetch('/api/watch/devices').then(r => r.json()).then(setData).catch(() => setError('Could not load'));
+  useEffect(() => { load(); }, []);
+
+  const scan = async () => {
+    setScanning(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/watch/scan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.message || 'The scan failed');
+      setData({ enabled: true, devices: json.devices, summary: json.summary });
+    } catch (err) { setError(err.message); }
+    finally { setScanning(false); }
+  };
+
+  const devices = data?.devices || [];
+  const shown = devices.filter(d =>
+    filter === 'all' ? true
+    : filter === 'unknown' ? (!d.inInventory && !d.random)
+    : filter === 'known' ? d.inInventory
+    : d.random);
+
+  const summary = data?.summary || {};
+  const kb = ((summary.bytes || 0) / 1024).toFixed(1);
+
+  const counts = [
+    { id: 'all', label: 'All', n: summary.total || 0 },
+    { id: 'known', label: 'In inventory', n: summary.known || 0 },
+    { id: 'unknown', label: 'Unrecognised', n: summary.unknown || 0 },
+    { id: 'random', label: 'Randomised', n: summary.randomised || 0 },
+  ];
+
+  return (
+    <div ref={modalRef} role="dialog" aria-modal="true" aria-label="Network Watch" tabIndex={-1}
+         className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 outline-none" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
+          <div>
+            <h2 className="text-lg font-bold text-slate-800">Network Watch</h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Devices seen on your network · {kb} KB stored
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={scan} disabled={scanning}
+                    className="px-3 py-1.5 text-sm rounded-lg bg-slate-800 text-white hover:bg-slate-900 disabled:opacity-50 transition-colors">
+              {scanning ? 'Scanning…' : 'Scan now'}
+            </button>
+            <button onClick={onClose} aria-label="Close" className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
+              <X className="w-5 h-5 text-slate-400" />
+            </button>
+          </div>
+        </div>
+
+        <div className="px-5 py-2.5 border-b border-slate-100 flex items-center gap-1.5 flex-wrap">
+          {counts.map(c => (
+            <button key={c.id} onClick={() => setFilter(c.id)}
+                    className={`px-2.5 py-1 rounded-lg text-xs transition-colors ${
+                      filter === c.id ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+              {c.label} <span className="opacity-60">{c.n}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="flex-1 overflow-auto p-4 bg-slate-50">
+          {error && <p className="text-sm text-red-600 mb-3">{error}</p>}
+
+          {devices.length === 0 && !scanning && (
+            <div className="text-sm text-slate-500 space-y-2">
+              <p>Nothing recorded yet.</p>
+              <p className="text-xs text-slate-400">
+                Press <span className="font-semibold">Scan now</span>, or enable the background
+                discovery sweep in <span className="font-semibold">Settings → ARP &amp; Presence</span>
+                to build this up automatically.
+              </p>
+            </div>
+          )}
+
+          {scanning && <p className="text-sm text-slate-400">Sweeping the network…</p>}
+
+          {shown.length > 0 && (
+            <div className="bg-white border border-slate-200 rounded-xl divide-y divide-slate-100">
+              {shown.map(d => (
+                <div key={d.mac} className="px-3 py-2.5 flex items-start gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline gap-2 flex-wrap">
+                      <span className="text-sm font-medium text-slate-800">
+                        {d.inventoryName || d.name || d.hostname || d.vendor || 'Unidentified device'}
+                      </span>
+                      {d.currentIp && <span className="font-mono text-xs text-slate-500">{d.currentIp}</span>}
+                      <span className="font-mono text-[10px] text-slate-400">{d.mac}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                      {d.inInventory
+                        ? <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">in inventory</span>
+                        : <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">not in inventory</span>}
+                      {d.random && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500"
+                              title="A randomised address. Phones generate these per network, so this is very likely a device you already know.">
+                          randomised MAC
+                        </span>
+                      )}
+                      {d.vendor && !d.random && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">{d.vendor}</span>
+                      )}
+                      <span className="text-[10px] text-slate-400">
+                        seen {d.sightings}× · {d.daysSinceSeen === 0 ? 'today' : `${d.daysSinceSeen}d ago`}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {devices.length > 0 && shown.length === 0 && (
+            <p className="text-sm text-slate-400 italic">Nothing in this category.</p>
+          )}
+        </div>
+
+        <div className="px-5 py-3 border-t border-slate-200 bg-white text-xs text-slate-500">
+          Observing only — no alerts are sent. Randomised addresses are shown but are almost always
+          a phone you already own.
         </div>
       </div>
     </div>
@@ -2825,6 +3101,7 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
     { id: 'api',      label: 'API Keys' },
     { id: 'security', label: 'Security' },
     { id: 'notifications', label: 'Notifications' },
+    { id: 'watch',    label: 'Network Watch' },
     { id: 'activity', label: 'Activity' },
     { id: 'account',  label: 'Account' },
     { id: 'updates',  label: 'Updates' },
@@ -3511,6 +3788,11 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
             {/* ── NOTIFICATIONS TAB ── */}
             {activeTab === 'notifications' && (
               <NotificationsTab />
+            )}
+
+            {/* ── NETWORK WATCH TAB ── */}
+            {activeTab === 'watch' && (
+              <NetworkWatchTab />
             )}
 
             {/* ── ACTIVITY TAB ── */}
@@ -7787,6 +8069,11 @@ export default function IPAddressManager() {
   const [showSubnet, setShowSubnet] = useState(false);
   const [showTopology, setShowTopology] = useState(false);
   const [showMdns, setShowMdns] = useState(false);
+  const [showWatch, setShowWatch] = useState(false);
+  // Network Watch is invisible until switched on: no nav button, no menu item.
+  // The core of the app is the address list, and an opt-in feature should not
+  // add furniture for people who never turn it on.
+  const [watchEnabled, setWatchEnabled] = useState(false);
   const [showDomains, setShowDomains] = useState(false);
   const [domains, setDomains] = useState([]);
   const [showToolsMenu, setShowToolsMenu] = useState(false);
@@ -7850,6 +8137,16 @@ export default function IPAddressManager() {
   const [showNetworkPicker, setShowNetworkPicker] = useState(false);
   const networkPillRef = useRef(null);
   const searchRef = useRef(null);
+
+  // Whether Network Watch has been switched on. Re-checked when Settings
+  // closes, so enabling it makes the view appear without a page reload.
+  useEffect(() => {
+    if (persistMode !== 'api' || auth !== 'ok') return;
+    fetch('/api/watch/status')
+      .then(r => r.ok ? r.json() : null)
+      .then(j => setWatchEnabled(j?.enabled === true))
+      .catch(() => setWatchEnabled(false));
+  }, [persistMode, auth, showSettings]);
 
   // ── On mount: check auth status, then detect API and load data ───────────────
   useEffect(() => {
@@ -8001,6 +8298,7 @@ export default function IPAddressManager() {
         if (showSubnet)        { setShowSubnet(false);        return; }
         if (showTopology)      { setShowTopology(false);      return; }
         if (showMdns)          { setShowMdns(false);          return; }
+        if (showWatch)         { setShowWatch(false);         return; }
         if (showDomains)       { setShowDomains(false);       return; }
         if (qrItem)            { setQrItem(null);             return; }
         if (showToolsMenu)     { setShowToolsMenu(false);     return; }
@@ -8014,7 +8312,7 @@ export default function IPAddressManager() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [editingItem, showSettings, showImport, showProxmoxImport, showARPScan, showHelp, showCIDR, showSubnet, showTopology, showMdns, showDomains, qrItem, showToolsMenu, expandedCard, searchTerm]);
+  }, [editingItem, showSettings, showImport, showProxmoxImport, showARPScan, showHelp, showCIDR, showSubnet, showTopology, showMdns, showWatch, showDomains, qrItem, showToolsMenu, expandedCard, searchTerm]);
 
   // Close tools menu on outside click
   useEffect(() => {
@@ -8883,6 +9181,7 @@ export default function IPAddressManager() {
       {showSubnet && <SubnetVisuiserModal network={networkConfig} ipData={networkIpData} onClose={() => setShowSubnet(false)} />}
       {showTopology && <TopologyModal onClose={() => setShowTopology(false)} />}
       {showMdns && <MdnsModal onClose={() => setShowMdns(false)} onApply={applyMdnsSuggestions} />}
+      {showWatch && <NetworkWatchView onClose={() => setShowWatch(false)} />}
 
       {/* Domains View */}
       {showDomains && <DomainsView onClose={() => setShowDomains(false)} />}
@@ -9100,6 +9399,11 @@ export default function IPAddressManager() {
                 <button onClick={() => setDarkMode(d => !d)} className="p-1.5 hover:bg-slate-100 text-slate-500 rounded-lg transition-colors" title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}>
                   {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
                 </button>
+                {watchEnabled && (
+                  <button onClick={() => setShowWatch(true)} className="p-1.5 hover:bg-slate-100 text-slate-500 rounded-lg transition-colors" title="Network Watch" aria-label="Network Watch">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4"><circle cx="8" cy="8" r="2"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.5 3.5l1.4 1.4M11.1 11.1l1.4 1.4M12.5 3.5l-1.4 1.4M4.9 11.1l-1.4 1.4"/></svg>
+                  </button>
+                )}
                 <button onClick={() => setShowHelp(true)} className="p-1.5 hover:bg-slate-100 text-slate-500 rounded-lg transition-colors" title="Help & Reference" aria-label="Help & Reference">
                   <HelpCircle className="w-4 h-4" />
                 </button>
@@ -9293,6 +9597,14 @@ export default function IPAddressManager() {
                 </div>
                 <div><p className="text-sm font-medium text-slate-700">Help</p><p className="text-xs text-slate-400">Reference guide and keyboard shortcuts</p></div>
               </button>
+              {watchEnabled && (
+                <button onClick={() => { setShowWatch(true); setShowMobileTools(false); }} className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 transition-colors text-left">
+                  <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0 text-slate-600">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4"><circle cx="8" cy="8" r="2"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.5 3.5l1.4 1.4M11.1 11.1l1.4 1.4M12.5 3.5l-1.4 1.4M4.9 11.1l-1.4 1.4"/></svg>
+                  </div>
+                  <div><p className="text-sm font-medium text-slate-700">Network Watch</p><p className="text-xs text-slate-400">Devices seen on the network</p></div>
+                </button>
+              )}
               <button onClick={() => { setShowSettings(true); setShowMobileTools(false); }} className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 transition-colors text-left">
                 <div className="relative w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
                   <Settings className="w-4 h-4 text-slate-600" />

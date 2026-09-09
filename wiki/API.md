@@ -37,7 +37,7 @@ Grant the narrowest scope that works. Home Assistant only ever reads, so a read-
     "domains": true, "domainWrite": true, "arpScan": true, "arpPresence": true,
     "dns": true, "subnetBlocks": true, "proxmox": true,
     "notifications": true, "activityLog": true,
-    "deviceHistory": true, "topology": true, "mdns": true,
+    "deviceHistory": true, "topology": true, "mdns": true, "networkWatch": true,
     "pushNotifications": false
   }
 }
@@ -142,6 +142,12 @@ They are omitted for session-authenticated requests, because the web UI writes t
 | `GET` | `/api/ips/:ip/history?days=30` | read | That device's status-change timeline, outage count and last-seen time |
 | `GET` | `/api/mdns/status` | read | The most recent mDNS scan, matched against the inventory |
 | `POST` | `/api/mdns/scan` | write | Run a discovery sweep. Optional `timeoutMs` (1000–15000, default 4000). Returns suggestions only — it never modifies any entry |
+| `GET` | `/api/watch/status` | read | Network Watch configuration, storage used and limits |
+| `GET` | `/api/watch/devices` | read | The device ledger, matched against the inventory. Empty while the feature is off |
+| `PUT` | `/api/watch/config` | write | Enable or disable, and set retention. Disabling deletes the ledger |
+| `POST` | `/api/watch/scan` | write | Sweep now and fold the results in. `409` while the feature is off |
+| `POST` | `/api/watch/prune` | write | Apply retention immediately |
+| `DELETE` | `/api/watch/ledger` | write | Forget every recorded device |
 
 ### Status
 

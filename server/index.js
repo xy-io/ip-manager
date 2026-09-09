@@ -57,6 +57,7 @@ const twoFactor = require('./lib/twoFactor');
 const deviceHistory = require('./lib/deviceHistory');
 const { buildTopology, impactOf } = require('./lib/topology');
 const mdns = require('./lib/mdns');
+const watch = require('./lib/watch');
 
 function requireAuth(req, res, next) {
   if (isValidSession(req.cookies[SESSION_COOKIE])) return next();
@@ -583,6 +584,7 @@ app.get('/api/capabilities', (req, res) => {
       deviceHistory:     true,
       topology:          true,
       mdns:              true,
+      networkWatch:      true,
       pushNotifications: false, // APNs not implemented — see the roadmap
     },
   });
@@ -648,6 +650,172 @@ app.get('/api/topology/impact/:ip', (req, res) => {
     affected: affectedIps.map((ip) => byIp.get(ip)).filter(Boolean),
     count: affectedIps.length,
   });
+});
+
+// ── Network Watch (phase 1: observe only) ─────────────────────────────────────
+// A ledger of device identities seen on the network. It raises no alerts and
+// sends no notifications — that is phase 2 — and it is off until switched on.
+//
+// NOTE: like the routes below, these must stay under the `app.use('/api', …)`
+// authentication middleware. A ledger of every device that has ever joined the
+// network is more sensitive than the inventory itself.
+
+const getWatchConfig = () => ({ ...watch.DEFAULT_CONFIG, ...(dbGet('watch_config') || {}) });
+const getWatchLedger = () => dbGet('watch_ledger') || [];
+
+/**
+ * Fold a set of observations into the ledger.
+ *
+ * Returns immediately when the feature is off — before reading the database,
+ * so a disabled Network Watch costs nothing and, more importantly, stores
+ * nothing. That property is asserted by a smoke test.
+ */
+function recordWatchSightings(observations) {
+  const config = getWatchConfig();
+  if (!config.enabled) return null;
+  if (!Array.isArray(observations) || observations.length === 0) return null;
+
+  const entries = dbGet('ip_data') || [];
+  const current = getWatchLedger();
+
+  // mDNS names, where a scan has been run, so the ledger can say "Kitchen
+  // HomePod" rather than just a MAC and a vendor.
+  const mdnsByIp = new Map((mdnsCache.devices || []).map((d) => [d.ip, d]));
+
+  const sightings = observations.map((device) => {
+    const discovered = mdnsByIp.get(device.ip);
+    return {
+      mac: device.mac,
+      ip: device.ip,
+      vendor: device.vendor && !/^unknown/i.test(device.vendor)
+        ? device.vendor
+        : lookupVendor(device.mac),
+      hostname: discovered ? discovered.hostname : (device.hostname || null),
+      name: discovered ? discovered.suggestedName : null,
+      services: discovered ? discovered.services : [],
+    };
+  });
+
+  const next = watch.recordSightings(current, sightings, {
+    config,
+    protectedMacs: watch.protectedMacsFor(current, entries),
+  });
+
+  dbSet('watch_ledger', next);
+  return next;
+}
+
+// GET /api/watch/status — configuration and headline counts
+app.get('/api/watch/status', (req, res) => {
+  const config = getWatchConfig();
+  const ledger = config.enabled ? getWatchLedger() : [];
+  res.json({
+    ...config,
+    lastDiscoveryRun: getArpPresenceConfig().lastDiscoveryRun || null,
+    discoveryEnabled: getArpPresenceConfig().discoveryEnabled === true,
+    summary: watch.summarise(ledger, dbGet('ip_data') || []),
+    limits: watch.LIMITS,
+  });
+});
+
+// GET /api/watch/devices — the ledger, matched against the inventory
+app.get('/api/watch/devices', (req, res) => {
+  const config = getWatchConfig();
+  if (!config.enabled) {
+    return res.json({ enabled: false, devices: [], summary: watch.summarise([], []) });
+  }
+  const entries = dbGet('ip_data') || [];
+  const ledger = getWatchLedger();
+  res.json({
+    enabled: true,
+    devices: watch.describeLedger(ledger, entries),
+    summary: watch.summarise(ledger, entries),
+  });
+});
+
+// PUT /api/watch/config — turn it on or off, and set retention
+app.put('/api/watch/config', (req, res) => {
+  const body = req.body || {};
+  const current = getWatchConfig();
+
+  const clampDays = (value, fallback) => {
+    const n = parseInt(value, 10);
+    return Number.isFinite(n) ? Math.min(3650, Math.max(1, n)) : fallback;
+  };
+
+  const next = {
+    enabled: body.enabled === true,
+    retainRandomDays: clampDays(body.retainRandomDays, current.retainRandomDays),
+    retainKnownDays: clampDays(body.retainKnownDays, current.retainKnownDays),
+    maxIdentities: Math.min(
+      watch.LIMITS.MAX_IDENTITIES,
+      Math.max(50, parseInt(body.maxIdentities, 10) || current.maxIdentities)
+    ),
+  };
+
+  dbSet('watch_config', next);
+
+  // Turning it off discards the ledger rather than leaving it on disk. Keeping
+  // a record of every device that has ever joined the network, for a feature
+  // the user has switched off, is not a defensible default.
+  if (!next.enabled && current.enabled) {
+    dbSet('watch_ledger', []);
+  }
+
+  recordEvent({
+    type: 'watch.config',
+    message: `Network Watch ${next.enabled ? 'enabled' : 'disabled'}`,
+    meta: { enabled: next.enabled },
+    req,
+  });
+
+  res.json({ ...next, summary: watch.summarise(getWatchLedger(), dbGet('ip_data') || []) });
+});
+
+// POST /api/watch/scan — run discovery now and fold the results in
+app.post('/api/watch/scan', async (req, res) => {
+  const config = getWatchConfig();
+  if (!config.enabled) {
+    return apiError(res, 409, 'Network Watch is off',
+      'Switch Network Watch on in Settings before running a scan.');
+  }
+  try {
+    await runDiscoveryScan({ force: true });
+  } catch (err) {
+    return apiError(res, 500, 'Scan failed', err.message);
+  }
+  const entries = dbGet('ip_data') || [];
+  const ledger = getWatchLedger();
+  res.json({
+    devices: watch.describeLedger(ledger, entries),
+    summary: watch.summarise(ledger, entries),
+    scannedAt: discoveryState.lastRun,
+    error: discoveryState.lastError,
+  });
+});
+
+// POST /api/watch/prune — apply retention now rather than waiting for a scan
+app.post('/api/watch/prune', (req, res) => {
+  const config = getWatchConfig();
+  const entries = dbGet('ip_data') || [];
+  const before = getWatchLedger();
+  const after = watch.recordSightings(before, [], {
+    config,
+    protectedMacs: watch.protectedMacsFor(before, entries),
+  });
+  dbSet('watch_ledger', after);
+  res.json({
+    removed: before.length - after.length,
+    summary: watch.summarise(after, entries),
+  });
+});
+
+// DELETE /api/watch/ledger — forget everything and start again
+app.delete('/api/watch/ledger', (req, res) => {
+  const removed = getWatchLedger().length;
+  dbSet('watch_ledger', []);
+  recordEvent({ type: 'watch.cleared', message: `Network Watch ledger cleared (${removed} devices)`, req });
+  res.json({ removed, summary: watch.summarise([], []) });
 });
 
 // ── mDNS discovery ────────────────────────────────────────────────────────────
@@ -1009,10 +1177,12 @@ function getDiscoveryDefaults(prefixLen) {
   return { intervalMinutes: 15, bandwidthKbps: 1000 };
 }
 
-async function runDiscoveryScan() {
+async function runDiscoveryScan({ force = false } = {}) {
   if (discoveryState.running) return;
   const config = getArpPresenceConfig();
-  if (!config.discoveryEnabled) return;
+  // `force` lets Network Watch scan on demand without the user having to also
+  // enable the scheduled background sweep, which is a separate decision.
+  if (!config.discoveryEnabled && !force) return;
 
   discoveryState = { ...discoveryState, running: true, lastError: null };
 
@@ -1075,6 +1245,12 @@ async function runDiscoveryScan() {
 
     const lastRun = new Date().toISOString();
     discoveryState = { running: false, lastRun, lastResults: allResults, lastError: null };
+
+    // Feed the Network Watch ledger, if the user has switched it on. This is
+    // the only place the ledger is written from the discovery path, and it is
+    // a no-op — not even a database read — while the feature is disabled.
+    try { recordWatchSightings(allResults); }
+    catch (e) { console.warn(`[watch] Could not record sightings: ${e.message}`); }
 
     // Persist last-run timestamp
     const updated = getArpPresenceConfig();

@@ -6,6 +6,38 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v2.11.0
+
+**Network Watch — phase 1: the device ledger (opt-in, off by default)**
+
+A record of the device identities seen on your network, so the app can tell *a device I have never seen* from *a device that simply changed address*. It lives in its own view, separate from the inventory, and does not appear anywhere in the interface until you switch it on in **Settings → Network Watch**.
+
+**This phase observes only.** It raises no alerts and sends no notifications. That is deliberate: the data should be watched before it is trusted to wake anyone up.
+
+**Storage was the design constraint.** Pi.Alert keeps a row per connect and disconnect, so its database grows with *time* and never stops. This keeps exactly one row per device, updated in place — storage is proportional to how many devices you have, not how long you have been running:
+
+| Situation | Records | Stored |
+|---|---|---|
+| A network of 87 devices | 87 | 24 KB |
+| The same, plus a year of visitors' phones | 327 | 91 KB |
+| A 300-device home lab | 300 | 83 KB |
+| At the hard cap | 1000 | 279 KB |
+| Every field of every record maxed out | 900 | 508 KB |
+
+On top of the one-row-per-device design there is a cap on identity count, caps on every array and string inside a record, age-based pruning, and a 512 kB ceiling checked on write. A simulated year of scanning every fifteen minutes adds no records at all, and a flood of 50,000 fabricated MAC addresses cannot push the ledger past its cap.
+
+**Randomised MACs are recognised rather than reported.** Phones generate a fresh address per network, which is the structural reason Pi.Alert produces so much noise — every rejoin looks like a new device. The locally-administered bit identifies these, so they are shown as what they are and excluded from the "unrecognised" count. On a test network with two phones and one genuinely unknown device, the ledger reports **one** unrecognised device; a MAC-only tool would report three.
+
+**Nothing is stored while it is off.** No `watch_ledger` row is written at all, and disabling it deletes the ledger rather than leaving a record of every device that has ever joined your network sitting on disk. The ledger is excluded from backups and from support bundles.
+
+Retention is configurable: randomised addresses are forgotten after 14 days by default, real hardware after 180.
+
+`GET /api/watch/status`, `GET /api/watch/devices`, `PUT /api/watch/config`, `POST /api/watch/scan`, `POST /api/watch/prune` and `DELETE /api/watch/ledger`. `GET /api/capabilities` gains `networkWatch`.
+
+23 new unit tests, most of them simulating time passing or a hostile network. Three smoke checks confirm the feature is off by default, stores nothing while off, and stays within its limits.
+
+---
+
 ## v2.10.0
 
 **mDNS discovery — friendly names, asked for rather than guessed**

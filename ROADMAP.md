@@ -41,11 +41,32 @@ First-class support for IPv6 addresses and subnets alongside the existing IPv4 m
 
 ---
 
+### Network Watch — phases 2 and 3
+Phase 1 (the device ledger) shipped in **v2.11.0**. What remains:
+
+**Phase 2 — alerting.** Per-device expectations, graded severity, confirmation counts before anything fires, and digest delivery. Still opt-in, still off by default.
+
+**Phase 3 — correlated incidents.** Group alerts by root cause using the dependency graph, so a failed switch produces one notification naming the affected devices rather than one per device. Plus behavioural baselining from device history, so "this has been up for 60 days and just dropped" is treated differently from a laptop that comes and goes.
+
+**Later — rogue DHCP detection.** Useful and self-contained, but a separate scanning mechanism with its own risks.
+
+The original assessment, for reference:
+
+**Opt-in, off by default.** A monitoring layer that answers what Pi.Alert answers — *is something on my network that should not be there?* — using everything the app already knows, rather than a MAC ledger alone.
+
+The differentiators, none of which are available to a MAC-only tool: alerts **grouped by root cause** using the v2.9.0 dependency graph (one "switch offline, 30 devices affected" instead of thirty notifications); **identity by correlation** across MAC, vendor, mDNS name and services, so a phone with a fresh randomised MAC is recognised rather than reported as an intruder; **per-device expectations** instead of one global "always connected" flag; and **graded severity**, so an unknown device in the static range is treated differently from one in the DHCP pool.
+
+Needs one new persistent structure — a device ledger — with a pruning policy for randomised MACs decided up front, and exclusion from support bundles.
+
+Full design, including the notification policy and phasing, in [wiki/Network-Watch-Design.md](./wiki/Network-Watch-Design.md).
+
+---
+
 ## Under Consideration
 
 - **Dark mode persistence** — remember last-used theme across sessions (currently resets on page load)
 - **Bulk tag editor** — apply or remove tags across multiple entries at once
-- **SNMP / mDNS discovery** — passive discovery of new devices on the network without requiring manual entry
+- **SNMP discovery** — passive discovery via SNMP for managed switches and routers (mDNS shipped in v2.10.0)
 
 ---
 
@@ -68,6 +89,7 @@ See [CHANGELOG.md](./CHANGELOG.md) for a full history of released features.
 
 | Version | Feature |
 |---------|---------|
+| v2.11.0 | Network Watch phase 1 — opt-in bounded device ledger with randomised-MAC detection |
 | v2.10.0 | mDNS/DNS-SD discovery — friendly names from the network, dependency-free |
 | v2.9.1 | Forgiving hypervisor name matching, untracked-host hints, optional gateway links |
 | v2.9.0 | Per-device history timeline and network topology view with impact analysis |
