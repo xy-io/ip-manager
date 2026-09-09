@@ -37,6 +37,10 @@ setcap cap_net_raw+ep $(which arp-scan)
 
 Without it, discovery falls back to the kernel ARP cache — which only sees devices the server has recently talked to, so results will be sparse but not empty. Before **v2.11.2** this failure was silent: the scan reported success with zero devices.
 
+**If you are on v2.11.2 or earlier and scans find nothing even though `arp-scan` is installed and permitted**, that is a separate bug fixed in **v2.11.3**: the sweep passed `--quiet`, which removes the vendor column from arp-scan's output, and the parser discarded every line that lacked it. Update.
+
+The sweep scans each network's **whole subnet**, not only the static range — the static range only affects the new-host banner elsewhere in the app.
+
 ---
 
 ## What it records

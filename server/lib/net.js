@@ -67,7 +67,10 @@ function buildDiscoveryScanArgs(cidr, iface, bandwidthKbps) {
   }
   const bw = parseInt(bandwidthKbps, 10);
   if (Number.isInteger(bw) && bw > 0) args.push(`--bandwidth=${bw}K`);
-  args.push('--quiet', normalised);
+  // No --quiet: it suppresses the OUI vendor decode, and the vendor is worth
+  // having. The parser copes with either form regardless, which is what makes
+  // this a preference rather than a dependency.
+  args.push(normalised);
   return args;
 }
 
@@ -134,8 +137,37 @@ function describeScanFailure(error) {
   return `arp-scan failed: ${message}`;
 }
 
+
+/**
+ * Parse arp-scan output into { ip, mac, vendor } records.
+ *
+ * The vendor column is OPTIONAL, and that is the whole point of this function
+ * living here. arp-scan omits the OUI vendor decode when run with --quiet, so
+ * its output drops from three columns to two:
+ *
+ *   192.168.0.50   00:11:32:aa:bb:cc   Synology Incorporated   (normal)
+ *   192.168.0.50   00:11:32:aa:bb:cc                           (--quiet)
+ *
+ * The background discovery sweep passes --quiet while the manual scan does
+ * not. A parser that required the third column therefore discarded every line
+ * of a discovery sweep and returned zero devices, on a server where arp-scan
+ * was installed, permitted, and working perfectly — which is exactly what it
+ * did, silently, until v2.11.3.
+ */
+function parseArpScanOutput(output) {
+  const ipMacLine = /^(\d{1,3}(?:\.\d{1,3}){3})\s+([0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5})(?:\s+(.*))?$/;
+  return String(output || '').split('\n').reduce((acc, line) => {
+    const m = line.trim().match(ipMacLine);
+    if (!m) return acc;
+    const vendor = (m[3] || '').trim();
+    acc.push({ ip: m[1], mac: m[2], vendor: vendor || null });
+    return acc;
+  }, []);
+}
+
 module.exports = {
   describeScanFailure,
+  parseArpScanOutput,
   normaliseSubnetToCidr,
   isValidInterface,
   buildArpScanArgs,

@@ -89,6 +89,7 @@ See [CHANGELOG.md](./CHANGELOG.md) for a full history of released features.
 
 | Version | Feature |
 |---------|---------|
+| v2.11.3 | arp-scan --quiet output parsed correctly — the actual cause of empty discovery sweeps |
 | v2.11.2 | Discovery scan failures reported rather than swallowed; Network Watch moved into Tools |
 | v2.11.1 | Network Watch discoverability — open from Settings, count badge on the header icon |
 | v2.11.0 | Network Watch phase 1 — opt-in bounded device ledger with randomised-MAC detection |

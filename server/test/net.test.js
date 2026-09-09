@@ -10,7 +10,7 @@ const assert = require('node:assert');
 const {
   normaliseSubnetToCidr, isValidInterface, buildArpScanArgs, buildDiscoveryScanArgs,
   ipSortKey, sortEntriesByIp, findEntryIndex, haPingStatus, decorateEntry,
-  describeScanFailure,
+  describeScanFailure, parseArpScanOutput,
 } = require('../lib/net');
 
 test('normaliseSubnetToCidr expands shorthand networks', () => {
@@ -67,13 +67,17 @@ test('buildArpScanArgs produces an argument array, never a shell string', () => 
   assert.equal(buildArpScanArgs('192.168.1', 'eth0; id'), null);
 });
 
+// This test previously asserted that --quiet was passed, which is how the
+// broken behaviour survived: the test agreed with the code and both were wrong.
+// A test that pins down an argument without knowing what the argument does is
+// worse than no test, because it makes the bug look deliberate.
 test('buildDiscoveryScanArgs includes bandwidth only when it is a positive integer', () => {
   assert.deepEqual(buildDiscoveryScanArgs('192.168.1', '', 1000),
-    ['--bandwidth=1000K', '--quiet', '192.168.1.0/24']);
+    ['--bandwidth=1000K', '192.168.1.0/24']);
   assert.deepEqual(buildDiscoveryScanArgs('192.168.1', '', 0),
-    ['--quiet', '192.168.1.0/24']);
+    ['192.168.1.0/24']);
   assert.deepEqual(buildDiscoveryScanArgs('192.168.1', '', 'abc'),
-    ['--quiet', '192.168.1.0/24']);
+    ['192.168.1.0/24']);
   assert.equal(buildDiscoveryScanArgs('bad subnet', '', 100), null);
 });
 
@@ -165,4 +169,76 @@ test('a non-Error value does not crash the diagnostic', () => {
   assert.equal(typeof describeScanFailure('plain string'), 'string');
   assert.equal(typeof describeScanFailure(null), 'string');
   assert.equal(typeof describeScanFailure(undefined), 'string');
+});
+
+// ── arp-scan output parsing ─────────────────────────────────────────────────
+// The bug this guards: arp-scan omits the OUI vendor column under --quiet, and
+// the background discovery sweep passes --quiet. A parser that required three
+// columns discarded every line and reported zero devices — on a server where
+// arp-scan was installed, permitted and working. The manual scan, which does
+// not pass --quiet, kept working, which made it look like a Network Watch bug.
+
+const NORMAL_OUTPUT = [
+  'Interface: eth0, type: EN10MB, MAC: bc:24:11:aa:bb:cc, IPv4: 192.168.0.5',
+  'Starting arp-scan 1.9.7 with 256 hosts',
+  '192.168.0.1\t3c:22:fb:11:22:01\tApple, Inc.',
+  '192.168.0.50\t00:11:32:aa:bb:cc\tSynology Incorporated',
+  '192.168.0.120\tb8:27:eb:00:11:22\tRaspberry Pi Foundation',
+  '',
+  '3 packets received by filter, 0 packets dropped by kernel',
+  'Ending arp-scan 1.9.7: 256 hosts scanned in 2.5 seconds',
+].join('\n');
+
+// Exactly the same sweep with --quiet: no vendor column at all.
+const QUIET_OUTPUT = [
+  'Interface: eth0, type: EN10MB, MAC: bc:24:11:aa:bb:cc, IPv4: 192.168.0.5',
+  '192.168.0.1\t3c:22:fb:11:22:01',
+  '192.168.0.50\t00:11:32:aa:bb:cc',
+  '192.168.0.120\tb8:27:eb:00:11:22',
+].join('\n');
+
+test('normal arp-scan output parses with vendors', () => {
+  const rows = parseArpScanOutput(NORMAL_OUTPUT);
+  assert.equal(rows.length, 3);
+  assert.deepEqual(rows[0], { ip: '192.168.0.1', mac: '3c:22:fb:11:22:01', vendor: 'Apple, Inc.' });
+  assert.equal(rows[1].vendor, 'Synology Incorporated');
+});
+
+test('--quiet output parses too, with a null vendor', () => {
+  // This is the regression. Requiring the vendor column dropped all three rows
+  // and the sweep reported an empty network.
+  const rows = parseArpScanOutput(QUIET_OUTPUT);
+  assert.equal(rows.length, 3, 'every device must be found without a vendor column');
+  assert.equal(rows[0].ip, '192.168.0.1');
+  assert.equal(rows[0].mac, '3c:22:fb:11:22:01');
+  assert.equal(rows[0].vendor, null);
+});
+
+test('both output forms find the same devices', () => {
+  const withVendor = parseArpScanOutput(NORMAL_OUTPUT).map((r) => `${r.ip} ${r.mac}`);
+  const without = parseArpScanOutput(QUIET_OUTPUT).map((r) => `${r.ip} ${r.mac}`);
+  assert.deepEqual(without, withVendor, 'the --quiet flag must not change which devices are seen');
+});
+
+test('headers, footers and blank lines are ignored', () => {
+  const rows = parseArpScanOutput(NORMAL_OUTPUT);
+  assert.ok(!rows.some((r) => r.ip === '192.168.0.5'), 'the interface header is not a device');
+});
+
+test('a trailing-whitespace vendor column is treated as absent', () => {
+  const rows = parseArpScanOutput('192.168.0.1\t3c:22:fb:11:22:01   ');
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].vendor, null);
+});
+
+test('empty and non-string input yields no rows', () => {
+  assert.deepEqual(parseArpScanOutput(''), []);
+  assert.deepEqual(parseArpScanOutput(null), []);
+  assert.deepEqual(parseArpScanOutput(undefined), []);
+});
+
+test('the discovery sweep no longer suppresses the vendor decode', () => {
+  const args = buildDiscoveryScanArgs('192.168.0.0/24', '', 1000);
+  assert.ok(!args.includes('--quiet'), '--quiet costs the vendor column for no benefit');
+  assert.ok(args.includes('192.168.0.0/24'));
 });

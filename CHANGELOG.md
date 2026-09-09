@@ -6,6 +6,33 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v2.11.3
+
+**The real reason discovery scans found nothing**
+
+Not permissions, and not the static range. The background sweep ran `arp-scan --quiet`, and `--quiet` suppresses the OUI vendor decode — so arp-scan's output drops from three columns to two:
+
+```
+192.168.0.50   00:11:32:aa:bb:cc   Synology Incorporated    (normal)
+192.168.0.50   00:11:32:aa:bb:cc                            (--quiet)
+```
+
+The shared output parser required that third column. Every line of every discovery sweep therefore failed the match and was discarded, and the sweep reported an empty network — on a server where `arp-scan` was installed, permitted, and working perfectly.
+
+The manual **Tools → ARP Scan** never passed `--quiet`, so it kept working. That combination — manual scan fine, Network Watch empty — is what made this look like a Network Watch problem.
+
+- The parser now treats the vendor column as **optional**, so either output form works
+- `--quiet` is no longer passed, so vendors come through; the parser copes either way, which makes that a preference rather than a dependency
+- The parser moved into `lib/net.js` so it can be tested against real captured output
+
+**A test that had encoded the bug.** The existing check asserted `--quiet` was among the arguments. Code and test agreed, and both were wrong — which is worse than no test, because it made the flag look deliberate. It now asserts the opposite, with a note explaining why.
+
+**A misleading comment corrected.** The sweep was documented as "scoped to each network's static range". It is not: it scans the whole CIDR and merely labels each result with `inStaticRange`. Only the new-host banner narrows to that range. Network Watch records everything found.
+
+7 new unit tests, parsing real arp-scan output in both forms and asserting both find the same devices.
+
+---
+
 ## v2.11.2
 
 **A scan that finds nothing now says why**

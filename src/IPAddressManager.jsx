@@ -23,7 +23,7 @@ const loadQRCode = () => {
 };
 
 // ── App version ───────────────────────────────────────────────────────────────
-const APP_VERSION = 'v2.11.2';
+const APP_VERSION = 'v2.11.3';
 
 // Default network configuration (overridden by Settings modal / localStorage)
 const DEFAULT_NETWORK_CONFIG = {

@@ -51,6 +51,7 @@ const { getDomains, saveDomains } = require('./lib/domainStore');
 const {
   normaliseSubnetToCidr, isValidInterface, buildArpScanArgs, buildDiscoveryScanArgs,
   ipSortKey, sortEntriesByIp, findEntryIndex, haPingStatus, decorateEntry, describeScanFailure,
+  parseArpScanOutput,
 } = require('./lib/net');
 const { redactSecrets } = require('./lib/redact');
 const twoFactor = require('./lib/twoFactor');
@@ -1026,14 +1027,6 @@ const dnsPromises    = require('dns').promises;
 
 // Parse arp-scan stdout — tab-separated: IP \t MAC \t Vendor
 // Skips header/footer lines that don't match the IP pattern
-function parseArpScanOutput(output) {
-  const ipMacLine = /^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\s+([0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5})\s+(.+)$/;
-  return output.split('\n').reduce((acc, line) => {
-    const m = line.trim().match(ipMacLine);
-    if (m) acc.push({ ip: m[1], mac: m[2], vendor: m[3].trim() });
-    return acc;
-  }, []);
-}
 
 // Fallback: read the kernel ARP cache from /proc/net/arp
 // Only shows recently-seen devices but requires no extra tools
@@ -1162,7 +1155,12 @@ function subnetPrefixLen(subnet) {
 let lastSeenData = (function () { return dbGet('last_seen_data') || {}; })();
 
 // ── Background discovery scan ─────────────────────────────────────────────────
-// Scheduled arp-scan sweep scoped to each network's static range.
+// Scheduled arp-scan sweep across each network's FULL subnet — not just the
+// static range. An earlier version of this comment said "scoped to each
+// network's static range", which is wrong and misleading: the sweep scans the
+// whole CIDR and merely *labels* each result with `inStaticRange`. Only the
+// new-host banner in the frontend narrows to that range; Network Watch records
+// everything found.
 // Subnet-aware rate limiting: /24 → 15 min / 1000 Kbps; /16 → 60 min / 200 Kbps.
 // Both defaults are overridable in settings.
 

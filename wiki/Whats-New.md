@@ -4,6 +4,16 @@ For the full release history see the [CHANGELOG](https://github.com/xy-io/ip-man
 
 ---
 
+## v2.11.3 — The real reason discovery scans found nothing
+
+Not permissions. The background sweep ran `arp-scan --quiet`, which drops the vendor column from the output, and the parser required that column — so every device found was thrown away and the sweep reported an empty network.
+
+The manual **Tools → ARP Scan** never used `--quiet`, which is why it worked while Network Watch stayed empty.
+
+Fixed, with tests against real arp-scan output in both forms.
+
+---
+
 ## v2.11.2 — A scan that finds nothing now says why
 
 If Network Watch scans returned nothing, this is why: the sweep needs `arp-scan` on the server, and when it was missing or lacked permission the failure was swallowed. The scan reported success with zero devices, which looks exactly like a network with nothing on it.

@@ -45,6 +45,10 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
+### v2.11.3 — The real reason discovery scans found nothing
+
+The background sweep ran `arp-scan --quiet`, which suppresses the vendor column, but the shared output parser required it — so every line was discarded and the sweep reported an empty network on a perfectly working server. The manual ARP scan never passed `--quiet`, which is why it kept working and made this look like a Network Watch fault. The parser now treats the vendor column as optional and has moved into `lib/net.js` with tests against real captured output.
+
 ### v2.11.2 — A scan that finds nothing now says why
 
 The background discovery sweep swallowed `arp-scan` failures, so a server without it installed reported a successful scan that found zero devices — identical to a quiet network. Failures are now collected, shown in the view, and name the remedy; discovery also falls back to the kernel ARP cache as the manual scan always has. Network Watch has moved into the **Tools** menu alongside Topology and mDNS, with the unrecognised count on the Tools button.
