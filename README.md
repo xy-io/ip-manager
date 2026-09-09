@@ -45,6 +45,14 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
+### v2.15.0 — Add a discovered device straight to the inventory
+
+Unrecognised devices in Network Watch now have an **Add** button that opens the edit form pre-filled with the address, name, MAC and a type guessed from the vendor. The row flips to *in inventory* immediately and the unrecognised count drops. Stacking the edit form over the view exposed an older bug — `useModalA11y` bound Escape on `document` in the capture phase, so Escape would have closed the view underneath rather than the form; modals now register on a stack and only the topmost responds.
+
+### v2.14.0 — A short "what's new" summary after each update
+
+The first open after an update shows a small dialog summarising what changed, with **Don't show this again** and a way to turn them back on in Settings. Content comes from `wiki/Whats-New.md` so there is one set of notes rather than two that drift — building this immediately revealed that two releases had shipped with no notes at all, and a test now prevents that.
+
 ### v2.13.2 — Two vendor-name defects
 
 arp-scan's `(Unknown)` was displayed verbatim instead of falling back to the bundled IEEE database, because the guard tested for a leading "unknown" and the string starts with a parenthesis — so Proxmox's own `bc:24:11` virtual machines showed as unidentified in a Proxmox-centric app. And arp-scan's `(DUP: 2)` duplicate-response marker was being shown as part of the manufacturer name; it is now a **duplicate ARP reply** badge, which is usually benign but is also what ARP spoofing looks like. Hypervisor prefixes are also labelled by platform — `bc:24:11` reads **Proxmox VM** rather than "Proxmox Server Solutions GmbH" — with the registry name kept in the tooltip.

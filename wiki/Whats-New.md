@@ -4,6 +4,40 @@ For the full release history see the [CHANGELOG](https://github.com/xy-io/ip-man
 
 ---
 
+## v2.15.0 — Add a discovered device straight to your inventory
+
+Network Watch used to tell you about a device and then leave you to memorise its address, close the view and type everything in again. Unrecognised devices now have an **Add** button that opens the normal edit form with the address, name, MAC and vendor already filled in.
+
+The row flips to **in inventory** the moment you add it, and the **Unrecognised** count drops — so a list of unknowns visibly shrinks as you work through it.
+
+There is deliberately no "add all": seventeen entries added in one click is seventeen rows to tidy up afterwards, which is worse than the problem.
+
+---
+
+## v2.14.0 — A short summary after each update
+
+The first time you open IP Manager after an update, a small box now tells you what changed. Tick **Don't show this again** if you would rather not see them, and turn them back on later in **Settings → Updates**.
+
+If you skip a few updates, you get all of them at once rather than only the newest — that is the person who most needs telling.
+
+---
+
+## v2.13.2 — Better device identification
+
+Devices that showed as `(Unknown)` now get a manufacturer wherever the bundled IEEE database knows one — including Proxmox's own virtual machines, which were previously unidentified.
+
+Virtual machines say so. A device whose MAC belongs to a hypervisor is labelled by platform — **Proxmox VM**, **QEMU / KVM VM**, **Hyper-V VM**, **VMware VM** — rather than by the company that registered the prefix. The full registry name is still there if you hover. A device's name is never replaced by a vendor: this is only the small badge beside it.
+
+A new **duplicate ARP reply** badge appears where more than one reply came back for an address. That is usually a host with two interfaces on the same segment, but it is also what ARP spoofing looks like, so it is worth seeing.
+
+---
+
+## v2.13.1 — Pi-hole connection errors now say what to do
+
+A failed Pi-hole lookup used to report the raw network error. It now names the likely cause and the next step — a refused connection explains that Pi-hole's web interface is often on a port other than 80 and how to find the real one, while an unreachable host or an untrusted certificate says so instead.
+
+---
+
 ## v2.13.0 — Pi-hole can name your unrecognised devices
 
 If Pi-hole hands out your DHCP leases, it already knows what every device calls itself. Network Watch can now ask, turning a row that read `e4:5f:01:aa:bb:cc` into `living-room-hue`.

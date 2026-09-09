@@ -6,6 +6,50 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v2.15.0
+
+**Add a discovered device straight to the inventory**
+
+Network Watch identified unrecognised devices and then offered nothing to do about them: you had to memorise an address, close the view, and retype what was already on screen. Unrecognised rows now carry an **Add** button that opens the ordinary edit form pre-filled with the address, the best available name, the MAC and a type guessed from the vendor.
+
+- It opens the **edit form** rather than creating silently, so type, location and tags can be set while you are there, and a mis-click is not a silent write
+- Merges onto whatever is already at that address — usually a `Free` placeholder — so adding never wipes fields already set
+- A hypervisor MAC prefix sets the type to Virtual; anything else defaults to Physical for you to correct, because that is a guess
+- The row flips to **in inventory** immediately and the **Unrecognised** count drops, computed against the local list rather than the saved one — otherwise the feedback would not arrive until the next Save
+- **No "add all"**: seventeen entries in one click is seventeen rows to tidy afterwards
+
+**A bug this surfaced, in code that predates it.** Network Watch now opens the edit form on top of itself — the first time two overlays stack. `useModalA11y` binds Escape on `document` in the *capture* phase, so every open modal's handler fires, in mount order: Escape while editing would have closed the **view underneath** and left the form up.
+
+Modals now register on a stack and only the topmost responds. The ordering lives outside the hook so it can be tested without a DOM, and the suite was validated by inverting the comparison — two tests fail immediately.
+
+5 new unit tests, including out-of-order closing, since React does not guarantee unmount order mirrors mount order.
+
+---
+
+## v2.14.0
+
+**A short "what's new" summary after each update**
+
+The first time IP Manager is opened after an update, a small dialog summarises what changed. **Don't show this again** switches them off permanently; **Settings → Updates** turns them back on, so the checkbox is not a one-way door.
+
+Skipping several updates shows all of them, newest first, capped at three — the person who has not updated in a while is the one who most needs telling.
+
+**One source of notes, not two.** The content is read from `wiki/Whats-New.md`, which is already written in user-facing language and already updated every release. A separate set of popup notes would have drifted, and the stale one would be the one people actually saw. The CHANGELOG is deliberately *not* the source: it is written for someone diagnosing a bug, full of parser internals, and is the wrong register for a dialog that interrupts you.
+
+- Never appears over the login screen or the forced password change
+- A brand-new install records the version silently and shows nothing — there is nothing "new" on day one
+- The acknowledgement is stored server-side, so it is remembered across browsers and survives clearing site data
+- Notes for versions newer than the running server are never shown, since the wiki is written ahead of a deploy
+- The dialog is lazily loaded: 1.2 kB gzipped, fetched only when there is something to say
+
+**Bold and code are rendered as React elements, never as injected HTML.** The obvious implementation — `dangerouslySetInnerHTML` with a couple of regex replacements — would turn the release notes into an injection point.
+
+**A defect found by building this.** The parser immediately showed that **v2.13.1 and v2.13.2 had no entry in `Whats-New.md` at all**. Both were written by a find-and-replace against an anchor that did not exist, and Python's `str.replace` does nothing, silently, when it matches nothing. The dialog would have had nothing to show for the very releases that triggered it. Both entries are now written, and a unit test asserts the version in `package.json` has notes — so a release cannot ship without them again.
+
+17 new unit tests, including that versions compare numerically: as strings `"2.9.0"` sorts after `"2.13.0"`, so a user on 2.9.0 would silently never be shown anything again.
+
+---
+
 ## v2.13.2
 
 **Two vendor-name defects, both visible the moment real data arrived**

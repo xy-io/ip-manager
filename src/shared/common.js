@@ -15,9 +15,42 @@ export const loadXLSX = () => {
   return xlsxPromise;
 };
 
-export const APP_VERSION = 'v2.13.2';
+export const APP_VERSION = 'v2.15.0';
 
 // Default network configuration (overridden by Settings modal / localStorage)
+
+
+// ── Modal stack ─────────────────────────────────────────────────────────────
+// Escape is handled on `document` in the capture phase, so with two modals
+// open every handler fires — in mount order. Network Watch opens the edit form
+// on top of itself, and without this the *underlying* view would close while
+// the form stayed up.
+//
+// A tiny stack fixes it: only the most recently opened modal responds. Kept as
+// plain functions rather than hidden inside the hook so the ordering can be
+// tested without a DOM.
+const modalStack = [];
+let modalToken = 0;
+
+export function pushModal() {
+  modalToken += 1;
+  modalStack.push(modalToken);
+  return modalToken;
+}
+
+export function popModal(token) {
+  const i = modalStack.lastIndexOf(token);
+  if (i !== -1) modalStack.splice(i, 1);
+}
+
+export function isTopModal(token) {
+  return modalStack.length > 0 && modalStack[modalStack.length - 1] === token;
+}
+
+/** Test seam: forget every registered modal. */
+export function resetModalStack() {
+  modalStack.length = 0;
+}
 
 export function useModalA11y(onClose) {
   const containerRef = useRef(null);
@@ -31,7 +64,11 @@ export function useModalA11y(onClose) {
 
     const SELECTOR = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
+    const token = pushModal();
+
     const onKeyDown = (e) => {
+      // Only the topmost modal reacts, or Escape closes whatever opened first.
+      if (!isTopModal(token)) return;
       if (e.key === 'Escape' && onClose) {
         e.stopPropagation();
         onClose();
@@ -55,6 +92,7 @@ export function useModalA11y(onClose) {
     document.addEventListener('keydown', onKeyDown, true);
     return () => {
       document.removeEventListener('keydown', onKeyDown, true);
+      popModal(token);
       if (previouslyFocused && typeof previouslyFocused.focus === 'function') {
         previouslyFocused.focus({ preventScroll: true });
       }

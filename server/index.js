@@ -60,6 +60,7 @@ const { buildTopology, impactOf } = require('./lib/topology');
 const mdns = require('./lib/mdns');
 const watch = require('./lib/watch');
 const pihole = require('./lib/pihole');
+const releaseNotes = require('./lib/releaseNotes');
 
 function requireAuth(req, res, next) {
   if (isValidSession(req.cookies[SESSION_COOKIE])) return next();
@@ -588,6 +589,7 @@ app.get('/api/capabilities', (req, res) => {
       mdns:              true,
       networkWatch:      true,
       piholeDhcp:        true,
+      whatsNew:          true,
       pushNotifications: false, // APNs not implemented — see the roadmap
     },
   });
@@ -848,6 +850,49 @@ app.delete('/api/watch/ledger', (req, res) => {
   dbSet('watch_ledger', []);
   recordEvent({ type: 'watch.cleared', message: `Network Watch ledger cleared (${removed} devices)`, req });
   res.json({ removed, summary: watch.summarise([], []) });
+});
+
+// ── What's new ────────────────────────────────────────────────────────────────
+// Shown once after an update. The content comes from wiki/Whats-New.md so there
+// is one set of notes to maintain rather than two that drift.
+
+const getWhatsNewState = () => dbGet('whats_new_state') || { lastSeenVersion: null, suppressed: false };
+
+// GET /api/whats-new
+app.get('/api/whats-new', (req, res) => {
+  const state = getWhatsNewState();
+  const current = APP_VERSION;
+  const notes = releaseNotes.notesSince(releaseNotes.readNotesFile(), state.lastSeenVersion, current);
+
+  // A brand-new install has nothing to be "new" about, and the first run is
+  // already busy asking for a password change. Record the version silently so
+  // the next genuine update is the first thing anyone sees.
+  if (!state.lastSeenVersion) {
+    dbSet('whats_new_state', { lastSeenVersion: current, suppressed: state.suppressed === true });
+    return res.json({ show: false, version: current, suppressed: state.suppressed === true, releases: [] });
+  }
+
+  res.json({
+    show: state.suppressed !== true && notes.length > 0,
+    version: current,
+    suppressed: state.suppressed === true,
+    releases: notes,
+  });
+});
+
+// POST /api/whats-new/seen — dismiss, optionally for good
+app.post('/api/whats-new/seen', (req, res) => {
+  const state = getWhatsNewState();
+  const suppressed = req.body?.suppress === true ? true : state.suppressed === true;
+  dbSet('whats_new_state', { lastSeenVersion: APP_VERSION, suppressed });
+  res.json({ ok: true, suppressed });
+});
+
+// POST /api/whats-new/reset — undo "do not show again", so it is not one-way
+app.post('/api/whats-new/reset', (req, res) => {
+  const state = getWhatsNewState();
+  dbSet('whats_new_state', { lastSeenVersion: state.lastSeenVersion, suppressed: false });
+  res.json({ ok: true, suppressed: false });
 });
 
 // ── Pi-hole DHCP lease lookup ─────────────────────────────────────────────────

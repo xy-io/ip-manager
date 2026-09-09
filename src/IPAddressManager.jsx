@@ -17,6 +17,7 @@ const ARPScanModal = lazy(() => import('./modals/ARPScanModal'));
 const ProxmoxImportModal = lazy(() => import('./modals/ProxmoxImportModal'));
 const SubnetVisuiserModal = lazy(() => import('./modals/SubnetVisuiserModal'));
 const CIDRCalculatorModal = lazy(() => import('./modals/CIDRCalculatorModal'));
+const WhatsNewModal = lazy(() => import('./modals/WhatsNewModal'));
 
 // A modal that is still downloading shows nothing rather than a spinner: on a
 // LAN the chunk arrives in a few milliseconds, and a flash of loading UI is
@@ -1398,7 +1399,7 @@ function NetworkWatchTab({ onOpen }) {
   );
 }
 
-function NetworkWatchView({ onClose }) {
+function NetworkWatchView({ onClose, onAdd, localEntries = [] }) {
   const modalRef = useModalA11y(typeof onClose === 'function' ? onClose : null);
   const [data, setData] = useState(null);
   const [scanning, setScanning] = useState(false);
@@ -1422,7 +1423,21 @@ function NetworkWatchView({ onClose }) {
     finally { setScanning(false); }
   };
 
-  const devices = data?.devices || [];
+  // The server decides `inInventory` from the saved dataset, but an entry the
+  // user has just added is not saved yet. Overlaying the local list makes the
+  // row flip the moment it is added, rather than after the next Save — which
+  // is what makes working through a list of unknowns feel like progress.
+  const localIps = useMemo(() => new Set(
+    (localEntries || [])
+      .filter(e => e && e.ip && e.assetName && e.assetName !== 'Free' && e.assetName !== 'Reserved')
+      .map(e => e.ip)
+  ), [localEntries]);
+
+  const devices = (data?.devices || []).map(d =>
+    d.inInventory || !d.currentIp || !localIps.has(d.currentIp)
+      ? d
+      : { ...d, inInventory: true, inventoryName: (localEntries.find(e => e.ip === d.currentIp) || {}).assetName || null }
+  );
   const shown = devices.filter(d =>
     filter === 'all' ? true
     : filter === 'unknown' ? (!d.inInventory && !d.random)
@@ -1432,11 +1447,13 @@ function NetworkWatchView({ onClose }) {
   const summary = data?.summary || {};
   const kb = ((summary.bytes || 0) / 1024).toFixed(1);
 
+  // Recomputed from the overlaid list rather than taken from the server, so the
+  // chips agree with the rows while additions are still unsaved.
   const counts = [
-    { id: 'all', label: 'All', n: summary.total || 0 },
-    { id: 'known', label: 'In inventory', n: summary.known || 0 },
-    { id: 'unknown', label: 'Unrecognised', n: summary.unknown || 0 },
-    { id: 'random', label: 'Randomised', n: summary.randomised || 0 },
+    { id: 'all', label: 'All', n: devices.length },
+    { id: 'known', label: 'In inventory', n: devices.filter(d => d.inInventory).length },
+    { id: 'unknown', label: 'Unrecognised', n: devices.filter(d => !d.inInventory && !d.random).length },
+    { id: 'random', label: 'Randomised', n: devices.filter(d => d.random).length },
   ];
 
   return (
@@ -1558,6 +1575,19 @@ function NetworkWatchView({ onClose }) {
                       </span>
                     </div>
                   </div>
+
+                  {/* The missing half of the feature: the view told you about a
+                      device and then made you memorise an address, close it and
+                      retype everything. This opens the normal edit form with
+                      what is already known filled in. */}
+                  {!d.inInventory && d.currentIp && onAdd && (
+                    <button
+                      onClick={() => onAdd(d)}
+                      className="flex-shrink-0 px-2.5 py-1 text-xs rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50 hover:border-slate-400 transition-colors"
+                      title={`Add ${d.currentIp} to the inventory`}>
+                      Add
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -2070,6 +2100,41 @@ rest:
 
 // Settings Modal Component
 // ── Updates Tab (lives inside SettingsModal) ──────────────────────────────────
+// Undo "don't show this again" for the release summary. Without this the
+// checkbox would be a one-way door, which is a poor thing to offer someone in
+// a hurry to close a dialog.
+function WhatsNewReset() {
+  const [state, setState] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = () => fetch('/api/whats-new').then(r => r.json()).then(setState).catch(() => {});
+  useEffect(() => { load(); }, []);
+
+  if (!state) return null;
+
+  const reset = async () => {
+    setBusy(true);
+    try { await fetch('/api/whats-new/reset', { method: 'POST' }); await load(); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="flex items-center gap-3 pt-3 mt-3 border-t border-slate-100">
+      <span className="text-xs text-slate-500 flex-1">
+        {state.suppressed
+          ? 'Release summaries are switched off after an update.'
+          : 'A short summary is shown once after each update.'}
+      </span>
+      {state.suppressed && (
+        <button onClick={reset} disabled={busy}
+                className="px-3 py-1.5 text-xs rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50 disabled:opacity-50">
+          Show them again
+        </button>
+      )}
+    </div>
+  );
+}
+
 function UpdatesTab() {
   const [versionInfo,  setVersionInfo]  = useState(null);
   const [versionError, setVersionError] = useState(null);
@@ -3509,7 +3574,10 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
 
             {/* ── UPDATES TAB ── */}
             {activeTab === 'updates' && (
-              <UpdatesTab />
+              <>
+                <UpdatesTab />
+                <WhatsNewReset />
+              </>
             )}
 
             {/* ── SUPPORT TAB ── */}
@@ -5283,6 +5351,7 @@ export default function IPAddressManager() {
   const [showTopology, setShowTopology] = useState(false);
   const [showMdns, setShowMdns] = useState(false);
   const [showWatch, setShowWatch] = useState(false);
+  const [whatsNew, setWhatsNew] = useState(null);   // { releases } once the server says to show it
   // Network Watch is invisible until switched on: no nav button, no menu item.
   // The core of the app is the address list, and an opt-in feature should not
   // add furniture for people who never turn it on.
@@ -5353,6 +5422,17 @@ export default function IPAddressManager() {
   const [showNetworkPicker, setShowNetworkPicker] = useState(false);
   const networkPillRef = useRef(null);
   const searchRef = useRef(null);
+
+  // Ask whether there is anything new to announce. Gated on being signed in and
+  // past the forced password change: a release summary must never land on top
+  // of the login screen or interrupt someone being told to set a password.
+  useEffect(() => {
+    if (persistMode !== 'api' || auth !== 'ok' || mustChangePassword) return;
+    fetch('/api/whats-new')
+      .then(r => r.ok ? r.json() : null)
+      .then(j => { if (j && j.show && j.releases?.length) setWhatsNew(j); })
+      .catch(() => {});
+  }, [persistMode, auth, mustChangePassword]);
 
   // Whether Network Watch has been switched on. Re-checked when Settings
   // closes, so enabling it makes the view appear without a page reload.
@@ -5520,6 +5600,7 @@ export default function IPAddressManager() {
         if (showTopology)      { setShowTopology(false);      return; }
         if (showMdns)          { setShowMdns(false);          return; }
         if (showWatch)         { setShowWatch(false);         return; }
+        if (whatsNew)          { setWhatsNew(null);           return; }
         if (showDomains)       { setShowDomains(false);       return; }
         if (qrItem)            { setQrItem(null);             return; }
         if (showToolsMenu)     { setShowToolsMenu(false);     return; }
@@ -5533,7 +5614,7 @@ export default function IPAddressManager() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [editingItem, showSettings, showImport, showProxmoxImport, showARPScan, showHelp, showCIDR, showSubnet, showTopology, showMdns, showWatch, showDomains, qrItem, showToolsMenu, expandedCard, searchTerm]);
+  }, [editingItem, showSettings, showImport, showProxmoxImport, showARPScan, showHelp, showCIDR, showSubnet, showTopology, showMdns, showWatch, whatsNew, showDomains, qrItem, showToolsMenu, expandedCard, searchTerm]);
 
   // Close tools menu on outside click
   useEffect(() => {
@@ -6409,7 +6490,50 @@ export default function IPAddressManager() {
       {showSubnet && <ModalSuspense><SubnetVisuiserModal network={networkConfig} ipData={networkIpData} onClose={() => setShowSubnet(false)} /></ModalSuspense>}
       {showTopology && <TopologyModal onClose={() => setShowTopology(false)} />}
       {showMdns && <MdnsModal onClose={() => setShowMdns(false)} onApply={applyMdnsSuggestions} />}
-      {showWatch && <NetworkWatchView onClose={() => setShowWatch(false)} />}
+      {showWatch && (
+        <NetworkWatchView
+          onClose={() => setShowWatch(false)}
+          localEntries={ipData}
+          onAdd={(device) => {
+            // Merge onto whatever is already at that address — usually a Free
+            // placeholder — so adding never wipes fields that are already set.
+            const existing = ipData.find(e => e.ip === device.currentIp);
+            const isPlaceholder = !existing || existing.assetName === 'Free' || existing.assetName === 'Reserved';
+            setEditingItem({
+              ip: device.currentIp,
+              networkId: existing?.networkId || activeNetworkId,
+              assetName: (!isPlaceholder && existing?.assetName)
+                || device.inventoryName || device.name || device.dhcpName || device.hostname || '',
+              hostname: existing?.hostname || device.hostname || device.dhcpName || '',
+              mac: existing?.mac || device.mac || '',
+              // A hypervisor MAC prefix is a reliable signal; anything else is
+              // a guess, so it defaults to Physical for the user to correct.
+              type: existing?.type || (device.platform ? 'Virtual' : 'Physical'),
+              location: existing?.location || '',
+              apps: existing?.apps || '',
+              notes: existing?.notes || '',
+              tags: existing?.tags || [],
+            });
+          }}
+        />
+      )}
+      {whatsNew && (
+        <ModalSuspense>
+          <WhatsNewModal
+            releases={whatsNew.releases}
+            onClose={(suppress) => {
+              setWhatsNew(null);
+              // Recorded server-side so it is remembered across browsers, and
+              // so "don't show again" survives clearing site data.
+              fetch('/api/whats-new/seen', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ suppress: suppress === true }),
+              }).catch(() => {});
+            }}
+          />
+        </ModalSuspense>
+      )}
 
       {/* Domains View */}
       {showDomains && <ModalSuspense><DomainsView onClose={() => setShowDomains(false)} /></ModalSuspense>}

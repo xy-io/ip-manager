@@ -68,6 +68,20 @@ A **duplicate ARP reply** badge means more than one reply came back for that add
 
 ---
 
+## Adding a device to your inventory
+
+Added in **v2.15.0**.
+
+Anything marked **not in inventory** has an **Add** button. It opens the normal edit form with what is already known filled in — address, name, MAC, and a type guessed from the vendor — so you only supply what the network could not tell you: location, tags, and whether it matters.
+
+The row flips to *in inventory* as soon as you add it and the **Unrecognised** count drops, so a list of unknowns shrinks visibly as you work through it. The entry is written when you **Save**, like any other change.
+
+If a `Free` placeholder already exists at that address, the form merges onto it rather than replacing it.
+
+There is no "add all" button, deliberately: adding seventeen half-filled entries in one click leaves seventeen rows to tidy up, which is worse than the problem it solves.
+
+---
+
 ## Naming unrecognised devices from Pi-hole
 
 Added in **v2.13.0**. **Optional, off by default.**

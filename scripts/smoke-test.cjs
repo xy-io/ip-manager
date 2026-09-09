@@ -293,6 +293,19 @@ async function testProtectedRoutes() {
   // An earlier version asserted "off by default" unconditionally, which fails on
   // any server where the user has legitimately enabled the feature — a test that
   // punishes people for using it is a broken test, not a finding.
+  await test('the what\'s-new endpoint returns a coherent shape', async () => {
+    const res = await GET('/api/whats-new');
+    const statusCheck = expectStatus(res, 200, 'GET /api/whats-new');
+    if (statusCheck !== true) return statusCheck;
+    const keyCheck = expectKeys(res.json, ['show', 'version', 'suppressed', 'releases'], 'whats-new');
+    if (keyCheck !== true) return keyCheck;
+    if (!Array.isArray(res.json.releases)) return 'releases is not an array';
+    // Nothing to show must mean no releases, and vice versa — the two must
+    // never disagree, or the dialog opens empty.
+    if (res.json.show && res.json.releases.length === 0) return 'told to show a dialog with nothing in it';
+    return true;
+  });
+
   await test('the Pi-hole application password can never be read back', async () => {
     // The password is write-only by design: a client may set it and may learn
     // whether one is set, but must never be able to retrieve it.
@@ -1101,6 +1114,8 @@ const MUST_REQUIRE_AUTH = [
   { method: 'GET',  path: '/api/topology' },
   { method: 'GET',  path: '/api/mdns/status' },
   { method: 'GET',  path: '/api/watch/status' },
+  { method: 'GET',  path: '/api/whats-new' },
+  { method: 'POST', path: '/api/whats-new/seen', body: {} },
   { method: 'GET',  path: '/api/pihole/config' },
   { method: 'POST', path: '/api/pihole/test', body: {} },
   { method: 'GET',  path: '/api/watch/devices' },

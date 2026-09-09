@@ -37,7 +37,7 @@ Grant the narrowest scope that works. Home Assistant only ever reads, so a read-
     "domains": true, "domainWrite": true, "arpScan": true, "arpPresence": true,
     "dns": true, "subnetBlocks": true, "proxmox": true,
     "notifications": true, "activityLog": true,
-    "deviceHistory": true, "topology": true, "mdns": true, "networkWatch": true, "piholeDhcp": true,
+    "deviceHistory": true, "topology": true, "mdns": true, "networkWatch": true, "piholeDhcp": true, "whatsNew": true,
     "pushNotifications": false
   }
 }
@@ -150,6 +150,9 @@ They are omitted for session-authenticated requests, because the web UI writes t
 | `DELETE` | `/api/watch/ledger` | write | Forget every recorded device |
 | `GET` | `/api/pihole/config` | read | Pi-hole DHCP lookup settings. **Never returns the password** — only `passwordConfigured` |
 | `PUT` | `/api/pihole/config` | write | Enable or disable and set the address. An omitted or empty `password` leaves the stored one unchanged; `clearPassword: true` removes it |
+| `GET` | `/api/whats-new` | read | Release notes newer than the version last acknowledged, and whether to show them |
+| `POST` | `/api/whats-new/seen` | write | Acknowledge. `{ "suppress": true }` stops them permanently |
+| `POST` | `/api/whats-new/reset` | write | Undo a permanent suppression |
 | `POST` | `/api/pihole/test` | write | Try settings without saving them. Returns `{ ok, leaseCount, namedCount }` or `{ ok: false, error }` |
 
 ### Status

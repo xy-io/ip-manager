@@ -32,6 +32,7 @@ const PROPS = {
   ProxmoxImportModal:   { onImport(){}, onClose(){} },
   SubnetVisuiserModal:  { network:{ subnet:'192.168.0', dhcpEnabled:true, dhcpStart:'192.168.0.100', dhcpEnd:'192.168.0.200', staticStart:1, staticEnd:99 }, ipData:[{ ip:'192.168.0.5', assetName:'NAS' }], onClose(){} },
   CIDRCalculatorModal:  { onClose(){} },
+  WhatsNewModal:        { releases: [{ version: '2.14.0', title: 'A release', paragraphs: ['Some **bold** text and `code`.'] }], onClose(){} },
 };
 
 global.fetch = () => new Promise(() => {});          // never resolves; effects do not run in SSR anyway

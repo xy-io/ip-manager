@@ -90,6 +90,8 @@ See [CHANGELOG.md](./CHANGELOG.md) for a full history of released features.
 
 | Version | Feature |
 |---------|---------|
+| v2.15.0 | Add discovered devices to the inventory from Network Watch; modal Escape ordering fixed |
+| v2.14.0 | "What's new" dialog on the first load after an update, sourced from the wiki |
 | v2.13.2 | Vendor lookup fallback fixed; duplicate ARP replies flagged rather than shown as a vendor name |
 | v2.13.1 | Pi-hole connection errors translated into actionable advice |
 | v2.13.0 | Optional Pi-hole DHCP lease lookup — names unrecognised devices in Network Watch |
