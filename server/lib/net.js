@@ -159,14 +159,75 @@ function parseArpScanOutput(output) {
   return String(output || '').split('\n').reduce((acc, line) => {
     const m = line.trim().match(ipMacLine);
     if (!m) return acc;
-    const vendor = (m[3] || '').trim();
-    acc.push({ ip: m[1], mac: m[2], vendor: vendor || null });
+
+    let vendor = (m[3] || '').trim();
+
+    // arp-scan appends "(DUP: 2)" when an address answers more than once. It is
+    // a property of the response, not part of the vendor name, and it was
+    // being displayed as though the manufacturer were called
+    // "Raspberry Pi Foundation (DUP: 2)".
+    let duplicate = false;
+    const dup = vendor.match(/\s*\(DUP:\s*(\d+)\)\s*$/i);
+    if (dup) {
+      duplicate = true;
+      vendor = vendor.slice(0, dup.index).trim();
+    }
+
+    // arp-scan writes "(Unknown)" when the OUI is not in ITS database. Ours is
+    // a different database and frequently does know the vendor — Proxmox's
+    // bc:24:11 prefix among them — so this must be reported as "no vendor"
+    // rather than as the literal string, or the fallback lookup never runs.
+    if (/^\(?unknown/i.test(vendor)) vendor = '';
+
+    acc.push({ ip: m[1], mac: m[2], vendor: vendor || null, ...(duplicate ? { duplicate: true } : {}) });
     return acc;
   }, []);
 }
 
+
+// ── Virtualisation platforms ────────────────────────────────────────────────
+// Some OUI prefixes belong to hypervisors rather than to hardware makers. The
+// IEEE name is accurate but buries the useful fact — that the device is a
+// virtual machine, and which platform it runs on:
+//
+//   bc:24:11  ->  "Proxmox Server Solutions GmbH"   really: a Proxmox guest
+//   08:00:27  ->  "PCS Systemtechnik GmbH"          really: VirtualBox
+//   00:15:5d  ->  "Microsoft Corporation"           really: Hyper-V
+//   52:54:00  ->  not in the IEEE database at all   really: QEMU/KVM
+//
+// Reported separately from the vendor so the interface can say where a device
+// came from without discarding the underlying registry name.
+const VIRTUAL_PLATFORMS = {
+  '525400': 'QEMU / KVM',
+  'bc2411': 'Proxmox',
+  '00155d': 'Hyper-V',
+  '005056': 'VMware',
+  '000c29': 'VMware',
+  '000569': 'VMware',
+  '001c14': 'VMware',
+  '080027': 'VirtualBox',
+  '0a0027': 'VirtualBox',
+  '00163e': 'Xen',
+  '001c42': 'Parallels',
+  '024200': 'Docker',
+};
+
+/**
+ * The virtualisation platform a MAC prefix belongs to, or null for real
+ * hardware. Deliberately conservative: an unrecognised prefix returns null
+ * rather than a guess, because claiming a physical device is a VM is worse
+ * than saying nothing.
+ */
+function virtualPlatform(mac) {
+  const hex = String(mac || '').replace(/[^0-9a-fA-F]/g, '').toLowerCase();
+  if (hex.length < 6) return null;
+  return VIRTUAL_PLATFORMS[hex.slice(0, 6)] || null;
+}
+
 module.exports = {
   describeScanFailure,
+  virtualPlatform,
+  VIRTUAL_PLATFORMS,
   parseArpScanOutput,
   normaliseSubnetToCidr,
   isValidInterface,

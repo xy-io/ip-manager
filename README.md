@@ -45,6 +45,10 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
+### v2.13.2 — Two vendor-name defects
+
+arp-scan's `(Unknown)` was displayed verbatim instead of falling back to the bundled IEEE database, because the guard tested for a leading "unknown" and the string starts with a parenthesis — so Proxmox's own `bc:24:11` virtual machines showed as unidentified in a Proxmox-centric app. And arp-scan's `(DUP: 2)` duplicate-response marker was being shown as part of the manufacturer name; it is now a **duplicate ARP reply** badge, which is usually benign but is also what ARP spoofing looks like. Hypervisor prefixes are also labelled by platform — `bc:24:11` reads **Proxmox VM** rather than "Proxmox Server Solutions GmbH" — with the registry name kept in the tooltip.
+
 ### v2.13.1 — Pi-hole connection failures now say what to do
 
 A failed lookup reported the raw Node error. Network failures are now translated into the likely cause and the next step — a refused connection on a default port explains that Pi-hole's web interface is often elsewhere and how to find the real port, while a routing failure or a certificate problem says so instead.

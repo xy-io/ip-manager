@@ -290,3 +290,17 @@ test('an empty ledger reports zero bytes, not the two bytes of "[]"', () => {
   assert.equal(ledgerBytes(null), 0);
   assert.ok(ledgerBytes([{ mac: 'b8:27:eb:00:00:01', ips: [] }]) > 0);
 });
+
+test('a duplicate ARP reply is remembered once seen', () => {
+  // Usually benign, but it is also the shape of ARP spoofing, so a later sweep
+  // that happens not to observe it must not erase the fact.
+  let ledger = recordSightings([], [{ mac: 'b8:27:eb:11:22:33', ip: '10.0.0.1', duplicate: true }]);
+  assert.equal(ledger[0].duplicateArp, true);
+  ledger = recordSightings(ledger, [{ mac: 'b8:27:eb:11:22:33', ip: '10.0.0.1' }]);
+  assert.equal(ledger[0].duplicateArp, true, 'the flag should be sticky');
+});
+
+test('a device with a single reply is not flagged', () => {
+  const ledger = recordSightings([], [{ mac: 'b8:27:eb:11:22:33', ip: '10.0.0.1' }]);
+  assert.equal(ledger[0].duplicateArp, undefined);
+});

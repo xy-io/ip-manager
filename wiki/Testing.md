@@ -6,7 +6,7 @@ Two complementary suites: **unit tests** catch broken logic, **smoke tests** cat
 
 ## Unit tests
 
-From **v2.7.0**, `npm test` runs 227 unit tests over the parts of the server that have historically broken. Node's built-in test runner is used, so there is no framework and no extra dependency.
+From **v2.7.0**, `npm test` runs 238 unit tests over the parts of the server that have historically broken. Node's built-in test runner is used, so there is no framework and no extra dependency.
 
 ```bash
 cd /opt/ip-manager

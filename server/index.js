@@ -690,12 +690,17 @@ async function recordWatchSightings(observations) {
     return {
       mac: device.mac,
       ip: device.ip,
-      vendor: device.vendor && !/^unknown/i.test(device.vendor)
-        ? device.vendor
-        : lookupVendor(device.mac),
+      // parseArpScanOutput now returns null when arp-scan did not recognise the
+      // OUI, so this falls through to the bundled IEEE database — which knows
+      // plenty that arp-scan's does not.
+      vendor: device.vendor || lookupVendor(device.mac),
       hostname: discovered ? discovered.hostname : (device.hostname || null),
       name: discovered ? discovered.suggestedName : null,
       services: discovered ? discovered.services : [],
+      // arp-scan saw more than one reply for this address. Usually benign — a
+      // host with two interfaces on the same segment — but it is also what ARP
+      // spoofing looks like, so it is recorded rather than discarded.
+      duplicate: device.duplicate === true,
     };
   });
 

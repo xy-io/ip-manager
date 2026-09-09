@@ -6,6 +6,43 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v2.13.2
+
+**Two vendor-name defects, both visible the moment real data arrived**
+
+**`(Unknown)` was hiding vendors we already knew.** arp-scan writes `(Unknown)` when a MAC prefix is missing from *its* database. The code meant to fall back to the bundled IEEE database in that case, but the guard tested `/^unknown/i` — and `(Unknown)` starts with a parenthesis, so it never matched. The literal string was displayed and the fallback never ran.
+
+The bundled database knew all of them:
+
+| MAC prefix | Was shown | Actually |
+|---|---|---|
+| `bc:24:11` | `(Unknown)` | **Proxmox Server Solutions GmbH** |
+| `04:41:a5` | `(Unknown)` | Apple, Inc. |
+| `38:9b:73` | `(Unknown)` | GSD Viet Nam Technology |
+
+The Proxmox one stings: this is a Proxmox-centric application that was failing to identify Proxmox's own virtual machines.
+
+**`(DUP: 2)` was being displayed as part of the manufacturer's name.** arp-scan appends that marker when an address answers more than once, and the parser treated everything after the MAC as the vendor — producing devices apparently made by "Raspberry Pi Foundation (DUP: 2)".
+
+It is now stripped and recorded properly as a **duplicate ARP reply** badge. That is usually benign — a host with two interfaces on the same segment — but it is also what ARP spoofing looks like, so it is worth surfacing rather than discarding. The flag is sticky once seen, so a later sweep that happens not to observe it does not erase the fact.
+
+**Hypervisor prefixes now say what they mean.** Some OUI prefixes belong to virtualisation platforms rather than hardware makers, and the registry name buries the useful fact:
+
+| Prefix | IEEE registry name | Now shown |
+|---|---|---|
+| `bc:24:11` | Proxmox Server Solutions GmbH | **Proxmox VM** |
+| `08:00:27` | PCS Systemtechnik GmbH | **VirtualBox VM** |
+| `00:15:5d` | Microsoft Corporation | **Hyper-V VM** |
+| `52:54:00` | *not in the registry at all* | **QEMU / KVM VM** |
+
+Also VMware, Xen, Parallels and Docker. The registry name is kept in the badge's tooltip rather than discarded. This affects only the small vendor badge — a device's **name is never replaced by a vendor**; the vendor is used as a label only when nothing else is known.
+
+The mapping is deliberately conservative: an unrecognised prefix reports nothing rather than guessing, because claiming a physical device is a VM is worse than saying nothing. Tested against real hardware prefixes — Raspberry Pi, Apple, Intel, Amazon — to confirm none are misreported.
+
+11 new unit tests, including that a vendor legitimately containing the word "unknown" is not discarded, that both arp-scan markers appearing together are handled, and that real hardware is never labelled virtual.
+
+---
+
 ## v2.13.1
 
 **Pi-hole connection failures now say what to do**

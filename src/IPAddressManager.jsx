@@ -1528,13 +1528,29 @@ function NetworkWatchView({ onClose }) {
                           randomised MAC
                         </span>
                       )}
+                      {d.duplicateArp && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600"
+                              title="More than one reply came back for this address. Usually a host with two interfaces on the same segment — occasionally worth a second look.">
+                          duplicate ARP reply
+                        </span>
+                      )}
                       {d.dhcpName && (
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-100 text-sky-700"
                               title="The name this device gave your DHCP server when it took its lease">
                           DHCP: {d.dhcpName}
                         </span>
                       )}
-                      {d.vendor && !d.random && (
+                      {/* A hypervisor prefix says something more useful than the
+                          company that registered it: this is a virtual machine,
+                          and which platform it runs on. The registry name stays
+                          in the tooltip rather than being discarded. */}
+                      {d.platform && !d.random && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700"
+                              title={d.vendor ? `Virtual machine · ${d.vendor}` : 'Virtual machine'}>
+                          {d.platform} VM
+                        </span>
+                      )}
+                      {d.vendor && !d.platform && !d.random && (
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">{d.vendor}</span>
                       )}
                       <span className="text-[10px] text-slate-400">

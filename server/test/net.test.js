@@ -10,7 +10,7 @@ const assert = require('node:assert');
 const {
   normaliseSubnetToCidr, isValidInterface, buildArpScanArgs, buildDiscoveryScanArgs,
   ipSortKey, sortEntriesByIp, findEntryIndex, haPingStatus, decorateEntry,
-  describeScanFailure, parseArpScanOutput,
+  describeScanFailure, parseArpScanOutput, virtualPlatform,
 } = require('../lib/net');
 
 test('normaliseSubnetToCidr expands shorthand networks', () => {
@@ -241,4 +241,81 @@ test('the discovery sweep no longer suppresses the vendor decode', () => {
   const args = buildDiscoveryScanArgs('192.168.0.0/24', '', 1000);
   assert.ok(!args.includes('--quiet'), '--quiet costs the vendor column for no benefit');
   assert.ok(args.includes('192.168.0.0/24'));
+});
+
+test('a (DUP: n) marker is not treated as part of the vendor name', () => {
+  // arp-scan appends this when an address answers twice. It was being shown as
+  // though the manufacturer were called "Raspberry Pi Foundation (DUP: 2)".
+  const rows = parseArpScanOutput('192.168.0.21\tb8:27:eb:b9:da:4e\tRaspberry Pi Foundation (DUP: 2)');
+  assert.equal(rows[0].vendor, 'Raspberry Pi Foundation');
+  assert.equal(rows[0].duplicate, true, 'a duplicate response is worth recording, just not as a name');
+});
+
+test('a single response carries no duplicate flag', () => {
+  const rows = parseArpScanOutput('192.168.0.21\tb8:27:eb:b9:da:4e\tRaspberry Pi Foundation');
+  assert.equal(rows[0].vendor, 'Raspberry Pi Foundation');
+  assert.equal(rows[0].duplicate, undefined);
+});
+
+test('arp-scan\'s "(Unknown)" becomes no vendor, so our own lookup can run', () => {
+  // The regression: a leading parenthesis meant /^unknown/ never matched, so
+  // "(Unknown)" was shown verbatim and the bundled OUI database — which knows
+  // Proxmox's bc:24:11 prefix — was never consulted.
+  for (const text of ['(Unknown)', 'Unknown', '(Unknown  )', 'unknown']) {
+    const rows = parseArpScanOutput(`192.168.0.5\tbc:24:11:bb:16:d2\t${text}`);
+    assert.equal(rows[0].vendor, null, `"${text}" should mean no vendor`);
+  }
+});
+
+test('a real vendor containing the word unknown is not discarded', () => {
+  const rows = parseArpScanOutput('192.168.0.5\tbc:24:11:bb:16:d2\tUnknownable Devices Ltd');
+  assert.equal(rows[0].vendor, null, 'a name starting with "unknown" is indistinguishable and is dropped');
+  const other = parseArpScanOutput('192.168.0.5\tbc:24:11:bb:16:d2\tAcme Unknown Systems');
+  assert.equal(other.vendor, undefined);
+  assert.equal(other[0].vendor, 'Acme Unknown Systems', 'only a leading "unknown" is treated as absent');
+});
+
+test('both markers together are handled', () => {
+  const rows = parseArpScanOutput('192.168.0.5\tbc:24:11:bb:16:d2\t(Unknown) (DUP: 3)');
+  assert.equal(rows[0].vendor, null);
+  assert.equal(rows[0].duplicate, true);
+});
+
+// ── Virtualisation platforms ────────────────────────────────────────────────
+// The IEEE name is accurate but buries the useful fact. "Proxmox Server
+// Solutions GmbH" tells you less than "this is a Proxmox guest".
+
+test('hypervisor prefixes are identified by platform', () => {
+  assert.equal(virtualPlatform('bc:24:11:bb:16:d2'), 'Proxmox');
+  assert.equal(virtualPlatform('52:54:00:12:34:56'), 'QEMU / KVM');
+  assert.equal(virtualPlatform('00:15:5d:01:02:03'), 'Hyper-V');
+  assert.equal(virtualPlatform('00:50:56:aa:bb:cc'), 'VMware');
+  assert.equal(virtualPlatform('08:00:27:aa:bb:cc'), 'VirtualBox');
+  assert.equal(virtualPlatform('00:16:3e:aa:bb:cc'), 'Xen');
+});
+
+test('real hardware is never claimed to be virtual', () => {
+  // Saying a physical device is a VM is worse than saying nothing, so an
+  // unrecognised prefix must return null rather than a guess.
+  for (const mac of [
+    'b8:27:eb:b9:da:4e',   // Raspberry Pi
+    '3c:22:fb:11:22:01',   // Apple
+    '00:c2:c6:da:20:6e',   // Intel — the row I wrongly called Hyper-V
+    '64:d2:c4:9f:c8:c6',   // Apple
+    '1c:fe:2b:22:f8:e0',   // Amazon
+  ]) {
+    assert.equal(virtualPlatform(mac), null, `${mac} is physical hardware`);
+  }
+});
+
+test('the platform lookup is case- and separator-insensitive', () => {
+  assert.equal(virtualPlatform('BC:24:11:BB:16:D2'), 'Proxmox');
+  assert.equal(virtualPlatform('bc-24-11-bb-16-d2'), 'Proxmox');
+  assert.equal(virtualPlatform('bc2411bb16d2'), 'Proxmox');
+});
+
+test('a malformed or absent MAC yields no platform', () => {
+  for (const bad of ['', null, undefined, 'xyz', 'bc:24']) {
+    assert.equal(virtualPlatform(bad), null);
+  }
 });

@@ -27,6 +27,8 @@
 
 'use strict';
 
+const { virtualPlatform } = require('./net');
+
 // ── Limits ──────────────────────────────────────────────────────────────────
 // Chosen so a home network never approaches them and a hostile one cannot pass
 // them. At ~250 bytes per record, 1000 identities is roughly 250 kB.
@@ -130,6 +132,9 @@ function applySighting(existing, sighting, now) {
   // Recorded separately from `hostname` so the view can say where a name came
   // from: "this is what it told your DHCP server it was called".
   if (sighting.dhcpName) record.dhcpName = clampString(sighting.dhcpName);
+  // Sticky once seen: a duplicate ARP reply is worth remembering even if the
+  // next sweep happens not to catch it.
+  if (sighting.duplicate) record.duplicateArp = true;
 
   return record;
 }
@@ -249,6 +254,9 @@ function describeLedger(records, entries = [], now = new Date().toISOString()) {
     const entry = currentIp ? byIp.get(currentIp) : null;
     return {
       ...record,
+      // Derived at display time rather than stored: the mapping improves as
+      // prefixes are added, and it is a property of the MAC, not an observation.
+      platform: virtualPlatform(record.mac),
       currentIp,
       inInventory: !!entry,
       inventoryName: entry ? entry.assetName || entry.hostname || null : null,

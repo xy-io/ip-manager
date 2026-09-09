@@ -62,6 +62,10 @@ Devices are grouped into four categories, which is most of the value:
 - **Unrecognised** — a real device that is not in your inventory
 - **Randomised** — an address a phone generated, almost certainly a device you already own
 
+A **Proxmox VM** style badge (also QEMU / KVM, Hyper-V, VMware, VirtualBox, Xen, Parallels, Docker) means the MAC prefix belongs to a hypervisor rather than a hardware maker — so the device is a virtual machine. The IEEE registry name is in the tooltip. An unrecognised prefix shows the plain vendor instead: claiming a physical device is a VM would be worse than saying nothing.
+
+A **duplicate ARP reply** badge means more than one reply came back for that address. Usually a host with two interfaces on the same segment, but it is also the shape of ARP spoofing, so it is shown rather than discarded. Once seen it stays, even if a later sweep does not observe it.
+
 ---
 
 ## Naming unrecognised devices from Pi-hole
