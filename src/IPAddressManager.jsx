@@ -1114,6 +1114,140 @@ function MdnsModal({ onClose, onApply }) {
 // columns and badges on the main table. It stays entirely invisible — no tab,
 // no menu item, no nav button — until it is switched on.
 
+
+// Optional Pi-hole DHCP lookup. Only useful when Pi-hole is the DHCP server —
+// plenty of networks let the router hand out leases, in which case Pi-hole
+// knows nothing about device names and this stays off.
+function PiholeSection() {
+  const [cfg, setCfg] = useState(null);
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+
+  const load = () => fetch('/api/pihole/config').then(r => r.json()).then(setCfg).catch(() => {});
+  useEffect(() => { load(); }, []);
+
+  const save = async (changes) => {
+    setBusy(true); setResult(null);
+    try {
+      const body = { ...cfg, ...changes };
+      // An empty password means "leave the stored one alone", so the browser
+      // never has to hold the secret just to change an unrelated setting.
+      if (password) body.password = password;
+      const res = await fetch('/api/pihole/config', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.message || 'Could not save');
+      setPassword('');
+      await load();
+      setResult({ ok: true, text: 'Saved.' });
+    } catch (err) { setResult({ ok: false, text: err.message }); }
+    finally { setBusy(false); }
+  };
+
+  const test = async () => {
+    setBusy(true); setResult(null);
+    try {
+      const res = await fetch('/api/pihole/test', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: cfg.url, verifyTls: cfg.verifyTls, ...(password ? { password } : {}) }),
+      });
+      const json = await res.json();
+      setResult(json.ok
+        ? { ok: true, text: `Connected. ${json.leaseCount} lease${json.leaseCount === 1 ? '' : 's'}, ${json.namedCount} with a hostname.` }
+        : { ok: false, text: json.error || json.message || 'Could not connect' });
+    } catch (err) { setResult({ ok: false, text: err.message }); }
+    finally { setBusy(false); }
+  };
+
+  if (!cfg) return null;
+
+  return (
+    <div className="border-t border-slate-100 pt-4 space-y-3">
+      <div>
+        <h4 className="text-sm font-semibold text-slate-800">Name devices from Pi-hole DHCP</h4>
+        <p className="text-xs text-slate-500 mt-1">
+          If Pi-hole hands out your DHCP leases it already knows what each device calls itself.
+          Network Watch can use those names to identify devices it does not recognise.
+          Leave this off if your router is the DHCP server — Pi-hole will have nothing to offer.
+        </p>
+      </div>
+
+      <label className="flex items-start gap-3 p-3 bg-slate-50 rounded-xl cursor-pointer">
+        <input type="checkbox" checked={cfg.enabled === true} disabled={busy}
+               onChange={e => save({ enabled: e.target.checked })}
+               className="mt-0.5 rounded border-slate-300" />
+        <span>
+          <span className="text-sm font-medium text-slate-700">Use Pi-hole DHCP leases</span>
+          <span className="block text-xs text-slate-500 mt-0.5">Off by default. Requires Pi-hole v6 or later.</span>
+        </span>
+      </label>
+
+      {cfg.enabled && (
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="block text-sm font-medium text-slate-700 mb-1">Pi-hole address</span>
+              <input type="text" value={cfg.url} disabled={busy} placeholder="http://192.168.0.2"
+                     onChange={e => setCfg({ ...cfg, url: e.target.value })}
+                     onBlur={() => save({})}
+                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+            </label>
+            <label className="block">
+              <span className="block text-sm font-medium text-slate-700 mb-1">
+                Application password
+                {cfg.passwordConfigured && <span className="ml-1.5 text-xs font-normal text-emerald-600">set</span>}
+              </span>
+              <input type="password" value={password} disabled={busy} autoComplete="new-password"
+                     placeholder={cfg.passwordConfigured ? 'unchanged' : 'from Pi-hole settings'}
+                     onChange={e => setPassword(e.target.value)}
+                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+            </label>
+          </div>
+
+          <p className="text-xs text-slate-400">
+            Generate one in Pi-hole under <span className="font-medium">Settings → Web interface / API</span>.
+            An application password is used rather than your Pi-hole login so it can be revoked on its own.
+            It is stored on this server and never sent back to the browser.
+          </p>
+
+          <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer">
+            <input type="checkbox" checked={cfg.verifyTls !== false} disabled={busy}
+                   onChange={e => save({ verifyTls: e.target.checked })}
+                   className="rounded border-slate-300" />
+            Verify the TLS certificate (turn off only for a self-signed certificate on your own LAN)
+          </label>
+
+          <div className="flex items-center gap-2">
+            <button onClick={() => save({})} disabled={busy}
+                    className="px-3 py-1.5 text-sm rounded-lg bg-slate-800 text-white hover:bg-slate-900 disabled:opacity-50">
+              Save
+            </button>
+            <button onClick={test} disabled={busy}
+                    className="px-3 py-1.5 text-sm rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50 disabled:opacity-50">
+              Test connection
+            </button>
+          </div>
+
+          {result && (
+            <p className={`text-xs rounded-lg px-3 py-2 ${result.ok
+              ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+              : 'bg-amber-50 border border-amber-200 text-amber-900'}`}>
+              {result.text}
+            </p>
+          )}
+          {!result && cfg.lastError && (
+            <p className="text-xs bg-amber-50 border border-amber-200 text-amber-900 rounded-lg px-3 py-2">
+              Last lookup failed: {cfg.lastError}
+            </p>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function NetworkWatchTab({ onOpen }) {
   const [config, setConfig] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -1253,6 +1387,8 @@ function NetworkWatchTab({ onOpen }) {
             <span className="text-xs text-slate-400">Forgets every device and starts again.</span>
           </div>
 
+          <PiholeSection />
+
           <p className="text-xs text-slate-400 border-t border-slate-100 pt-3">
             This phase observes only. It raises no alerts and sends no notifications.
           </p>
@@ -1280,7 +1416,7 @@ function NetworkWatchView({ onClose }) {
       const res = await fetch('/api/watch/scan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       const json = await res.json();
       if (!res.ok) throw new Error(json.message || 'The scan failed');
-      setData({ enabled: true, devices: json.devices, summary: json.summary });
+      setData({ enabled: true, devices: json.devices, summary: json.summary, pihole: json.pihole });
       setWarnings(json.warnings || []);
     } catch (err) { setError(err.message); }
     finally { setScanning(false); }
@@ -1340,6 +1476,12 @@ function NetworkWatchView({ onClose }) {
 
           {/* A scan that found nothing must say why. Silently reporting zero
               devices is indistinguishable from a quiet network. */}
+          {data?.pihole?.enabled && data.pihole.error && (
+            <div className="mb-3 text-xs bg-amber-50 border border-amber-200 text-amber-900 rounded-lg px-3 py-2">
+              Pi-hole DHCP lookup failed, so some devices may be unnamed: {data.pihole.error}
+            </div>
+          )}
+
           {warnings.length > 0 && (
             <div className="mb-3 text-xs bg-amber-50 border border-amber-200 text-amber-900 rounded-lg px-3 py-2 space-y-1">
               {warnings.map((w, i) => <p key={i}>{w}</p>)}
@@ -1371,7 +1513,7 @@ function NetworkWatchView({ onClose }) {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline gap-2 flex-wrap">
                       <span className="text-sm font-medium text-slate-800">
-                        {d.inventoryName || d.name || d.hostname || d.vendor || 'Unidentified device'}
+                        {d.inventoryName || d.name || d.hostname || d.dhcpName || d.vendor || 'Unidentified device'}
                       </span>
                       {d.currentIp && <span className="font-mono text-xs text-slate-500">{d.currentIp}</span>}
                       <span className="font-mono text-[10px] text-slate-400">{d.mac}</span>
@@ -1384,6 +1526,12 @@ function NetworkWatchView({ onClose }) {
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500"
                               title="A randomised address. Phones generate these per network, so this is very likely a device you already know.">
                           randomised MAC
+                        </span>
+                      )}
+                      {d.dhcpName && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-100 text-sky-700"
+                              title="The name this device gave your DHCP server when it took its lease">
+                          DHCP: {d.dhcpName}
                         </span>
                       )}
                       {d.vendor && !d.random && (

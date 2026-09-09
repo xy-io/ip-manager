@@ -45,6 +45,10 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
+### v2.13.0 — Pi-hole DHCP names for unrecognised devices
+
+Optional and off by default. When Pi-hole is your DHCP server it already knows what each device calls itself, so Network Watch can turn an unrecognised MAC into `living-room-hue` with no typing. The application password is write-only — stored on the server, never returned to the browser. The Pi-hole session is cached and reused rather than re-authenticated per request, because Pi-hole rate-limits logins and caps concurrent sessions: 20 lease fetches produce 1 login. Leave it off if your router handles DHCP.
+
 ### v2.12.0 — A quarter of the initial download removed
 
 Eight modals that are never on screen at first paint now load on demand: the main bundle drops from 136.20 kB to **105.00 kB gzipped**, a 23% cut to every page load. Adds `npm run check:modals`, which renders each split modal server-side — it caught three that compiled cleanly but would have opened blank, which a build cannot detect.

@@ -64,6 +64,43 @@ Devices are grouped into four categories, which is most of the value:
 
 ---
 
+## Naming unrecognised devices from Pi-hole
+
+Added in **v2.13.0**. **Optional, off by default.**
+
+If Pi-hole is your DHCP server, it already knows what every device calls itself — each one supplied a hostname when it took its lease. Network Watch can use those names, so a row that read `e4:5f:01:aa:bb:cc` becomes `living-room-hue`.
+
+**Settings → Network Watch → Name devices from Pi-hole DHCP.**
+
+You need:
+
+- Your Pi-hole address, e.g. `http://192.168.0.2`
+- An **application password**, generated in Pi-hole under *Settings → Web interface / API*
+
+An application password is used rather than your Pi-hole login so it can be revoked independently and works alongside two-factor authentication. **Test connection** reports how many leases were found and how many carry a hostname.
+
+**Leave it off if your router hands out DHCP.** Pi-hole will not have the leases, and this will do nothing for you.
+
+### How names are chosen
+
+A DHCP hostname is a *fallback*, never an override:
+
+1. A name you typed
+2. An mDNS name — the device's own advertised name
+3. The DHCP hostname
+4. The vendor, from the MAC
+
+The DHCP name is recorded separately and shown as a badge, so it is always clear where a name came from. A lease Pi-hole reports as `*` means the device supplied no hostname, and is treated as unnamed rather than as a device called "asterisk".
+
+### Notes
+
+- The password is stored on the server and **never returned to the browser**. Saving another setting does not require re-entering it.
+- Pi-hole rate-limits logins and caps concurrent sessions, so the session is cached and reused — twenty lease lookups cost one login.
+- A Pi-hole that is unreachable **never fails a scan**. The sweep is useful without it; the failure is shown in the view instead.
+- Requires **Pi-hole v6 or later**. Earlier versions have no DHCP lease endpoint, and the view will say so.
+
+---
+
 ## Your phones are not intruders
 
 Modern iOS and Android generate a **fresh MAC address per network** as a privacy measure. To a tool that only knows MAC addresses, every phone rejoining the WiFi is a brand new device. This is the structural reason Pi.Alert produces the volume of notifications it does, and its answer is a "skip repeated notifications for X hours" setting — a volume knob rather than a fix.

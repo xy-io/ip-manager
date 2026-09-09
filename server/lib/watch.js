@@ -127,6 +127,9 @@ function applySighting(existing, sighting, now) {
   if (sighting.vendor) record.vendor = clampString(sighting.vendor);
   if (sighting.hostname) record.hostname = clampString(sighting.hostname);
   if (sighting.name) record.name = clampString(sighting.name);
+  // Recorded separately from `hostname` so the view can say where a name came
+  // from: "this is what it told your DHCP server it was called".
+  if (sighting.dhcpName) record.dhcpName = clampString(sighting.dhcpName);
 
   return record;
 }

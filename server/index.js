@@ -59,6 +59,7 @@ const deviceHistory = require('./lib/deviceHistory');
 const { buildTopology, impactOf } = require('./lib/topology');
 const mdns = require('./lib/mdns');
 const watch = require('./lib/watch');
+const pihole = require('./lib/pihole');
 
 function requireAuth(req, res, next) {
   if (isValidSession(req.cookies[SESSION_COOKIE])) return next();
@@ -586,6 +587,7 @@ app.get('/api/capabilities', (req, res) => {
       topology:          true,
       mdns:              true,
       networkWatch:      true,
+      piholeDhcp:        true,
       pushNotifications: false, // APNs not implemented — see the roadmap
     },
   });
@@ -671,7 +673,7 @@ const getWatchLedger = () => dbGet('watch_ledger') || [];
  * so a disabled Network Watch costs nothing and, more importantly, stores
  * nothing. That property is asserted by a smoke test.
  */
-function recordWatchSightings(observations) {
+async function recordWatchSightings(observations) {
   const config = getWatchConfig();
   if (!config.enabled) return null;
   if (!Array.isArray(observations) || observations.length === 0) return null;
@@ -697,7 +699,19 @@ function recordWatchSightings(observations) {
     };
   });
 
-  const next = watch.recordSightings(current, sightings, {
+  // Pi-hole's DHCP leases, where the user has enabled that. This is the signal
+  // that turns "an unrecognised MAC" into "living-room-hue" — the device told
+  // the DHCP server its name when it took its lease.
+  let enriched = sightings;
+  try {
+    const { leases } = await getPiholeLeases();
+    if (leases.length) enriched = pihole.enrichSightings(sightings, leases);
+  } catch (e) {
+    // Never let a Pi-hole problem fail the sweep: the scan is useful without it.
+    console.warn(`[pihole] Skipping lease enrichment: ${e.message}`);
+  }
+
+  const next = watch.recordSightings(current, enriched, {
     config,
     protectedMacs: watch.protectedMacsFor(current, entries),
   });
@@ -731,6 +745,11 @@ app.get('/api/watch/devices', (req, res) => {
     enabled: true,
     devices: watch.describeLedger(ledger, entries),
     summary: watch.summarise(ledger, entries),
+    pihole: {
+      enabled: getPiholeConfig().enabled === true,
+      error: piholeLeaseCache.error,
+      leaseCount: piholeLeaseCache.leases.length,
+    },
   });
 });
 
@@ -794,6 +813,11 @@ app.post('/api/watch/scan', async (req, res) => {
     error: discoveryState.lastError,
     warnings: discoveryState.warnings || [],
     found: (discoveryState.lastResults || []).length,
+    pihole: {
+      enabled: getPiholeConfig().enabled === true,
+      error: piholeLeaseCache.error,
+      leaseCount: piholeLeaseCache.leases.length,
+    },
   });
 });
 
@@ -819,6 +843,126 @@ app.delete('/api/watch/ledger', (req, res) => {
   dbSet('watch_ledger', []);
   recordEvent({ type: 'watch.cleared', message: `Network Watch ledger cleared (${removed} devices)`, req });
   res.json({ removed, summary: watch.summarise([], []) });
+});
+
+// ── Pi-hole DHCP lease lookup ─────────────────────────────────────────────────
+// Optional, off by default. When Pi-hole is the DHCP server it already knows
+// what each device calls itself, which turns an unrecognised MAC in Network
+// Watch into a name without anyone typing one.
+
+const piholeClient = pihole.createClient();
+
+const getPiholeConfig = () => ({ ...pihole.DEFAULT_CONFIG, ...(dbGet('pihole_config') || {}) });
+
+// What a client is allowed to see. The application password is never returned,
+// in any form — only whether one has been set. Same rule as the Proxmox token.
+const publicPiholeConfig = (cfg) => ({
+  enabled: cfg.enabled === true,
+  url: cfg.url || '',
+  verifyTls: cfg.verifyTls !== false,
+  passwordConfigured: !!cfg.password,
+});
+
+// Leases change slowly and a scan is frequent, so a short cache keeps the
+// session and the request count down without going stale in any way that
+// matters for naming a device.
+let piholeLeaseCache = { leases: [], fetchedAt: 0, error: null };
+const PIHOLE_LEASE_TTL = 60 * 1000;
+
+async function getPiholeLeases({ force = false } = {}) {
+  const config = getPiholeConfig();
+  if (!config.enabled) return { leases: [], error: null, skipped: true };
+  if (!force && Date.now() - piholeLeaseCache.fetchedAt < PIHOLE_LEASE_TTL) {
+    return { leases: piholeLeaseCache.leases, error: piholeLeaseCache.error, cached: true };
+  }
+  try {
+    const leases = await piholeClient.fetchLeases(config);
+    piholeLeaseCache = { leases, fetchedAt: Date.now(), error: null };
+    return { leases, error: null };
+  } catch (err) {
+    // A Pi-hole that is unreachable must not fail a network scan — the scan is
+    // useful without it. The reason is recorded and surfaced instead.
+    piholeLeaseCache = { leases: [], fetchedAt: Date.now(), error: err.message };
+    console.warn(`[pihole] Could not fetch DHCP leases: ${err.message}`);
+    return { leases: [], error: err.message };
+  }
+}
+
+// GET /api/pihole/config
+app.get('/api/pihole/config', (req, res) => {
+  res.json({
+    ...publicPiholeConfig(getPiholeConfig()),
+    lastError: piholeLeaseCache.error,
+    leaseCount: piholeLeaseCache.leases.length,
+  });
+});
+
+// PUT /api/pihole/config
+app.put('/api/pihole/config', async (req, res) => {
+  const body = req.body || {};
+  const current = getPiholeConfig();
+
+  if (body.enabled === true && body.url) {
+    if (!pihole.normaliseBaseUrl(body.url)) {
+      return apiError(res, 400, 'Invalid address',
+        'Enter the Pi-hole address as a host or an http(s) URL, for example http://192.168.0.2.');
+    }
+  }
+
+  const next = {
+    enabled: body.enabled === true,
+    url: typeof body.url === 'string' ? body.url.trim().slice(0, 255) : current.url,
+    verifyTls: body.verifyTls !== false,
+    // An empty password means "leave it as it is", so the form can be saved
+    // without the browser ever having to hold the secret.
+    password: typeof body.password === 'string' && body.password.length
+      ? body.password.slice(0, 255)
+      : current.password,
+  };
+  if (body.clearPassword === true) next.password = '';
+
+  // Any change invalidates the cached session; leaving it open would hold a
+  // Pi-hole session slot for a server we may no longer be talking to.
+  await piholeClient.logout(current);
+  piholeLeaseCache = { leases: [], fetchedAt: 0, error: null };
+
+  dbSet('pihole_config', next);
+  recordEvent({
+    type: 'pihole.config',
+    message: `Pi-hole DHCP lookup ${next.enabled ? 'enabled' : 'disabled'}`,
+    meta: { enabled: next.enabled },
+    req,
+  });
+  res.json(publicPiholeConfig(next));
+});
+
+// POST /api/pihole/test — try the supplied settings without saving them
+app.post('/api/pihole/test', async (req, res) => {
+  const body = req.body || {};
+  const stored = getPiholeConfig();
+  const config = {
+    url: typeof body.url === 'string' && body.url ? body.url : stored.url,
+    verifyTls: body.verifyTls !== undefined ? body.verifyTls !== false : stored.verifyTls,
+    password: typeof body.password === 'string' && body.password ? body.password : stored.password,
+  };
+  if (!pihole.normaliseBaseUrl(config.url)) {
+    return apiError(res, 400, 'Invalid address', 'Enter a Pi-hole address first.');
+  }
+  if (!config.password) {
+    return apiError(res, 400, 'No password', 'Enter a Pi-hole application password first.');
+  }
+
+  // A throwaway client, so a failed test never disturbs the live session.
+  const probe = pihole.createClient();
+  try {
+    const leases = await probe.fetchLeases(config);
+    const named = leases.filter((l) => l.hostname).length;
+    await probe.logout(config);
+    res.json({ ok: true, leaseCount: leases.length, namedCount: named });
+  } catch (err) {
+    try { await probe.logout(config); } catch { /* nothing to release */ }
+    res.json({ ok: false, error: err.message });
+  }
 });
 
 // ── mDNS discovery ────────────────────────────────────────────────────────────
@@ -1275,7 +1419,7 @@ async function runDiscoveryScan({ force = false } = {}) {
     // Feed the Network Watch ledger, if the user has switched it on. This is
     // the only place the ledger is written from the discovery path, and it is
     // a no-op — not even a database read — while the feature is disabled.
-    try { recordWatchSightings(allResults); }
+    try { await recordWatchSightings(allResults); }
     catch (e) { console.warn(`[watch] Could not record sightings: ${e.message}`); }
 
     // Persist last-run timestamp

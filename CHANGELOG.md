@@ -6,6 +6,28 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v2.13.0
+
+**Name unrecognised devices from Pi-hole's DHCP leases (optional, off by default)**
+
+When Pi-hole is your DHCP server it already knows what every device calls itself — each one supplied a hostname when it took its lease. Network Watch can now use those names, so an unrecognised MAC address becomes `living-room-hue` without anybody typing anything.
+
+Turn it on in **Settings → Network Watch → Name devices from Pi-hole DHCP**. It needs the Pi-hole address and an application password (Pi-hole: *Settings → Web interface / API*), and there is a **Test connection** button that reports how many leases were found and how many carry a hostname.
+
+**Leave it off if your router hands out DHCP** — Pi-hole will have nothing useful to say, and the view will simply keep showing what it showed before.
+
+**The password is write-only.** It is stored on the server, never returned to the browser in any form, and the config endpoint reports only whether one is set. Saving an unrelated setting does not require re-entering it. A smoke check asserts the response can never contain a password field.
+
+**Session handling, which is where this integration is easy to get wrong.** Pi-hole v6 replaced the static API token with session authentication, and it documents two limits: logins are rate limited, and concurrent sessions are capped. A client that authenticates per request works perfectly in one manual test and then starts getting `429`s and holding session slots. So the session is cached and reused, concurrent callers share one login, an invalidated session is retried exactly once, and changing the configuration logs out rather than abandoning the session. Verified against a stand-in Pi-hole: **20 lease fetches produced 1 login**.
+
+**A Pi-hole problem never fails a scan.** The sweep is useful without it, so a lookup failure is recorded and shown in the view rather than aborting anything.
+
+Names are used as a *fallback*, not an override — an mDNS name is the device's own advertised name and wins over a DHCP hostname. The DHCP name is recorded separately and shown as a badge, so it is always clear where a name came from. A lease Pi-hole reports as `*` is treated as unnamed rather than as a device called "asterisk".
+
+28 new unit tests against a fake transport, most of them asserting what does *not* happen. Two found real bugs before this shipped: `ftp://pi.hole` was silently accepted as the host `ftp`, and a rejected session produced an unhelpful `HTTP 401` instead of naming the cause.
+
+---
+
 ## v2.12.0
 
 **A quarter of the initial download removed**

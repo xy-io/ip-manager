@@ -4,6 +4,18 @@ For the full release history see the [CHANGELOG](https://github.com/xy-io/ip-man
 
 ---
 
+## v2.13.0 — Pi-hole can name your unrecognised devices
+
+If Pi-hole hands out your DHCP leases, it already knows what every device calls itself. Network Watch can now ask, turning a row that read `e4:5f:01:aa:bb:cc` into `living-room-hue`.
+
+Turn it on in **Settings → Network Watch**, enter your Pi-hole address and an application password, and press **Test connection** — it will tell you how many leases it found and how many have a name.
+
+**Leave it off if your router does DHCP.** Pi-hole will have nothing to offer, and nothing will change.
+
+Your Pi-hole password is stored on the server and never sent back to the browser.
+
+---
+
 ## v2.12.0 — Faster first load
 
 Eight screens you only open occasionally — Help, Backup, Import, Domains, ARP Scan, Proxmox Import, Subnet Visualiser and the CIDR Calculator — are no longer downloaded before the app appears. They arrive when you first open them, in a few milliseconds on a LAN.

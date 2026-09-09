@@ -293,6 +293,25 @@ async function testProtectedRoutes() {
   // An earlier version asserted "off by default" unconditionally, which fails on
   // any server where the user has legitimately enabled the feature — a test that
   // punishes people for using it is a broken test, not a finding.
+  await test('the Pi-hole application password can never be read back', async () => {
+    // The password is write-only by design: a client may set it and may learn
+    // whether one is set, but must never be able to retrieve it.
+    const res = await GET('/api/pihole/config');
+    const statusCheck = expectStatus(res, 200, 'GET /api/pihole/config');
+    if (statusCheck !== true) return statusCheck;
+    if ('password' in (res.json || {})) return 'the config response contains a password field';
+    if (typeof res.json.passwordConfigured !== 'boolean') return 'passwordConfigured is missing';
+    return true;
+  });
+
+  await test('Pi-hole lookup is off by default', async () => {
+    const res = await GET('/api/pihole/config');
+    // Only assert the default on a server where it has not been configured;
+    // failing because the user enabled a feature is a broken test.
+    if (res.json?.passwordConfigured || res.json?.url) return true;
+    return res.json?.enabled === false ? true : 'Pi-hole lookup is enabled with nothing configured';
+  });
+
   await test('Network Watch reports a coherent state', async () => {
     const res = await GET('/api/watch/status');
     const statusCheck = expectStatus(res, 200, 'GET /api/watch/status');
@@ -1082,6 +1101,8 @@ const MUST_REQUIRE_AUTH = [
   { method: 'GET',  path: '/api/topology' },
   { method: 'GET',  path: '/api/mdns/status' },
   { method: 'GET',  path: '/api/watch/status' },
+  { method: 'GET',  path: '/api/pihole/config' },
+  { method: 'POST', path: '/api/pihole/test', body: {} },
   { method: 'GET',  path: '/api/watch/devices' },
   { method: 'POST', path: '/api/watch/scan', body: {} },
   { method: 'POST', path: '/api/mdns/scan', body: {} },

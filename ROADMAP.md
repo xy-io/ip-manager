@@ -90,6 +90,7 @@ See [CHANGELOG.md](./CHANGELOG.md) for a full history of released features.
 
 | Version | Feature |
 |---------|---------|
+| v2.13.0 | Optional Pi-hole DHCP lease lookup — names unrecognised devices in Network Watch |
 | v2.12.0 | Eight modals lazily loaded — initial bundle down 23%, plus a modal render check |
 | v2.11.3 | arp-scan --quiet output parsed correctly — the actual cause of empty discovery sweeps |
 | v2.11.2 | Discovery scan failures reported rather than swallowed; Network Watch moved into Tools |
