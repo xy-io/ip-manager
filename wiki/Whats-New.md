@@ -4,6 +4,14 @@ For the full release history see the [CHANGELOG](https://github.com/xy-io/ip-man
 
 ---
 
+## v2.11.1 — Making Network Watch findable
+
+Turning Network Watch on in v2.11.0 appeared to do nothing. The only way in was a small eye icon in the header — on a screen you had just navigated away from.
+
+There is now an **Open Network Watch** button in Settings the moment you enable it, and the header icon shows a count when there are unrecognised devices. Your phones do not count towards that number.
+
+---
+
 ## v2.11.0 — Network Watch (phase 1)
 
 A record of the devices seen on your network, so you can tell something you have never seen from something that just changed address.

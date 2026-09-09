@@ -23,7 +23,7 @@ const loadQRCode = () => {
 };
 
 // ── App version ───────────────────────────────────────────────────────────────
-const APP_VERSION = 'v2.11.0';
+const APP_VERSION = 'v2.11.1';
 
 // Default network configuration (overridden by Settings modal / localStorage)
 const DEFAULT_NETWORK_CONFIG = {
@@ -1158,7 +1158,7 @@ function MdnsModal({ onClose, onApply }) {
 // columns and badges on the main table. It stays entirely invisible — no tab,
 // no menu item, no nav button — until it is switched on.
 
-function NetworkWatchTab() {
+function NetworkWatchTab({ onOpen }) {
   const [config, setConfig] = useState(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(null);
@@ -1229,6 +1229,20 @@ function NetworkWatchTab() {
 
       {config.enabled && (
         <>
+          {/* Enabling a feature should not leave the user hunting for it. The
+              header icon is easy to miss, so the feature opens from the place
+              it was switched on, which is also where its icon gets pointed out. */}
+          <div className="flex items-center gap-3 p-3 bg-indigo-50 border border-indigo-100 rounded-xl">
+            <button onClick={() => onOpen && onOpen()}
+                    className="px-3 py-1.5 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors flex-shrink-0">
+              Open Network Watch
+            </button>
+            <p className="text-xs text-indigo-900/70">
+              It also lives behind the <span aria-hidden="true">&#9678;</span> eye icon in the header,
+              next to Help and Settings.
+            </p>
+          </div>
+
           <div className="p-3 border border-slate-200 rounded-xl space-y-2">
             <div className="flex items-baseline justify-between">
               <span className="text-sm font-medium text-slate-700">Storage</span>
@@ -2913,7 +2927,7 @@ function DnsTab({ networks, dnsConfig, dnsStatus, dnsLoading, onSave, onRun }) {
   );
 }
 
-function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLocation, onDeleteLocation, tags, onRenameTag, onDeleteTag, canDeleteNetwork, onDeleteNetwork, showFreeInList, onToggleShowFreeInList, ipData, networks, onRestore, dnsConfig, dnsStatus, dnsLoading, onSaveDnsConfig, onRunDns, proxmoxSyncConfig, proxmoxSyncStatus, proxmoxSyncLoading, onSaveProxmoxSyncConfig, onRunProxmoxSync, updateAvailable, initialTab }) {
+function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLocation, onDeleteLocation, tags, onRenameTag, onDeleteTag, canDeleteNetwork, onDeleteNetwork, showFreeInList, onToggleShowFreeInList, ipData, networks, onRestore, dnsConfig, dnsStatus, dnsLoading, onSaveDnsConfig, onRunDns, proxmoxSyncConfig, proxmoxSyncStatus, proxmoxSyncLoading, onSaveProxmoxSyncConfig, onRunProxmoxSync, updateAvailable, initialTab, onOpenWatch }) {
   const modalRef = useModalA11y(typeof onClose === 'function' ? onClose : null);
   const [form, setForm] = useState({
     networkName: config.networkName,
@@ -3792,7 +3806,7 @@ function SettingsModal({ config, onSave, onClose, onClear, locations, onRenameLo
 
             {/* ── NETWORK WATCH TAB ── */}
             {activeTab === 'watch' && (
-              <NetworkWatchTab />
+              <NetworkWatchTab onOpen={onOpenWatch} />
             )}
 
             {/* ── ACTIVITY TAB ── */}
@@ -8074,6 +8088,9 @@ export default function IPAddressManager() {
   // The core of the app is the address list, and an opt-in feature should not
   // add furniture for people who never turn it on.
   const [watchEnabled, setWatchEnabled] = useState(false);
+  // Unrecognised devices only — randomised phone MACs are deliberately excluded,
+  // so the badge means "something worth a look" rather than "a phone reconnected".
+  const [watchUnknown, setWatchUnknown] = useState(0);
   const [showDomains, setShowDomains] = useState(false);
   const [domains, setDomains] = useState([]);
   const [showToolsMenu, setShowToolsMenu] = useState(false);
@@ -8144,9 +8161,14 @@ export default function IPAddressManager() {
     if (persistMode !== 'api' || auth !== 'ok') return;
     fetch('/api/watch/status')
       .then(r => r.ok ? r.json() : null)
-      .then(j => setWatchEnabled(j?.enabled === true))
-      .catch(() => setWatchEnabled(false));
-  }, [persistMode, auth, showSettings]);
+      .then(j => {
+        setWatchEnabled(j?.enabled === true);
+        setWatchUnknown(j?.enabled ? (j.summary?.unknown || 0) : 0);
+      })
+      .catch(() => { setWatchEnabled(false); setWatchUnknown(0); });
+    // Re-checked when Settings or the view closes, so enabling it makes the icon
+    // appear and a scan updates the badge without a page reload.
+  }, [persistMode, auth, showSettings, showWatch]);
 
   // ── On mount: check auth status, then detect API and load data ───────────────
   useEffect(() => {
@@ -9105,6 +9127,7 @@ export default function IPAddressManager() {
             setShowSettings(false);
           }}
           onClose={() => setShowSettings(false)}
+          onOpenWatch={() => { setShowSettings(false); setShowWatch(true); }}
           onClear={() => {
             // Only clear IP entries that belong to the active network
             setIpData(prev => prev.filter(item => item.networkId !== activeNetworkId));
@@ -9400,7 +9423,18 @@ export default function IPAddressManager() {
                   {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
                 </button>
                 {watchEnabled && (
-                  <button onClick={() => setShowWatch(true)} className="p-1.5 hover:bg-slate-100 text-slate-500 rounded-lg transition-colors" title="Network Watch" aria-label="Network Watch">
+                  <button onClick={() => setShowWatch(true)} className="relative p-1.5 hover:bg-slate-100 text-slate-500 rounded-lg transition-colors"
+                          title={watchUnknown > 0
+                            ? `Network Watch · ${watchUnknown} unrecognised device${watchUnknown === 1 ? '' : 's'}`
+                            : 'Network Watch'}
+                          aria-label={watchUnknown > 0
+                            ? `Network Watch, ${watchUnknown} unrecognised device${watchUnknown === 1 ? '' : 's'}`
+                            : 'Network Watch'}>
+                    {watchUnknown > 0 && (
+                      <span className="absolute -top-0.5 -right-0.5 min-w-[15px] h-[15px] px-1 flex items-center justify-center bg-amber-400 text-[9px] font-semibold text-amber-900 rounded-full">
+                        {watchUnknown > 9 ? '9+' : watchUnknown}
+                      </span>
+                    )}
                     <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4"><circle cx="8" cy="8" r="2"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.5 3.5l1.4 1.4M11.1 11.1l1.4 1.4M12.5 3.5l-1.4 1.4M4.9 11.1l-1.4 1.4"/></svg>
                   </button>
                 )}

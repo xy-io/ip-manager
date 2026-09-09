@@ -6,6 +6,22 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v2.11.1
+
+**Making Network Watch findable**
+
+Enabling Network Watch in v2.11.0 produced no visible result: the only way in was a small unlabelled eye icon in the header, on a screen you had already navigated away from. The person who specified the feature missed it, which is a fair sign that everyone would.
+
+- **An "Open Network Watch" button now appears in Settings the moment you enable it**, so the feature opens from the place it was switched on — and points out where its icon lives on the way past
+- **The header icon carries a count badge** when there are unrecognised devices. Randomised phone MACs are deliberately excluded from that count, so the badge means *something worth a look* rather than *a phone reconnected*
+- The badge refreshes when the view or Settings closes, so a scan updates it without a page reload
+
+**A smoke-test defect fixed at the same time.** The v2.11.0 checks asserted Network Watch was off *unconditionally*, so the suite would have failed on any server where it had been legitimately enabled — including yours, the moment you turned it on. The checks now branch on the server's actual setting: off means "stores nothing", on means "stays inside every bound it claims". Verified in both states.
+
+Frontend only, apart from the test fix. No server change, no data change.
+
+---
+
 ## v2.11.0
 
 **Network Watch — phase 1: the device ledger (opt-in, off by default)**

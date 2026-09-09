@@ -20,7 +20,9 @@ That is deliberate rather than unfinished. A monitoring feature that cries wolf 
 
 **Settings → Network Watch → Enable Network Watch.**
 
-An eye icon then appears in the header, next to Help and Settings. That is the view.
+An **Open Network Watch** button appears as soon as you tick the box — that is the quickest way in.
+
+From then on an eye icon sits in the header next to Help and Settings, carrying a count badge when there are unrecognised devices to look at. Randomised phone MACs are left out of that count, so the badge only appears when something is genuinely worth checking. On mobile it is an entry in the Tools menu instead.
 
 Populate it either by pressing **Scan now**, or by enabling the background sweep in **Settings → ARP & Presence**, which will feed the ledger on its own schedule.
 

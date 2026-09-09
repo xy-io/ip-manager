@@ -289,23 +289,41 @@ async function testProtectedRoutes() {
     return dangling.length ? `${dangling.length} dangling gateway edge(s)` : true;
   });
 
-  await test('Network Watch is off by default and stores nothing while off', async () => {
-    // The core promise of the feature: an install that never turns it on pays
-    // no storage cost at all.
+  // These branch on the server's actual setting rather than assuming it is off.
+  // An earlier version asserted "off by default" unconditionally, which fails on
+  // any server where the user has legitimately enabled the feature — a test that
+  // punishes people for using it is a broken test, not a finding.
+  await test('Network Watch reports a coherent state', async () => {
     const res = await GET('/api/watch/status');
     const statusCheck = expectStatus(res, 200, 'GET /api/watch/status');
     if (statusCheck !== true) return statusCheck;
-    if (res.json.enabled !== false) return 'Network Watch is enabled by default — it must be opt-in';
-    if (res.json.summary?.bytes !== 0) return `ledger holds ${res.json.summary.bytes} bytes while disabled`;
+    if (typeof res.json.enabled !== 'boolean') return 'status does not report enabled as a boolean';
+
+    if (res.json.enabled === false) {
+      // The core promise: an install that never turns it on pays no storage cost.
+      return res.json.summary?.bytes === 0
+        ? true
+        : `ledger holds ${res.json.summary.bytes} bytes while disabled`;
+    }
+    // Enabled: the ledger must still be inside every bound it claims.
+    const { summary, limits } = res.json;
+    if (summary.total > limits.MAX_IDENTITIES) return `${summary.total} records exceeds the cap`;
+    if (summary.bytes > limits.MAX_LEDGER_BYTES) return `${summary.bytes} bytes exceeds the ceiling`;
     return true;
   });
 
-  await test('the device list is empty and scanning is refused while off', async () => {
+  await test('the device list matches the enabled state', async () => {
+    const status = await GET('/api/watch/status');
     const devices = await GET('/api/watch/devices');
-    if (devices.json?.enabled !== false) return 'devices endpoint reports enabled while off';
-    if ((devices.json?.devices || []).length) return 'devices returned while the feature is off';
-    const scan = await req('POST', '/api/watch/scan', { body: {} });
-    return expectStatus(scan, 409, 'POST /api/watch/scan while disabled');
+    if (devices.json?.enabled !== status.json?.enabled) {
+      return 'the devices and status endpoints disagree about whether the feature is on';
+    }
+    if (status.json?.enabled === false) {
+      if ((devices.json?.devices || []).length) return 'devices returned while the feature is off';
+      const scan = await req('POST', '/api/watch/scan', { body: {} });
+      return expectStatus(scan, 409, 'POST /api/watch/scan while disabled');
+    }
+    return Array.isArray(devices.json?.devices) ? true : 'devices is not an array';
   });
 
   await test('the ledger reports its storage cost and stays within its limits', async () => {

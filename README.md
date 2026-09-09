@@ -45,6 +45,10 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
+### v2.11.1 — Making Network Watch findable
+
+Enabling Network Watch produced no visible result — the only way in was a small unlabelled header icon, on a screen you had already left. An **Open Network Watch** button now appears in Settings the moment you enable it, and the header icon carries a count badge when there are unrecognised devices. Randomised phone MACs are excluded from that count, so the badge means something worth a look rather than a phone reconnecting.
+
 ### v2.11.0 — Network Watch (phase 1)
 
 An opt-in record of the device identities seen on your network, in its own view, invisible until switched on in **Settings → Network Watch**. It observes only — no alerts, no notifications, that is phase 2. Storage was the design constraint: one row per device updated in place, so it grows with how many devices you have rather than how long you have been running. A network of 87 devices costs 24 KB; a simulated year of scanning adds no records at all; a flood of 50,000 fabricated MACs cannot push it past its cap. Randomised phone MACs are identified by the locally-administered bit and excluded from the unrecognised count, which is the structural noise source in Pi.Alert. Nothing is stored while it is off, disabling it deletes the ledger, and it is excluded from backups and support bundles.
