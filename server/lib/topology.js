@@ -14,7 +14,7 @@
 
 'use strict';
 
-const { haPingStatus } = require('./net');
+const { haPingStatus, inMaintenance } = require('./net');
 
 // Entries the app uses as placeholders rather than real devices.
 const PLACEHOLDER_NAMES = new Set(['Free', 'Reserved']);
@@ -112,7 +112,8 @@ function buildTopology(entries = [], networks = [], ping = {}, health = {}, opti
       ip: entry.ip,
       type: entry.type || null,
       group: groupId,
-      status: haPingStatus(ping[entry.ip]),
+      status: inMaintenance(entry) ? 'maintenance' : haPingStatus(ping[entry.ip]),
+      maintenance: inMaintenance(entry),
       health: healthEntry ? healthEntry.status : null,
       isHypervisorGuest: !!entry.proxmoxNode,
       proxmoxKind: entry.proxmoxKind || null,
@@ -209,6 +210,7 @@ function buildTopology(entries = [], networks = [], ping = {}, health = {}, opti
     devices: nodes.length,
     online: nodes.filter((n) => n.status === 'online').length,
     offline: nodes.filter((n) => n.status === 'offline').length,
+    maintenance: nodes.filter((n) => n.status === 'maintenance').length,
     dependencyLinks: edges.filter((e) => e.kind === 'dependency').length,
     hypervisorLinks: edges.filter((e) => e.kind === 'hypervisor').length,
     gatewayLinks: edges.filter((e) => e.kind === 'gateway').length,

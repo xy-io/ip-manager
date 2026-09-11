@@ -28,6 +28,7 @@ Deploy it as a lightweight LXC container on Proxmox and get a live dashboard sho
 | 💾 [Backup & Restore](Backup-and-Restore) | Export and restore your data |
 | 🔄 [Updating](Updating) | Keep the app up to date |
 | ✅ [Testing](Testing) | Verify an install end-to-end |
+| 📋 [Release Checklist](Release-Checklist) | What every release must confirm, and what tests cannot |
 | 🛠 [Troubleshooting](Troubleshooting) | Common issues and fixes |
 
 ---

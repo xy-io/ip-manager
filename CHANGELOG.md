@@ -6,6 +6,31 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v2.18.0
+
+**A maintenance flag**
+
+A host taken down deliberately — a rebuild, a disk swap, a move between racks — was indistinguishable from one that had failed. It counted as offline and fired offline alerts, which is worse than cosmetic: during any planned work the offline count stops being a list of things that need attention, and people learn to ignore it at exactly the moment a real failure would be easiest to miss.
+
+`maintenance` is a boolean on an entry, set from the edit dialog. A flagged device is excluded from the offline count and filter, suppressed from offline notifications, drawn in amber rather than red, and reported as its own `maintenance` status in the topology view rather than being folded into online or offline — it genuinely is not there, and claiming otherwise would be a different lie.
+
+**Nothing expires the flag.** An automatic clear would resume alerting at a moment the user did not choose; a silent one would leave an alert suppressed for ever. Instead the filter button turns amber and shows a count when a flagged device starts responding again, which is a prompt rather than an interruption.
+
+**A non-boolean `maintenance` is rejected with 400.** The string `"false"` is truthy, so a client sending one would have silently suppressed every offline alert for that device — a failure detectable only by the absence of something.
+
+**The rule lives in one place per runtime, and the two are tested against each other.** `countsAsOffline` exists in `server/lib/net.js` and `src/shared/common.js`; they cannot be a single file, so a test compares them across a matrix of cases instead.
+
+**API impact — additive, `apiVersion` 1.1 → 1.2.**
+
+- `maintenance` (boolean) accepted on `POST /api/ips` and `PATCH /api/ips/:ip`, and returned on every entry
+- `GET /api/ha/summary` gains `devices_maintenance`; flagged devices are excluded from `devices_offline` and `devices_online`
+- `GET /api/ha/devices` gains `maintenance` per device; `ping` continues to report the true observed state
+- `GET /api/topology` nodes gain `maintenance`, may report `status: "maintenance"`, and `stats` gains `maintenance`
+- `GET /api/capabilities` gains `maintenanceMode: true`
+- New audit events: `entry.maintenance.on`, `entry.maintenance.off`
+
+---
+
 ## v2.17.0
 
 **An offline filter**
@@ -21,6 +46,16 @@ A new **Offline** toggle sits in the filter bar with a live count, so the count 
 When the filter is on and nothing matches, the empty state reads **"Everything is responding"** rather than "No results found" — the same screen, opposite meaning.
 
 The logic moved to `shared/common.js` so it can be tested without a DOM. 5 new unit tests; the suite was validated by removing the placeholder exclusion, which fails immediately.
+
+**Guards added for the gap this release exposed.** Every existing documentation check catches an *absence* — a route with no documentation. None of them catch a *change*, and none of them notice a frontend-only release introducing something a client needs to know:
+
+- **`server/api-manifest.json`** records every route, capability flag and the served `apiVersion`. A test compares the live surface against it, so adding, removing or renaming anything fails the build until accepted with `npm run api:accept` — which is the moment the author is prompted to update the reference, the handover and the CHANGELOG.
+- **A CHANGELOG entry must state its API impact** — either describe the endpoints, or say "No API change." Silence now fails. That converts a silent omission into a deliberate statement, which is as far as automation can go.
+- **[Release Checklist](wiki/Release-Checklist.md)** records the three questions a test cannot answer, with this release as the worked example of the one that gets missed.
+
+Both new guards were validated by breaking what they protect: adding a route without updating the manifest, and stripping the API-impact statement from this entry. Each fails immediately.
+
+**No API change.** This release touched no server file — it filters data already exposed by `/api/ping-status`, and the documentation check confirms nothing drifted. The placeholder trap is recorded in the [client handover](wiki/iOS-Client-Handover.md) instead, since a native client building the same filter would hit it too.
 
 ---
 

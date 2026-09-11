@@ -27,15 +27,15 @@ test('redacts the generated first-run credentials block', () => {
 });
 
 test('redacts environment-style credential assignments', () => {
-  const out = redactSecrets('IP_MANAGER_PASSWORD=hunter2\nIP_MANAGER_USERNAME=Jay');
+  const out = redactSecrets('IP_MANAGER_PASSWORD=hunter2\nIP_MANAGER_USERNAME=alex');
   assert.ok(!out.includes('hunter2'));
-  assert.ok(out.includes('IP_MANAGER_USERNAME=Jay'), 'the username line is left alone');
+  assert.ok(out.includes('IP_MANAGER_USERNAME=alex'), 'the username line is left alone');
 });
 
 test('redacts bcrypt hashes wherever they appear', () => {
   const hash = '$2a$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8I9dVsEm0abcdefghij';
   assert.equal(hash.length, 60, 'test fixture should be a realistic bcrypt hash');
-  const out = redactSecrets(`stored hash is ${hash} for user Jay`);
+  const out = redactSecrets(`stored hash is ${hash} for user alex`);
   assert.ok(!out.includes(hash));
   assert.ok(out.includes('[redacted-hash]'));
 });

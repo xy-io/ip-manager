@@ -319,3 +319,53 @@ test('a malformed or absent MAC yields no platform', () => {
     assert.equal(virtualPlatform(bad), null);
   }
 });
+
+// ── Maintenance flag ────────────────────────────────────────────────────────
+// One shared rule, used by the offline count, the notification suppressor, the
+// Home Assistant summary and the topology view. Two implementations of "is
+// this offline?" is how a device ends up absent from the count but still
+// firing alerts.
+
+const { inMaintenance, countsAsOffline, maintenanceButResponding } = require('../lib/net');
+
+test('inMaintenance is true only for an explicit boolean flag', () => {
+  // Not truthiness: a client sending the string "false" must not silence
+  // alerts, and the server rejects it, but the helper is the last line.
+  assert.equal(inMaintenance({ maintenance: true }), true);
+  assert.equal(inMaintenance({ maintenance: false }), false);
+  assert.equal(inMaintenance({ maintenance: 'false' }), false);
+  assert.equal(inMaintenance({ maintenance: 1 }), false);
+  assert.equal(inMaintenance({}), false);
+  assert.equal(inMaintenance(null), false);
+  assert.equal(inMaintenance(undefined), false);
+});
+
+test('a device in maintenance does not count as offline', () => {
+  const host = { assetName: 'NAS', maintenance: true };
+  assert.equal(countsAsOffline(host, 'down'), false,
+    'the flag exists precisely so a planned rebuild does not inflate the count');
+  assert.equal(countsAsOffline(host, 'up'), false);
+});
+
+test('an ordinary device that is down still counts as offline', () => {
+  // Guards the obvious regression: a helper that returns false for everything
+  // would pass the test above and break the whole feature.
+  assert.equal(countsAsOffline({ assetName: 'NAS' }, 'down'), true);
+  assert.equal(countsAsOffline({ assetName: 'NAS', maintenance: false }, 'down'), true);
+  assert.equal(countsAsOffline({ assetName: 'NAS' }, 'up'), false);
+  assert.equal(countsAsOffline({ assetName: 'NAS' }, undefined), false);
+});
+
+test('placeholder rows never count as offline', () => {
+  // Free and Reserved rows are addresses, not devices, and never answer a
+  // ping. Counting them would report most of a /24 as down.
+  assert.equal(countsAsOffline({ assetName: 'Free' }, 'down'), false);
+  assert.equal(countsAsOffline({ assetName: 'Reserved' }, 'down'), false);
+  assert.equal(countsAsOffline(null, 'down'), false);
+});
+
+test('a flagged device that is responding again is reported', () => {
+  assert.equal(maintenanceButResponding({ maintenance: true }, 'up'), true);
+  assert.equal(maintenanceButResponding({ maintenance: true }, 'down'), false);
+  assert.equal(maintenanceButResponding({ maintenance: false }, 'up'), false);
+});

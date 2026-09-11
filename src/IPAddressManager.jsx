@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
-import { Search, Server, Monitor, Wifi, HardDrive, Camera, Shield, Globe, Filter, X, MapPin, Cpu, Box, CircleDot, ChevronDown, ChevronUp, Copy, Check, Zap, Download, Edit3, Plus, Trash2, Save, AlertCircle, Settings, Upload, FileText, AlertTriangle, CheckCircle, ChevronRight, Tag, ArrowUpDown, ArrowUp, ArrowDown, HelpCircle, LogOut, Moon, Sun, MoreHorizontal, Terminal, RotateCw } from 'lucide-react';
-import { loadXLSX, APP_VERSION, useModalA11y, matchesStatusFilter, DEFAULT_NETWORK_CONFIG, ipOrdinal, rangeOrdinal, subnetOctetCount, isInDHCPRange, parseCIDR } from './shared/common';
+import { Search, Server, Monitor, Wifi, HardDrive, Camera, Shield, Globe, Filter, X, MapPin, Cpu, Box, CircleDot, ChevronDown, ChevronUp, Copy, Check, Zap, Download, Edit3, Plus, Trash2, Save, AlertCircle, Settings, Upload, FileText, AlertTriangle, CheckCircle, ChevronRight, Tag, ArrowUpDown, ArrowUp, ArrowDown, HelpCircle, LogOut, Moon, Sun, MoreHorizontal, Terminal, RotateCw, Wrench } from 'lucide-react';
+import { loadXLSX, APP_VERSION, useModalA11y, matchesStatusFilter, countsAsOffline, DEFAULT_NETWORK_CONFIG, ipOrdinal, rangeOrdinal, subnetOctetCount, isInDHCPRange, parseCIDR } from './shared/common';
 
 // ── Lazily-loaded modals ─────────────────────────────────────────────────────
 // None of these are on screen at first paint, and most sessions never open
@@ -4546,6 +4546,7 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
     healthPath:   item.healthPath   || '/',
     sshUser: item.sshUser || '',
     mac: item.mac || '',
+    maintenance: item.maintenance === true,
     dependencies: item.dependencies || [],
     iconSlug: item.iconSlug || '',
   });
@@ -4991,6 +4992,33 @@ function EditModal({ item, onSave, onClose, onMarkFree, locations, types, onAddL
               })()}
             </div>
           </div>
+
+          {/* Maintenance
+              A host taken down on purpose — a rebuild, a disk swap, a move —
+              is not a fault. Without this the only way to stop it skewing the
+              offline count and firing alerts is to delete the entry, which
+              loses everything recorded about it. */}
+          {!isFree && !isReserved && (
+            <div className={`rounded-lg border p-3 transition-colors ${
+              formData.maintenance ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-200'}`}>
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={formData.maintenance}
+                  onChange={(e) => setFormData({ ...formData, maintenance: e.target.checked })}
+                  className="w-4 h-4 mt-0.5 rounded border-slate-300 text-amber-600 focus:ring-amber-400"
+                />
+                <span>
+                  <span className="block text-sm font-medium text-slate-700">Under maintenance</span>
+                  <span className="block text-xs text-slate-500 mt-0.5">
+                    Deliberately offline. Excluded from the offline count and from
+                    offline alerts, and shown in amber rather than red. It stays set
+                    until you clear it — nothing expires it for you.
+                  </span>
+                </span>
+              </label>
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Notes</label>
@@ -5980,9 +6008,15 @@ export default function IPAddressManager() {
       total: networkIpData.length,
       active: active.length,
       // Live ping state, so the offline toggle can carry a count. Placeholders
-      // have no status and are excluded.
-      offline: active.filter(i => pingStatus[i.ip] === 'down').length,
-      online: active.filter(i => pingStatus[i.ip] === 'up').length,
+      // have no status and are excluded, and so is anything flagged for
+      // maintenance — a host taken down deliberately is not a fault, and
+      // counting it as one buries the failures that do need attention.
+      offline: active.filter(i => countsAsOffline(i, pingStatus[i.ip])).length,
+      online: active.filter(i => !i.maintenance && pingStatus[i.ip] === 'up').length,
+      maintenance: active.filter(i => i.maintenance).length,
+      // Flagged, but answering again. Surfaced so the flag cannot quietly
+      // become a permanently silenced alert.
+      maintenanceResponding: active.filter(i => i.maintenance && pingStatus[i.ip] === 'up').length,
       virtual: active.filter(i => i.type === 'Virtual').length,
       physical: active.filter(i => i.type === 'Physical').length,
       reserved: networkIpData.filter(i => i.assetName === 'Reserved').length,
@@ -7224,6 +7258,36 @@ export default function IPAddressManager() {
               )}
             </button>
 
+            {/* Only shown when something is actually flagged — an empty filter
+                for a feature nobody is using is just clutter. It turns amber
+                when a flagged host is answering again, which is the prompt to
+                clear the flag before it becomes an alert silenced for ever. */}
+            {stats.maintenance > 0 && (
+              <button
+                onClick={() => setSelectedStatus(selectedStatus === 'maintenance' ? '' : 'maintenance')}
+                aria-pressed={selectedStatus === 'maintenance'}
+                title={stats.maintenanceResponding > 0
+                  ? `${stats.maintenanceResponding} device${stats.maintenanceResponding === 1 ? ' is' : 's are'} flagged for maintenance but responding again — clear the flag when the work is done`
+                  : 'Show only devices flagged as under maintenance'}
+                className={`px-3 py-2 rounded-lg text-sm border transition-colors flex items-center gap-2 ${
+                  selectedStatus === 'maintenance'
+                    ? 'bg-amber-50 border-amber-300 text-amber-800'
+                    : stats.maintenanceResponding > 0
+                      ? 'bg-white border-amber-300 text-amber-700 hover:border-amber-400'
+                      : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}>
+                <Wrench className="w-3.5 h-3.5" />
+                Maintenance
+                <span className={`text-xs font-medium ${selectedStatus === 'maintenance' ? 'text-amber-800' : 'text-slate-400'}`}>
+                  {stats.maintenance}
+                </span>
+                {stats.maintenanceResponding > 0 && (
+                  <span className="text-xs font-semibold text-amber-600">
+                    {stats.maintenanceResponding} up
+                  </span>
+                )}
+              </button>
+            )}
+
             <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
               <input
                 type="checkbox"
@@ -7430,11 +7494,23 @@ export default function IPAddressManager() {
                       <div className="flex items-center gap-2">
                         <div className={`font-mono text-lg font-semibold ${isFree ? 'text-emerald-700' : 'text-slate-800'}`}>{item.ip}</div>
 
-                        {!isFree && !isReserved && pingStatus[item.ip] != null && (
+                        {!isFree && !isReserved && item.maintenance && (
+                          <span title={pingStatus[item.ip] === 'up'
+                            ? 'Under maintenance — but responding again. Clear the flag when the work is done.'
+                            : 'Under maintenance — deliberately offline, excluded from the offline count'}
+                            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium flex-shrink-0 border ${
+                              pingStatus[item.ip] === 'up'
+                                ? 'bg-amber-100 text-amber-800 border-amber-400'
+                                : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+                            <Wrench className="w-2.5 h-2.5" />
+                            {pingStatus[item.ip] === 'up' ? 'Maint — up' : 'Maint'}
+                          </span>
+                        )}
+                        {!isFree && !isReserved && !item.maintenance && pingStatus[item.ip] != null && (
                           <span title={pingStatus[item.ip] === 'up' ? 'Online' : 'Offline'}
                             className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${pingStatus[item.ip] === 'up' ? 'bg-emerald-400' : 'bg-red-400'}`} />
                         )}
-                        {!isFree && !isReserved && pingStatus[item.ip] == null && pingLastAt && (
+                        {!isFree && !isReserved && !item.maintenance && pingStatus[item.ip] == null && pingLastAt && (
                           <span title="Status unknown" className="inline-block w-2 h-2 rounded-full flex-shrink-0 bg-slate-300" />
                         )}
                         {!isFree && !isReserved && item.healthPort && healthStatus[item.ip] != null && (
@@ -7819,11 +7895,23 @@ export default function IPAddressManager() {
                               {item.ip}
                               {copiedIP === item.ip && <Check className="w-3 h-3 text-emerald-600" />}
                             </button>
-                            {!isFree && !isReserved && pingStatus[item.ip] != null && (
+                            {!isFree && !isReserved && item.maintenance && (
+                              <span title={pingStatus[item.ip] === 'up'
+                                ? 'Under maintenance — but responding again. Clear the flag when the work is done.'
+                                : 'Under maintenance — deliberately offline, excluded from the offline count'}
+                                className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium flex-shrink-0 border ${
+                                  pingStatus[item.ip] === 'up'
+                                    ? 'bg-amber-100 text-amber-800 border-amber-400'
+                                    : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+                                <Wrench className="w-2.5 h-2.5" />
+                                {pingStatus[item.ip] === 'up' ? 'Maint — up' : 'Maint'}
+                              </span>
+                            )}
+                            {!isFree && !isReserved && !item.maintenance && pingStatus[item.ip] != null && (
                               <span title={pingStatus[item.ip] === 'up' ? 'Online' : 'Offline'}
                                 className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${pingStatus[item.ip] === 'up' ? 'bg-emerald-400' : 'bg-red-400'}`} />
                             )}
-                            {!isFree && !isReserved && pingStatus[item.ip] == null && pingLastAt && (
+                            {!isFree && !isReserved && !item.maintenance && pingStatus[item.ip] == null && pingLastAt && (
                               <span title="Status unknown" className="inline-block w-2 h-2 rounded-full flex-shrink-0 bg-slate-300" />
                             )}
                             {!isFree && !isReserved && item.healthPort && healthStatus[item.ip] != null && (

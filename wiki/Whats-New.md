@@ -4,6 +4,16 @@ For the full release history see the [CHANGELOG](https://github.com/xy-io/ip-man
 
 ---
 
+## v2.18.0 — Maintenance mode
+
+A device you have taken down on purpose is not a fault, but until now the app could not tell the difference. Rebuilding a server meant either watching it sit in the offline count for the afternoon, or deleting the entry and losing everything recorded about it.
+
+Tick **Under maintenance** when editing a device and it steps out of the offline count, stops triggering offline alerts, and shows an amber wrench instead of a red dot. A **Maintenance** button appears in the filter bar while anything is flagged, so you can see at a glance what is deliberately down.
+
+Nothing clears the flag for you. A flag that expired on its own would quietly start alerting again at a moment you did not choose, so instead the button turns amber and reads *"2 up"* when a flagged device starts responding — a reminder to clear it, rather than an alert you did not ask for.
+
+---
+
 ## v2.17.0 — Show me what's offline
 
 A new **Offline** button in the filter bar, next to the type and location selectors. One click narrows the list to devices that are not responding, and it carries a live count so you can see at a glance whether anything is down without clicking at all.

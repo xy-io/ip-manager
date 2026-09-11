@@ -217,7 +217,7 @@ test('service types are extracted from instance names', () => {
 
 test('instance labels are unescaped', () => {
   assert.equal(instanceLabelOf('Living Room._airplay._tcp.local'), 'Living Room');
-  assert.equal(instanceLabelOf('Jay\\032Office._ipp._tcp.local'), 'Jay Office');
+  assert.equal(instanceLabelOf('Alex\\032Office._ipp._tcp.local'), 'Alex Office');
   assert.equal(instanceLabelOf('nas.local'), null);
 });
 

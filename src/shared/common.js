@@ -15,7 +15,7 @@ export const loadXLSX = () => {
   return xlsxPromise;
 };
 
-export const APP_VERSION = 'v2.17.0';
+export const APP_VERSION = 'v2.18.0';
 
 // Default network configuration (overridden by Settings modal / localStorage)
 
@@ -68,8 +68,34 @@ export function matchesStatusFilter(entry, ping, status) {
   if (!status) return true;
   if (!entry) return false;
   if (entry.assetName === 'Free' || entry.assetName === 'Reserved') return false;
+  // A host taken down deliberately is not a fault. It gets its own state so
+  // "offline" stays a list of things that need attention — which is the only
+  // reason anyone opens that filter.
+  if (entry.maintenance === true) return status === 'maintenance';
+  if (status === 'maintenance') return false;
   const state = ping === 'up' ? 'online' : ping === 'down' ? 'offline' : 'unknown';
   return state === status;
+}
+
+/**
+ * The single frontend rule for "is this device a fault?". Used by the offline
+ * count and the offline filter so the toggle and the badge on it can never
+ * disagree — mirrors countsAsOffline in server/lib/net.js.
+ */
+export function countsAsOffline(entry, ping) {
+  if (!entry) return false;
+  if (entry.assetName === 'Free' || entry.assetName === 'Reserved') return false;
+  if (entry.maintenance === true) return false;
+  return ping === 'down';
+}
+
+/**
+ * A maintenance flag with no end date is an alert silenced for ever. This
+ * reports a device that is flagged but answering again, so the interface can
+ * prompt for the flag to be cleared rather than letting it rot unnoticed.
+ */
+export function maintenanceButResponding(entry, ping) {
+  return !!(entry && entry.maintenance === true && ping === 'up');
 }
 
 export function useModalA11y(onClose) {

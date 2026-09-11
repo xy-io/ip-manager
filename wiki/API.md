@@ -39,13 +39,13 @@ Grant the narrowest scope that works. Home Assistant only ever reads, so a read-
     "domains": true, "domainWrite": true, "arpScan": true, "arpPresence": true,
     "dns": true, "subnetBlocks": true, "proxmox": true,
     "notifications": true, "activityLog": true,
-    "deviceHistory": true, "topology": true, "mdns": true, "networkWatch": true, "piholeDhcp": true, "whatsNew": true,
+    "deviceHistory": true, "topology": true, "mdns": true, "networkWatch": true, "piholeDhcp": true, "whatsNew": true, "maintenanceMode": true,
     "pushNotifications": false
   }
 }
 ```
 
-`apiVersion` gains a minor bump for additive changes and a major bump for anything a client must be updated to handle. It is **1.1** as of v2.15.1.
+`apiVersion` gains a minor bump for additive changes and a major bump for anything a client must be updated to handle. It is **1.2** as of v2.18.0.
 
 **Test `capabilities`, not `apiVersion` or the server version.** A capability flag answers the only question a client actually has — "can I call this?" — and stays correct when a feature is present but switched off (`networkWatch` is `true` on any server that has the endpoints; whether the user enabled it is answered by `GET /api/watch/status`).
 
@@ -119,6 +119,24 @@ Key-authenticated responses from `/api/ips` and `/api/ips/:ip` include two deriv
 
 They are omitted for session-authenticated requests, because the web UI writes the whole array back and would otherwise persist them.
 
+### The `maintenance` field
+
+`maintenance` is a boolean on an entry, and is the difference between *this host has failed* and *I took this host down*. Set it and the device is excluded from offline counts and offline notifications, but keeps reporting its true `ping` state.
+
+```bash
+curl -X PATCH https://ipmanager.example.com/api/ips/192.168.0.42 \
+  -H "X-API-Key: YOUR_KEY" -H "Content-Type: application/json" \
+  -d '{"maintenance": true}'
+```
+
+**It must be a JSON boolean.** Anything else is rejected with `400` rather than coerced, because the string `"false"` is truthy and would silently suppress every offline alert for that device.
+
+Nothing on the server clears the flag. A client should surface a device that is flagged *and* responding, so the flag does not become a permanently silenced alert — `GET /api/ha/devices` gives both fields needed to detect that.
+
+Setting or clearing it records an `entry.maintenance.on` / `entry.maintenance.off` event in the activity log, so a suppressed alert can be explained after the fact.
+
+Available from **v2.18.0**; check `capabilities.maintenanceMode`.
+
 ### Entries
 
 | Method | Path | Scope | Description |
@@ -145,7 +163,7 @@ They are omitted for session-authenticated requests, because the web UI writes t
 | `POST` | `/api/proxmox-sync/run` | write | Start a sync |
 | `GET` | `/api/proxmox-vm-status` | read | Cached guest status |
 | `GET` | `/api/capabilities` | read | Feature map, see above |
-| `GET` | `/api/topology?gateway=1` | read | Nodes, edges, groups, stats and hints derived from the inventory. `gateway=1` additionally infers a link from every device to its subnet's router; omitted by default |
+| `GET` | `/api/topology?gateway=1` | read | Nodes, edges, groups, stats and hints derived from the inventory. A node flagged for maintenance reports `status: "maintenance"` and `maintenance: true`, and is counted in `stats.maintenance` rather than `stats.online` or `stats.offline`. `gateway=1` additionally infers a link from every device to its subnet's router; omitted by default |
 | `GET` | `/api/topology/impact/:ip?gateway=1` | read | Devices that would be affected if this one went down, following dependency chains. Pass the same `gateway` value used to draw the graph |
 | `GET` | `/api/ips/:ip/history?days=30` | read | That device's status-change timeline, outage count and last-seen time |
 | `GET` | `/api/mdns/status` | read | The most recent mDNS scan, matched against the inventory |
@@ -206,8 +224,8 @@ Update *execution* (`/api/update/*`) is session-only and cannot be triggered wit
 
 | Method | Path | Scope | Description |
 |---|---|---|---|
-| `GET` | `/api/ha/summary` | read | Device counts and domain expiry totals |
-| `GET` | `/api/ha/devices` | read | Every device with ping and health status |
+| `GET` | `/api/ha/summary` | read | Device counts and domain expiry totals. Includes `devices_maintenance`; flagged devices are excluded from `devices_online` and `devices_offline` |
+| `GET` | `/api/ha/devices` | read | Every device with ping and health status, plus `maintenance` (boolean). `ping` reports the true observed state regardless of the flag |
 | `GET` | `/api/ha/domains` | read | Domains with expiry dates and urgency |
 
 ---

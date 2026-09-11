@@ -39,7 +39,7 @@ test('when disabled, any second factor passes so sign-in is unaffected', () => {
 
 test('beginSetup does not enable anything on its own', () => {
   reset();
-  const { secret, uri } = twoFactor.beginSetup('Jay');
+  const { secret, uri } = twoFactor.beginSetup('alex');
   assert.ok(secret);
   assert.ok(uri.startsWith('otpauth://totp/'));
   assert.equal(twoFactor.isEnabled(), false, 'starting setup must not change sign-in');
@@ -48,7 +48,7 @@ test('beginSetup does not enable anything on its own', () => {
 
 test('enrolment fails on a wrong code, and stays disabled', () => {
   reset();
-  twoFactor.beginSetup('Jay');
+  twoFactor.beginSetup('alex');
   const result = twoFactor.completeSetup('000000');
   assert.equal(result.ok, false);
   assert.ok(result.message);
@@ -64,7 +64,7 @@ test('enrolment requires a setup to have been started', () => {
 
 test('a correct code completes enrolment and returns ten recovery codes', () => {
   reset();
-  const { secret } = twoFactor.beginSetup('Jay');
+  const { secret } = twoFactor.beginSetup('alex');
   const result = twoFactor.completeSetup(totp.generate(secret));
   assert.equal(result.ok, true);
   assert.equal(result.recoveryCodes.length, 10);
@@ -75,7 +75,7 @@ test('a correct code completes enrolment and returns ten recovery codes', () => 
 
 test('the status object never exposes the secret or the code hashes', () => {
   reset();
-  const { secret } = twoFactor.beginSetup('Jay');
+  const { secret } = twoFactor.beginSetup('alex');
   twoFactor.completeSetup(totp.generate(secret));
   const status = twoFactor.getStatus();
   const serialised = JSON.stringify(status);
@@ -85,7 +85,7 @@ test('the status object never exposes the secret or the code hashes', () => {
 
 test('recovery codes are stored hashed, never in plaintext', () => {
   reset();
-  const { secret } = twoFactor.beginSetup('Jay');
+  const { secret } = twoFactor.beginSetup('alex');
   const { recoveryCodes } = twoFactor.completeSetup(totp.generate(secret));
   const stored = twoFactor.getConfig().recoveryCodes;
   assert.equal(stored.length, 10);
@@ -97,7 +97,7 @@ test('recovery codes are stored hashed, never in plaintext', () => {
 
 test('a valid TOTP code is accepted once and rejected on replay', () => {
   reset();
-  const { secret } = twoFactor.beginSetup('Jay');
+  const { secret } = twoFactor.beginSetup('alex');
   twoFactor.completeSetup(totp.generate(secret));
 
   // completeSetup consumed the current counter, so use the next window.
@@ -117,7 +117,7 @@ test('a valid TOTP code is accepted once and rejected on replay', () => {
 
 test('an incorrect code is rejected', () => {
   reset();
-  const { secret } = twoFactor.beginSetup('Jay');
+  const { secret } = twoFactor.beginSetup('alex');
   twoFactor.completeSetup(totp.generate(secret));
   assert.equal(twoFactor.verifySecondFactor('000000').ok, false);
   assert.equal(twoFactor.verifySecondFactor('').ok, false);
@@ -126,7 +126,7 @@ test('an incorrect code is rejected', () => {
 
 test('a recovery code works and is consumed', () => {
   reset();
-  const { secret } = twoFactor.beginSetup('Jay');
+  const { secret } = twoFactor.beginSetup('alex');
   const { recoveryCodes } = twoFactor.completeSetup(totp.generate(secret));
   const code = recoveryCodes[3];
 
@@ -142,7 +142,7 @@ test('a recovery code works and is consumed', () => {
 
 test('recovery codes are accepted regardless of case and spacing', () => {
   reset();
-  const { secret } = twoFactor.beginSetup('Jay');
+  const { secret } = twoFactor.beginSetup('alex');
   const { recoveryCodes } = twoFactor.completeSetup(totp.generate(secret));
   const messy = ` ${recoveryCodes[0].toLowerCase()} `;
   assert.equal(twoFactor.verifySecondFactor(messy).ok, true);
@@ -150,7 +150,7 @@ test('recovery codes are accepted regardless of case and spacing', () => {
 
 test('using every recovery code leaves none, without breaking', () => {
   reset();
-  const { secret } = twoFactor.beginSetup('Jay');
+  const { secret } = twoFactor.beginSetup('alex');
   const { recoveryCodes } = twoFactor.completeSetup(totp.generate(secret));
   for (const code of recoveryCodes) assert.equal(twoFactor.verifySecondFactor(code).ok, true);
   assert.equal(twoFactor.getStatus().recoveryCodesRemaining, 0);
@@ -159,7 +159,7 @@ test('using every recovery code leaves none, without breaking', () => {
 
 test('regenerating recovery codes invalidates the previous set', () => {
   reset();
-  const { secret } = twoFactor.beginSetup('Jay');
+  const { secret } = twoFactor.beginSetup('alex');
   const { recoveryCodes: original } = twoFactor.completeSetup(totp.generate(secret));
   const fresh = twoFactor.regenerateRecoveryCodes();
 
@@ -175,7 +175,7 @@ test('regenerating does nothing when two-factor is off', () => {
 
 test('disable clears the secret and every recovery code', () => {
   reset();
-  const { secret } = twoFactor.beginSetup('Jay');
+  const { secret } = twoFactor.beginSetup('alex');
   const { recoveryCodes } = twoFactor.completeSetup(totp.generate(secret));
 
   twoFactor.disable();
@@ -190,7 +190,7 @@ test('disable clears the secret and every recovery code', () => {
 
 test('cancelSetup abandons a half-finished enrolment', () => {
   reset();
-  twoFactor.beginSetup('Jay');
+  twoFactor.beginSetup('alex');
   twoFactor.cancelSetup();
   assert.equal(twoFactor.getStatus().setupInProgress, false);
   assert.equal(twoFactor.completeSetup('123456').ok, false);
@@ -198,9 +198,9 @@ test('cancelSetup abandons a half-finished enrolment', () => {
 
 test('re-enrolling produces a different secret', () => {
   reset();
-  const first = twoFactor.beginSetup('Jay').secret;
+  const first = twoFactor.beginSetup('alex').secret;
   twoFactor.completeSetup(totp.generate(first));
   twoFactor.disable();
-  const second = twoFactor.beginSetup('Jay').secret;
+  const second = twoFactor.beginSetup('alex').secret;
   assert.notEqual(first, second);
 });

@@ -125,3 +125,73 @@ test('the client handover page covers every opt-in feature', () => {
     assert.ok(handover.includes(feature), `${feature} is missing from the client handover`);
   }
 });
+
+// ── Surface drift ───────────────────────────────────────────────────────────
+// The checks above catch an *absence* — a route with no documentation. They
+// cannot catch a *change*: renaming a route, removing one, or altering a
+// capability flag all leave the documentation internally consistent while
+// silently breaking a client built against the old surface.
+//
+// The committed manifest makes any such change fail the build until it is
+// deliberately accepted, which is the point at which the author has to decide
+// whether the documentation and the client handover need updating.
+
+test('the API surface matches the committed manifest', () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'server', 'api-manifest.json'), 'utf8'));
+  const routes = allRoutes().map((r) => `${r.method} ${r.path}`).sort();
+
+  const added = routes.filter((r) => !manifest.routes.includes(r));
+  const removed = manifest.routes.filter((r) => !routes.includes(r));
+
+  assert.deepEqual({ added, removed }, { added: [], removed: [] },
+    'the API surface changed. Update wiki/API.md and wiki/iOS-Client-Handover.md, '
+    + 'bump apiVersion if needed, state the impact in the CHANGELOG, '
+    + 'then accept it with: node scripts/api-manifest.cjs --write');
+});
+
+test('the manifest records the served apiVersion and capabilities', () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'server', 'api-manifest.json'), 'utf8'));
+  const src = fs.readFileSync(path.join(ROOT, 'server', 'index.js'), 'utf8');
+
+  const served = (src.match(/apiVersion:\s*'([^']+)'/) || [])[1];
+  assert.equal(manifest.apiVersion, served,
+    'apiVersion changed — accept it with: node scripts/api-manifest.cjs --write');
+
+  const block = src.slice(src.indexOf('capabilities: {'));
+  const flags = [...block.slice(0, block.indexOf('},')).matchAll(/^\s*([A-Za-z]+):\s*(true|false)/gm)]
+    .map((m) => `${m[1]}: ${m[2]}`).sort();
+  assert.deepEqual(flags, manifest.capabilities,
+    'the capability list changed — a flag flipping from false to true is a promise to clients');
+});
+
+// ── The judgement the tooling cannot make ───────────────────────────────────
+// A frontend-only release adds no route and changes no capability, so every
+// check above passes — and it can still introduce something a client needs to
+// know. v2.17.0 was exactly that: an offline filter whose only subtlety is
+// that Free and Reserved rows must be excluded, which a native client building
+// the same feature would have had to rediscover.
+//
+// This cannot be automated. What can be automated is refusing to let the
+// question go unanswered.
+
+test('the current release states its API impact', () => {
+  const pkg = require('../../package.json');
+  const changelog = fs.readFileSync(path.join(ROOT, 'CHANGELOG.md'), 'utf8');
+
+  const start = changelog.indexOf(`## v${pkg.version}`);
+  assert.ok(start !== -1, `CHANGELOG.md has no entry for v${pkg.version}`);
+  const next = changelog.indexOf('\n## v', start + 1);
+  const section = changelog.slice(start, next === -1 ? undefined : next);
+
+  // Either the entry describes API surface, or it explicitly says there is
+  // none. Silence is the failure mode this exists to prevent.
+  const statesImpact = /no api change/i.test(section)
+    || /\/api\//.test(section)
+    || /apiVersion/i.test(section)
+    || /capabilit/i.test(section);
+
+  assert.ok(statesImpact,
+    `the v${pkg.version} CHANGELOG entry says nothing about API impact. Either describe the `
+    + 'endpoints it adds, or state "No API change." — and if it changed anything a client '
+    + 'should know without adding an endpoint, record it in wiki/iOS-Client-Handover.md.');
+});

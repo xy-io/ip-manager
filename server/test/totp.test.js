@@ -145,7 +145,7 @@ test('generateSecret produces distinct 160-bit base32 secrets', () => {
 });
 
 test('otpauthUri is well formed and carries the parameters apps expect', () => {
-  const uri = totp.otpauthUri('GEZDGNBVGY3TQOJQ', { account: 'Jay', issuer: 'IP Manager' });
+  const uri = totp.otpauthUri('GEZDGNBVGY3TQOJQ', { account: 'alex', issuer: 'IP Manager' });
   assert.ok(uri.startsWith('otpauth://totp/'));
   const parsed = new URL(uri);
   assert.equal(parsed.searchParams.get('secret'), 'GEZDGNBVGY3TQOJQ');
@@ -153,7 +153,7 @@ test('otpauthUri is well formed and carries the parameters apps expect', () => {
   assert.equal(parsed.searchParams.get('algorithm'), 'SHA1');
   assert.equal(parsed.searchParams.get('digits'), '6');
   assert.equal(parsed.searchParams.get('period'), '30');
-  assert.ok(decodeURIComponent(parsed.pathname).includes('Jay'));
+  assert.ok(decodeURIComponent(parsed.pathname).includes('alex'));
 });
 
 // ── Recovery codes ──────────────────────────────────────────────────────────

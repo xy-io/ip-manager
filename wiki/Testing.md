@@ -6,7 +6,7 @@ Two complementary suites: **unit tests** catch broken logic, **smoke tests** cat
 
 ## Unit tests
 
-From **v2.7.0**, `npm test` runs 270 unit tests over the parts of the server that have historically broken. Node's built-in test runner is used, so there is no framework and no extra dependency.
+From **v2.7.0**, `npm test` runs 285 unit tests over the parts of the server that have historically broken. Node's built-in test runner is used, so there is no framework and no extra dependency.
 
 ```bash
 cd /opt/ip-manager
@@ -33,6 +33,21 @@ They need no running server and no database — an overridable `DB_PATH` points 
 | `lib/mdns.js` | Wire-format parsing of hostile packets — compression loops, lying length fields, truncated records — and that discovery never proposes overwriting a name the user set |
 
 Every test corresponds to something that actually went wrong at some point. The suite was validated by reintroducing two historical bugs and confirming it catches them.
+
+---
+
+## API surface manifest
+
+```bash
+npm run api:check     # show any change to the API surface
+npm run api:accept    # accept it deliberately
+```
+
+`server/api-manifest.json` records every route, every capability flag and the served `apiVersion`. A test compares the live surface against it, so adding, removing or renaming a route fails the build until the change is accepted — and accepting it is the prompt to update [API](API), [iOS Client Handover](iOS-Client-Handover) and the CHANGELOG.
+
+The documentation-coverage checks catch an *absence*. This catches a *change*, which is the case where the documentation stays internally consistent while quietly breaking a client.
+
+See [Release Checklist](Release-Checklist) for the three questions no test can answer.
 
 ---
 

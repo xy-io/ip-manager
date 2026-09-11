@@ -292,3 +292,32 @@ test('the gateway does not depend on itself', () => {
   const t = buildTopology(entries, networks, {}, {}, { inferGateway: true });
   assert.equal(t.edges.length, 0);
 });
+
+// ── Maintenance ─────────────────────────────────────────────────────────────
+
+test('a node in maintenance gets its own status, not offline', () => {
+  const entries = [
+    { ip: '192.168.0.10', assetName: 'NAS', maintenance: true },
+    { ip: '192.168.0.11', assetName: 'Printer' },
+  ];
+  const ping = { '192.168.0.10': 'down', '192.168.0.11': 'down' };
+  const { nodes, stats } = buildTopology(entries, [], ping, {});
+
+  const nas = nodes.find((n) => n.ip === '192.168.0.10');
+  assert.equal(nas.status, 'maintenance');
+  assert.equal(nas.maintenance, true);
+
+  assert.equal(stats.maintenance, 1);
+  assert.equal(stats.offline, 1, 'the printer is genuinely down and must still be counted');
+  assert.equal(stats.online, 0);
+});
+
+test('maintenance is not folded into the online count', () => {
+  // Counting it as online would be a lie — the host really is not there — and
+  // would make the diagram claim everything is healthy during an outage.
+  const entries = [{ ip: '192.168.0.10', assetName: 'NAS', maintenance: true }];
+  const { stats } = buildTopology(entries, [], { '192.168.0.10': 'down' }, {});
+  assert.equal(stats.online, 0);
+  assert.equal(stats.offline, 0);
+  assert.equal(stats.maintenance, 1);
+});

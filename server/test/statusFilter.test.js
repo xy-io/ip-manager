@@ -76,3 +76,99 @@ test('a missing entry never matches', () => {
     ]));`);
   assert.deepEqual(JSON.parse(out), [false, false]);
 });
+
+// ── Maintenance ─────────────────────────────────────────────────────────────
+// A host taken down on purpose — a rebuild, a disk swap — is not a fault.
+// Counting it as offline buries the real failures, and worse, trains people to
+// ignore the offline count during any planned work.
+
+test('a device in maintenance is not counted as offline', () => {
+  const out = run(`
+    console.log(JSON.stringify([
+      matchesStatusFilter({ assetName: 'NAS', maintenance: true }, 'down', 'offline'),
+      matchesStatusFilter({ assetName: 'NAS', maintenance: true }, undefined, 'offline'),
+    ]));`);
+  assert.deepEqual(JSON.parse(out), [false, false],
+    'the whole point of the flag is that it does not show up as a failure');
+});
+
+test('maintenance is its own state, not a kind of online', () => {
+  // Folding it into "online" would be a lie — the host genuinely is not there.
+  const out = run(`
+    console.log(JSON.stringify([
+      matchesStatusFilter({ assetName: 'NAS', maintenance: true }, 'down', 'maintenance'),
+      matchesStatusFilter({ assetName: 'NAS', maintenance: true }, 'down', 'online'),
+      matchesStatusFilter({ assetName: 'NAS' }, 'down', 'maintenance'),
+    ]));`);
+  assert.deepEqual(JSON.parse(out), [true, false, false]);
+});
+
+test('a normal device is unaffected by the maintenance rule', () => {
+  const out = run(`
+    console.log(JSON.stringify([
+      matchesStatusFilter({ assetName: 'NAS', maintenance: false }, 'down', 'offline'),
+      matchesStatusFilter({ assetName: 'NAS' }, 'down', 'offline'),
+    ]));`);
+  assert.deepEqual(JSON.parse(out), [true, true]);
+});
+
+test('a flagged device that is answering again is reported', () => {
+  // Without this the flag is an alert silenced for ever, and nothing ever
+  // reminds anyone it is still set.
+  const file = path.join(__dirname, '..', '..', 'src', 'shared', 'common.js');
+  const out = execFileSync(process.execPath, ['--input-type=module', '-e',
+    `import { maintenanceButResponding } from ${JSON.stringify(file)};
+     console.log(JSON.stringify([
+       maintenanceButResponding({ maintenance: true }, 'up'),
+       maintenanceButResponding({ maintenance: true }, 'down'),
+       maintenanceButResponding({ maintenance: false }, 'up'),
+       maintenanceButResponding(null, 'up'),
+     ]));`], { encoding: 'utf8' }).trim();
+  assert.deepEqual(JSON.parse(out), [true, false, false, false]);
+});
+
+// ── One rule, two runtimes ──────────────────────────────────────────────────
+// "Is this device a fault?" is decided in two places: server/lib/net.js for the
+// Home Assistant summary and notification suppression, src/shared/common.js for
+// the offline count and filter. The server is CommonJS and loads a native
+// database module; the frontend copy is ESM and must stay importable by Vite.
+// They cannot be one file, so instead they are held to the same answers — which
+// is the guarantee that actually matters. Without this, a device could vanish
+// from the count while still firing alerts, and nothing would notice.
+
+test('the server and frontend agree on what counts as offline', () => {
+  const { countsAsOffline: server } = require('../lib/net');
+
+  const entries = [
+    { assetName: 'NAS' },
+    { assetName: 'NAS', maintenance: true },
+    { assetName: 'NAS', maintenance: false },
+    { assetName: 'NAS', maintenance: 'false' },   // the truthy-string footgun
+    { assetName: 'NAS', maintenance: 1 },
+    { assetName: 'Free' },
+    { assetName: 'Free', maintenance: true },
+    { assetName: 'Reserved' },
+    {},
+    null,
+  ];
+  const pings = ['up', 'down', undefined];
+
+  const cases = [];
+  for (const e of entries) for (const p of pings) cases.push([e, p]);
+
+  const file = path.join(__dirname, '..', '..', 'src', 'shared', 'common.js');
+  const frontend = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e',
+    `import { countsAsOffline } from ${JSON.stringify(file)};
+     const cases = ${JSON.stringify(cases)};
+     console.log(JSON.stringify(cases.map(([e, p]) => countsAsOffline(e, p))));`],
+    { encoding: 'utf8' }).trim());
+
+  const fromServer = cases.map(([e, p]) => server(e, p));
+
+  const disagreements = cases
+    .map((c, i) => ({ entry: c[0], ping: c[1], server: fromServer[i], frontend: frontend[i] }))
+    .filter((r) => r.server !== r.frontend);
+
+  assert.deepEqual(disagreements, [],
+    'server/lib/net.js and src/shared/common.js disagree about which devices are offline');
+});

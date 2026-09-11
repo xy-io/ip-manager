@@ -51,6 +51,7 @@ const { getDomains, saveDomains } = require('./lib/domainStore');
 const {
   normaliseSubnetToCidr, isValidInterface, buildArpScanArgs, buildDiscoveryScanArgs,
   ipSortKey, sortEntriesByIp, findEntryIndex, haPingStatus, decorateEntry, describeScanFailure,
+  inMaintenance, countsAsOffline,
   parseArpScanOutput,
 } = require('./lib/net');
 const { redactSecrets } = require('./lib/redact');
@@ -573,7 +574,7 @@ app.get('/api/capabilities', (req, res) => {
     // existing changed shape, so this stays a minor bump — but a client that
     // pinned "1.0" had no way to tell a v2.3.0 server from a v2.15.1 one.
     // `capabilities` remains the reliable feature test.
-    apiVersion: '1.1',
+    apiVersion: '1.2',
     serverVersion: APP_VERSION,
     capabilities: {
       inventory:         true,
@@ -595,6 +596,7 @@ app.get('/api/capabilities', (req, res) => {
       networkWatch:      true,
       piholeDhcp:        true,
       whatsNew:          true,
+      maintenanceMode:   true,
       pushNotifications: false, // APNs not implemented — see the roadmap
     },
   });
@@ -1119,6 +1121,10 @@ app.post('/api/ips', (req, res) => {
     return apiError(res, 409, 'Already exists',
       `An entry for ${entry.ip} already exists. Use PATCH /api/ips/${entry.ip} to update it.`);
   }
+  if ('maintenance' in entry && typeof entry.maintenance !== 'boolean') {
+    return apiError(res, 400, 'Invalid field',
+      'The maintenance field must be a boolean.');
+  }
   const now = new Date().toISOString();
   const created = { ...entry, lastModified: now };
   data.push(created);
@@ -1151,10 +1157,32 @@ app.patch('/api/ips/:ip', (req, res) => {
       'The ip field cannot be changed. Delete the entry and create a new one instead.');
   }
 
+  // Refuse a non-boolean maintenance flag rather than coercing it. The string
+  // "false" is truthy, so a client that sent one would silently suppress every
+  // offline alert for that host — a failure you only notice by its absence.
+  if ('maintenance' in changes && typeof changes.maintenance !== 'boolean') {
+    return apiError(res, 400, 'Invalid field',
+      'The maintenance field must be a boolean. A string such as "false" would be treated as true '
+      + 'and would silently suppress offline alerts for this device.');
+  }
+
   const updated = { ...current, ...changes, ip: current.ip, lastModified: new Date().toISOString() };
   data[idx] = updated;
   dbSet('ip_data', data);
   recordEvent({ type: 'entry.updated', message: `Entry ${updated.ip} updated`, meta: { ip: updated.ip, fields: Object.keys(changes) }, req });
+
+  // Logged separately from the generic update, because "why did nothing alert
+  // me while that host was down?" is a question the activity log should answer.
+  if ('maintenance' in changes && !!current.maintenance !== !!updated.maintenance) {
+    recordEvent({
+      type: updated.maintenance ? 'entry.maintenance.on' : 'entry.maintenance.off',
+      message: updated.maintenance
+        ? `${updated.assetName || updated.ip} flagged as under maintenance — offline alerts suppressed`
+        : `${updated.assetName || updated.ip} taken out of maintenance — offline alerts resume`,
+      meta: { ip: updated.ip },
+      req,
+    });
+  }
   res.json(updated);
 });
 
@@ -1612,7 +1640,18 @@ function detectPingTransitions(results) {
     return label ? `${label} (${ip})` : ip;
   };
 
+  const entryFor = (ip) => entries.find((x) => x.ip === ip);
+
   for (const [ip, status] of Object.entries(results)) {
+    // A host under maintenance is down on purpose. Suppress the alert, and
+    // clear any streak so it does not fire the moment the flag is removed —
+    // by then the device is usually back anyway.
+    if (inMaintenance(entryFor(ip))) {
+      offlineStreak.delete(ip);
+      notifiedOffline.delete(ip);
+      continue;
+    }
+
     if (status === 'down') {
       const streak = (offlineStreak.get(ip) || 0) + 1;
       offlineStreak.set(ip, streak);
@@ -2783,8 +2822,12 @@ app.get('/api/ha/summary', requireHaKey, (req, res) => {
   const health = serviceHealthCache.results || {};
   const domains = getDomains();
 
-  let online = 0, offline = 0, unknown = 0;
+  let online = 0, offline = 0, unknown = 0, maintenance = 0;
   for (const e of allEntries) {
+    // Maintenance is counted separately rather than folded into online or
+    // offline. Calling a rebuilding host "online" would be untrue, and calling
+    // it "offline" is exactly the alarm this flag exists to stop.
+    if (inMaintenance(e)) { maintenance++; continue; }
     const s = haPingStatus(ping[e.ip]);
     if (s === 'online') online++;
     else if (s === 'offline') offline++;
@@ -2806,6 +2849,7 @@ app.get('/api/ha/summary', requireHaKey, (req, res) => {
     devices_total:   allEntries.length,
     devices_online:  online,
     devices_offline: offline,
+    devices_maintenance: maintenance,
     devices_unknown: unknown,
     networks:        networks.length,
     domains_total:   domains.length,
@@ -2835,7 +2879,12 @@ app.get('/api/ha/devices', requireHaKey, (req, res) => {
         type:     e.type      || null,
         network:  networkMap[e.networkId] || null,
         tags:     e.tags      || [],
+        // `ping` stays the true observed state — a client asking "is this
+        // reachable?" must get the real answer. `maintenance` is reported
+        // alongside so an automation can choose to ignore it, which is the
+        // distinction a single overloaded field would destroy.
         ping:     haPingStatus(p),
+        maintenance: inMaintenance(e),
         health:   h ? h.status : null,
         health_code: h ? (h.code || null) : null,
       };

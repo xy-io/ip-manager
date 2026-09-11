@@ -46,6 +46,7 @@ GET /api/capabilities
 | `networkWatch` | v2.11.0 | **Yes, off by default** | Ledger of every device identity seen |
 | `piholeDhcp` | v2.13.0 | **Yes, off by default** | Name unknown devices from Pi-hole DHCP leases |
 | `whatsNew` | v2.14.0 | No | Release notes for the first load after an update |
+| `maintenanceMode` | v2.18.0 | No | Flag a device as deliberately offline |
 
 ---
 
@@ -230,6 +231,47 @@ POST /api/whats-new/reset
 Paragraphs contain `**bold**` and `` `code` `` markers. **Render them as attributed text, never by building HTML** — the web client parses them into elements precisely so release notes can never become an injection point.
 
 Probably not worth building in the app: the notes describe the *server*, and an app release cycle is separate.
+
+---
+
+## Filtering by status — a trap worth knowing about
+
+Not an endpoint, but the client will almost certainly want this and will hit the same problem the web client did.
+
+`GET /api/ips` returns **placeholder rows as well as devices**: entries whose `assetName` is `Free` or `Reserved` mark address space, not hardware. They never answer a ping, so `/api/ping-status` has no result for them.
+
+A naive "show me what is offline" filter therefore returns every unused address on the subnet. On a /24 with a 170-address DHCP pool that is roughly 170 rows instead of the handful that genuinely need attention — which defeats the purpose of the filter entirely.
+
+```
+state = ping === 'up'   ? 'online'
+      : ping === 'down' ? 'offline'
+      :                   'unknown'
+
+matches = assetName !== 'Free' && assetName !== 'Reserved' && state === wanted
+```
+
+And **absent is `unknown`, not `offline`**. Before the server's first ping cycle completes, nothing has a result. Reporting all of it as down is both alarming and wrong.
+
+The web client shipped this in v2.17.0 with a live offline count, and the empty state reads "Everything is responding" rather than "No results found" — the same screen, opposite meaning, and worth copying.
+
+### Maintenance changes this filter (v2.18.0)
+
+An entry with `maintenance: true` is deliberately offline — a rebuild, a disk swap — and **must not count as offline**, or the count stops being a list of things that need attention during exactly the work that makes a real failure easiest to miss.
+
+```
+countsAsOffline = assetName !== 'Free'
+               && assetName !== 'Reserved'
+               && maintenance !== true
+               && ping === 'down'
+```
+
+Three things are worth copying rather than reinventing:
+
+- **Maintenance is its own state, not a kind of online.** The host genuinely is not responding; reporting it as online would be a different lie. Give it a third colour — the web client uses an amber wrench against red and green.
+- **`ping` still reports the truth.** The flag changes how a device is *counted* and *alerted on*, never what the server observed. Both fields are on `/api/ha/devices`.
+- **Nothing expires the flag, and the client should not expire it either.** An automatic clear resumes alerting at a moment the user did not choose. Instead detect `maintenance === true && ping === 'up'` and prompt to clear it — a flagged device that is answering again is the only thing standing between this feature and an alert silenced for ever.
+
+Write it with `PATCH /api/ips/:ip` and a **JSON boolean**; the server rejects anything else with `400` rather than coercing, because `"false"` is truthy and would silence the device.
 
 ---
 

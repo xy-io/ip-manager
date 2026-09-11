@@ -224,8 +224,50 @@ function virtualPlatform(mac) {
   return VIRTUAL_PLATFORMS[hex.slice(0, 6)] || null;
 }
 
+
+// ── Maintenance ─────────────────────────────────────────────────────────────
+// A host taken down deliberately — a rebuild, a disk swap — is not a fault.
+// Counting it as offline buries the real failures and, worse, trains people to
+// ignore the offline count during any planned work.
+//
+// The flag suppresses *alerting and counting*, never monitoring: the device is
+// still pinged and its true status still reported, because you want to see the
+// moment it comes back.
+
+/** Is this entry deliberately out of service? */
+function inMaintenance(entry) {
+  return !!(entry && entry.maintenance === true);
+}
+
+/**
+ * Should this entry contribute to an offline count or raise an offline alert?
+ *
+ * Deliberately one function used by every counter — the offline filter, the
+ * Home Assistant sensors, the topology stats and the notification path. A
+ * second copy of this rule is how a device ends up excluded from one count and
+ * not another.
+ */
+function countsAsOffline(entry, ping) {
+  if (!entry) return false;
+  if (entry.assetName === 'Free' || entry.assetName === 'Reserved') return false;
+  if (inMaintenance(entry)) return false;
+  return ping === 'down';
+}
+
+/**
+ * A maintenance flag with no end is a permanently silenced alert. This reports
+ * a device that is flagged but answering again, so the interface can prompt for
+ * the flag to be cleared rather than letting it rot.
+ */
+function maintenanceButResponding(entry, ping) {
+  return inMaintenance(entry) && ping === 'up';
+}
+
 module.exports = {
   describeScanFailure,
+  inMaintenance,
+  countsAsOffline,
+  maintenanceButResponding,
   virtualPlatform,
   VIRTUAL_PLATFORMS,
   parseArpScanOutput,

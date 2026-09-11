@@ -116,6 +116,7 @@ See [CHANGELOG.md](./CHANGELOG.md) for a full history of released features.
 
 | Version | Feature |
 |---------|---------|
+| v2.18.0 | Maintenance flag: deliberately-offline hosts excluded from counts and alerts |
 | v2.17.0 | Offline filter on the main list, with a live count |
 | v2.16.0 | API reference completed and enforced by test; client handover page |
 | v2.15.1 | The what's new dialog appears for installs updating into the feature |

@@ -45,6 +45,10 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
+### v2.18.0 — Maintenance mode
+
+Tick **Under maintenance** on a device you have taken down on purpose and it leaves the offline count, stops triggering offline alerts, and shows an amber wrench instead of a red dot. Nothing expires the flag — instead the **Maintenance** filter button turns amber when a flagged device starts responding again, prompting you to clear it rather than alerting you at a moment you did not choose.
+
 ### v2.17.0 — An offline filter
 
 A one-click **Offline** toggle in the filter bar with a live count, for the common cleanup task the list could not answer. Free and reserved addresses are excluded — they never answer a ping, and including them would return every unused address instead of the few that need attention.

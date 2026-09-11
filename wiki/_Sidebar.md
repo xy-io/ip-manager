@@ -31,6 +31,7 @@
 - [Activity Log](Activity-Log)
 - [Updating](Updating)
 - [Testing](Testing)
+- [Release Checklist](Release-Checklist)
 - [Troubleshooting](Troubleshooting)
 
 ---

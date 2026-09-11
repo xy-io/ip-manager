@@ -13,7 +13,7 @@
  *  that group entirely and touch nothing at all.
  *
  *  Usage:
- *    SMOKE_USER=Jay SMOKE_PASS='...' node scripts/smoke-test.js
+ *    SMOKE_USER=admin SMOKE_PASS='...' node scripts/smoke-test.cjs
  *
  *  Options:
  *    --url <base>   Base URL          (default http://127.0.0.1:3001)
@@ -55,7 +55,7 @@ const READ_ONLY = flag('--read-only');
 
 if (!USER || !PASS) {
   console.error('SMOKE_USER and SMOKE_PASS must be set.\n');
-  console.error("  SMOKE_USER=Jay SMOKE_PASS='yourpassword' node scripts/smoke-test.js");
+  console.error("  SMOKE_USER=admin SMOKE_PASS='yourpassword' node scripts/smoke-test.cjs");
   process.exit(1);
 }
 
@@ -725,6 +725,70 @@ async function testApiKeys() {
   await test('PATCH on an unknown IP returns 404', async () => {
     const res = await req('PATCH', '/api/ips/203.0.113.254', { body: { assetName: 'x' }, ...asKey(writeKey) });
     return expectStatus(res, 404, 'PATCH unknown IP');
+  });
+
+  // ── Maintenance flag ──────────────────────────────────────────────────────
+  // The flag suppresses alerts, so a bug here is silent by construction: the
+  // symptom is a notification that never arrives, which nobody reports.
+
+  await test('PATCH rejects a non-boolean maintenance flag', async () => {
+    // "false" is truthy. Coercing it would silence the device for ever.
+    const res = await req('PATCH', `/api/ips/${TEST_IP}`, {
+      body: { maintenance: 'false' }, ...asKey(writeKey),
+    });
+    return expectStatus(res, 400, 'PATCH maintenance:"false"');
+  });
+
+  await test('PATCH accepts a boolean maintenance flag and it round-trips', async () => {
+    const res = await req('PATCH', `/api/ips/${TEST_IP}`, {
+      body: { maintenance: true }, ...asKey(writeKey),
+    });
+    if (res.status !== 200) return `expected HTTP 200, got ${res.status}`;
+    const check = await GET(`/api/ips/${TEST_IP}`);
+    return check.json?.maintenance === true ? true
+      : `maintenance read back as ${JSON.stringify(check.json?.maintenance)}`;
+  });
+
+  await test('a device in maintenance is counted separately, not as offline', async () => {
+    const res = await GET('/api/ha/summary');
+    if (res.status !== 200) return `expected HTTP 200, got ${res.status}`;
+    const s = res.json || {};
+    if (typeof s.devices_maintenance !== 'number') return 'devices_maintenance is missing from the summary';
+    if (s.devices_maintenance < 1) return 'the flagged device is not in devices_maintenance';
+
+    const dev = await GET('/api/ha/devices');
+    const rows = dev.json?.devices || dev.json?.data || dev.json || [];
+    const entry = (Array.isArray(rows) ? rows : []).find((d) => d.ip === TEST_IP);
+    if (!entry) return `${TEST_IP} missing from /api/ha/devices`;
+    if (entry.maintenance !== true) return 'the maintenance flag is not exposed per device';
+    // The flag must not rewrite what was observed — a client needs the true
+    // state to spot a flagged device that is responding again.
+    if (!['up', 'down', 'unknown'].includes(entry.ping)) return `ping reported as ${entry.ping}`;
+    return true;
+  });
+
+  await test('topology gives maintenance its own status', async () => {
+    const res = await GET('/api/topology');
+    if (res.status !== 200) return `expected HTTP 200, got ${res.status}`;
+    const node = (res.json?.nodes || []).find((n) => n.ip === TEST_IP);
+    if (!node) return `${TEST_IP} missing from the topology`;
+    if (node.status !== 'maintenance') return `status is "${node.status}", not "maintenance"`;
+    const stats = res.json?.stats || {};
+    if (!stats.maintenance) return 'stats.maintenance is missing or zero';
+    return true;
+  });
+
+  await test('clearing maintenance is recorded in the activity log', async () => {
+    // A suppressed alert must be explainable after the fact.
+    const res = await req('PATCH', `/api/ips/${TEST_IP}`, {
+      body: { maintenance: false }, ...asKey(writeKey),
+    });
+    if (res.status !== 200) return `expected HTTP 200, got ${res.status}`;
+    const log = await GET('/api/audit-log?limit=20');
+    const types = (log.json?.entries || []).map((e) => e.type);
+    if (!types.includes('entry.maintenance.off')) return 'no entry.maintenance.off event was recorded';
+    if (!types.includes('entry.maintenance.on')) return 'no entry.maintenance.on event was recorded';
+    return true;
   });
 
   await test('DELETE removes the entry', async () => {
