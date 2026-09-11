@@ -4,6 +4,16 @@ For the full release history see the [CHANGELOG](https://github.com/xy-io/ip-man
 
 ---
 
+## v2.17.0 — Show me what's offline
+
+A new **Offline** button in the filter bar, next to the type and location selectors. One click narrows the list to devices that are not responding, and it carries a live count so you can see at a glance whether anything is down without clicking at all.
+
+It combines with the other filters rather than replacing them, so "offline cameras" or "offline things in the loft" work as you would expect.
+
+Free and reserved addresses are never included — they are placeholders, not devices, and listing them would bury the handful of real problems under every unused address on the network.
+
+---
+
 ## v2.16.0 — API documentation brought up to date
 
 Fourteen endpoints added since v2.3.0 were working but undocumented, so anything built against the written contract — a script, a phone app, a Home Assistant integration — had no way to find them. All are now in the [API reference](API), along with a page covering everything a native client needs.

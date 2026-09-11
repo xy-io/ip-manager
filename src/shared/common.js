@@ -15,7 +15,7 @@ export const loadXLSX = () => {
   return xlsxPromise;
 };
 
-export const APP_VERSION = 'v2.16.0';
+export const APP_VERSION = 'v2.17.0';
 
 // Default network configuration (overridden by Settings modal / localStorage)
 
@@ -50,6 +50,26 @@ export function isTopModal(token) {
 /** Test seam: forget every registered modal. */
 export function resetModalStack() {
   modalStack.length = 0;
+}
+
+
+/**
+ * Does an entry match a status filter?
+ *
+ * The subtlety is that `Free` and `Reserved` are placeholders, not devices.
+ * They never respond to ping, so a naive filter puts every free address in the
+ * "offline" list — which is precisely the list someone opens to find things
+ * that need attention.
+ *
+ * `status` is '' (no filter), 'online', 'offline' or 'unknown'. The ping
+ * vocabulary matches the server's: 'up', 'down', or absent.
+ */
+export function matchesStatusFilter(entry, ping, status) {
+  if (!status) return true;
+  if (!entry) return false;
+  if (entry.assetName === 'Free' || entry.assetName === 'Reserved') return false;
+  const state = ping === 'up' ? 'online' : ping === 'down' ? 'offline' : 'unknown';
+  return state === status;
 }
 
 export function useModalA11y(onClose) {

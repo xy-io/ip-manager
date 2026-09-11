@@ -45,6 +45,10 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
+### v2.17.0 — An offline filter
+
+A one-click **Offline** toggle in the filter bar with a live count, for the common cleanup task the list could not answer. Free and reserved addresses are excluded — they never answer a ping, and including them would return every unused address instead of the few that need attention.
+
 ### v2.16.0 — API documentation brought up to date, and kept there
 
 An audit found 42 undocumented routes, 14 of them reachable with an API key — working endpoints no external client could discover. All now documented, `apiVersion` corrected to 1.1, and the session-only list fixed to include the two prefixes it omitted. Adds an [iOS Client Handover](wiki/iOS-Client-Handover.md) page and a test that fails when a route, capability or version drifts out of the reference.

@@ -6,6 +6,24 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v2.17.0
+
+**An offline filter**
+
+The list could be filtered by type, location and tag, but not by whether a device was actually responding — so the common cleanup task, *show me what is down*, meant reading 87 status dots by eye.
+
+A new **Offline** toggle sits in the filter bar with a live count, so the count answers the question even before it is clicked. It is a toggle rather than another dropdown because that request is nearly always binary, and it composes with the existing filters rather than replacing them.
+
+**Placeholders are excluded, which is the whole point.** `Free` and `Reserved` rows never answer a ping. A filter that treated them as offline would return every unused address on the subnet — on a /24 with a 170-address DHCP pool, roughly 170 rows instead of the handful that genuinely need attention, which would make the feature useless for the job it exists to do.
+
+**A device with no ping result yet is `unknown`, not offline.** Before the first poll completes nothing has a result, and reporting all of it as down would be both alarming and wrong.
+
+When the filter is on and nothing matches, the empty state reads **"Everything is responding"** rather than "No results found" — the same screen, opposite meaning.
+
+The logic moved to `shared/common.js` so it can be tested without a DOM. 5 new unit tests; the suite was validated by removing the placeholder exclusion, which fails immediately.
+
+---
+
 ## v2.16.0
 
 **API documentation brought up to date, and kept there**

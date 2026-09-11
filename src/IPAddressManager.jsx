@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { Search, Server, Monitor, Wifi, HardDrive, Camera, Shield, Globe, Filter, X, MapPin, Cpu, Box, CircleDot, ChevronDown, ChevronUp, Copy, Check, Zap, Download, Edit3, Plus, Trash2, Save, AlertCircle, Settings, Upload, FileText, AlertTriangle, CheckCircle, ChevronRight, Tag, ArrowUpDown, ArrowUp, ArrowDown, HelpCircle, LogOut, Moon, Sun, MoreHorizontal, Terminal, RotateCw } from 'lucide-react';
-import { loadXLSX, APP_VERSION, useModalA11y, DEFAULT_NETWORK_CONFIG, ipOrdinal, rangeOrdinal, subnetOctetCount, isInDHCPRange, parseCIDR } from './shared/common';
+import { loadXLSX, APP_VERSION, useModalA11y, matchesStatusFilter, DEFAULT_NETWORK_CONFIG, ipOrdinal, rangeOrdinal, subnetOctetCount, isInDHCPRange, parseCIDR } from './shared/common';
 
 // ── Lazily-loaded modals ─────────────────────────────────────────────────────
 // None of these are on screen at first paint, and most sessions never open
@@ -5350,6 +5350,9 @@ export default function IPAddressManager() {
   const [showCIDR, setShowCIDR] = useState(false);
   const [showSubnet, setShowSubnet] = useState(false);
   const [showTopology, setShowTopology] = useState(false);
+  // '' | 'offline' | 'online' | 'unknown'. Kept alongside the other filters
+  // rather than as a separate mode, so it composes with search, type and tag.
+  const [selectedStatus, setSelectedStatus] = useState('');
   const [showMdns, setShowMdns] = useState(false);
   const [showWatch, setShowWatch] = useState(false);
   const [whatsNew, setWhatsNew] = useState(null);   // { releases } once the server says to show it
@@ -5933,9 +5936,12 @@ export default function IPAddressManager() {
       const matchesLocation = !selectedLocation || item.location === selectedLocation;
       const matchesTag = !selectedTag || itemTags.includes(selectedTag);
 
-      return matchesSearch && matchesType && matchesLocation && matchesTag;
+      const matchesStatus = matchesStatusFilter(item, pingStatus[item.ip], selectedStatus);
+
+      return matchesSearch && matchesType && matchesLocation && matchesTag && matchesStatus;
     });
-  }, [allDisplayData, searchTerm, selectedType, selectedLocation, selectedTag, showReserved]);
+  }, [allDisplayData, searchTerm, selectedType, selectedLocation, selectedTag, showReserved,
+      selectedStatus, pingStatus]);
 
   const sortedData = useMemo(() => {
     if (!sortField) return filteredData;
@@ -5973,6 +5979,10 @@ export default function IPAddressManager() {
     return {
       total: networkIpData.length,
       active: active.length,
+      // Live ping state, so the offline toggle can carry a count. Placeholders
+      // have no status and are excluded.
+      offline: active.filter(i => pingStatus[i.ip] === 'down').length,
+      online: active.filter(i => pingStatus[i.ip] === 'up').length,
       virtual: active.filter(i => i.type === 'Virtual').length,
       physical: active.filter(i => i.type === 'Physical').length,
       reserved: networkIpData.filter(i => i.assetName === 'Reserved').length,
@@ -5980,7 +5990,7 @@ export default function IPAddressManager() {
       staticAssigned: staticAssigned.length,
       dhcpPoolSize: dhcpSize,
     };
-  }, [networkIpData, freeStaticIPs, networkConfig]);
+  }, [networkIpData, freeStaticIPs, networkConfig, pingStatus]);
 
   // Actions
   const handleSort = (field) => {
@@ -5998,6 +6008,7 @@ export default function IPAddressManager() {
     setSelectedType('');
     setSelectedLocation('');
     setSelectedTag('');
+    setSelectedStatus('');
   };
 
   // Rename a location across all entries.
@@ -7191,6 +7202,28 @@ export default function IPAddressManager() {
               ))}
             </select>
 
+            {/* A toggle rather than another dropdown: the common need is "show me
+                what is down so I can deal with it", and that should be one click.
+                It composes with the other filters rather than replacing them. */}
+            <button
+              onClick={() => setSelectedStatus(selectedStatus === 'offline' ? '' : 'offline')}
+              aria-pressed={selectedStatus === 'offline'}
+              title={selectedStatus === 'offline'
+                ? 'Showing offline devices only — click to show all'
+                : 'Show only devices that are not responding'}
+              className={`px-3 py-2 rounded-lg text-sm border transition-colors flex items-center gap-2 ${
+                selectedStatus === 'offline'
+                  ? 'bg-red-50 border-red-300 text-red-700'
+                  : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}>
+              <span className={`inline-block w-2 h-2 rounded-full ${stats.offline ? 'bg-red-400' : 'bg-slate-300'}`} />
+              Offline
+              {stats.offline > 0 && (
+                <span className={`text-xs font-medium ${selectedStatus === 'offline' ? 'text-red-700' : 'text-slate-400'}`}>
+                  {stats.offline}
+                </span>
+              )}
+            </button>
+
             <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
               <input
                 type="checkbox"
@@ -7980,7 +8013,9 @@ export default function IPAddressManager() {
         {filteredData.length === 0 && (
           <div className="text-center py-12">
             <Filter className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-slate-700 mb-1">No results found</h3>
+            <h3 className="text-lg font-medium text-slate-700 mb-1">
+              {selectedStatus === 'offline' ? 'Everything is responding' : 'No results found'}
+            </h3>
             <p className="text-slate-500">Try adjusting your search or filters</p>
           </div>
         )}
