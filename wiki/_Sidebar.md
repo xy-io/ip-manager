@@ -17,6 +17,7 @@
 - [Service Health Checks](Service-Health-Checks)
 - [Domain Tracker](Domain-Tracker)
 - [API](API)
+- [iOS Client Handover](iOS-Client-Handover)
 - [Home Assistant API](Home-Assistant-API)
 - [Notifications](Notifications)
 - [Topology](Topology)

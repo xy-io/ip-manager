@@ -6,7 +6,7 @@ Two complementary suites: **unit tests** catch broken logic, **smoke tests** cat
 
 ## Unit tests
 
-From **v2.7.0**, `npm test` runs 259 unit tests over the parts of the server that have historically broken. Node's built-in test runner is used, so there is no framework and no extra dependency.
+From **v2.7.0**, `npm test` runs 265 unit tests over the parts of the server that have historically broken. Node's built-in test runner is used, so there is no framework and no extra dependency.
 
 ```bash
 cd /opt/ip-manager
@@ -26,6 +26,7 @@ They need no running server and no database — an overridable `DB_PATH` points 
 | `lib/twoFactor.js` | Enrolment, recovery codes, and that enabling requires a verified code |
 | `lib/topology.js` | Graph derivation, hypervisor name matching, gateway inference, and that a circular dependency terminates |
 | `lib/watch.js` | That the Network Watch ledger cannot grow without bound — a simulated year of scanning, a flood of fabricated MACs, per-record caps, retention and eviction order |
+| `apiDocs.test.js` | That every API-key-reachable route, capability flag and the served `apiVersion` appear in the API reference — so a platform change cannot ship without its documentation |
 | `shared/common.js` | Modal ordering: only the topmost overlay responds to Escape, including when they close out of order |
 | `lib/releaseNotes.js` | Numeric version ordering, multi-version catch-up, and that the running version actually has notes written for it |
 | `lib/pihole.js` | Session reuse (20 fetches must produce 1 login), retry bounds, credential handling, and that a DHCP name never overrides a better one |

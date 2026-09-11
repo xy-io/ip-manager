@@ -45,6 +45,10 @@ The app understands your network layout and is fully configurable via the ⚙️
 
 You can paste your full network address (e.g. `192.168.0.0` or `172.16.0.0`) and the app strips trailing zeros automatically to derive the correct prefix.
 
+### v2.16.0 — API documentation brought up to date, and kept there
+
+An audit found 42 undocumented routes, 14 of them reachable with an API key — working endpoints no external client could discover. All now documented, `apiVersion` corrected to 1.1, and the session-only list fixed to include the two prefixes it omitted. Adds an [iOS Client Handover](wiki/iOS-Client-Handover.md) page and a test that fails when a route, capability or version drifts out of the reference.
+
 ### v2.15.1 — The "what's new" dialog now actually appears
 
 v2.14.0 added it and then hid it: an install with no record of a previous version was treated as brand new, and every existing install updating into the feature had no record either. An established install is now recognised by already having an inventory. **Settings → Updates** also gains a **Show what's new** button available at any time.

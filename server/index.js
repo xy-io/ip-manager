@@ -568,7 +568,12 @@ app.get('/api/health', (req, res) => {
 // additive changes, major for anything a client must be updated to handle.
 app.get('/api/capabilities', (req, res) => {
   res.json({
-    apiVersion: '1.0',
+    // Bumped for the additive endpoints added since v2.3.0: topology, device
+    // history, mDNS, Network Watch, Pi-hole DHCP and release notes. Nothing
+    // existing changed shape, so this stays a minor bump — but a client that
+    // pinned "1.0" had no way to tell a v2.3.0 server from a v2.15.1 one.
+    // `capabilities` remains the reliable feature test.
+    apiVersion: '1.1',
     serverVersion: APP_VERSION,
     capabilities: {
       inventory:         true,

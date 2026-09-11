@@ -116,6 +116,7 @@ See [CHANGELOG.md](./CHANGELOG.md) for a full history of released features.
 
 | Version | Feature |
 |---------|---------|
+| v2.16.0 | API reference completed and enforced by test; client handover page |
 | v2.15.1 | The what's new dialog appears for installs updating into the feature |
 | v2.15.0 | Add discovered devices to the inventory from Network Watch; modal Escape ordering fixed |
 | v2.14.0 | "What's new" dialog on the first load after an update, sourced from the wiki |

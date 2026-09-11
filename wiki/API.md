@@ -4,6 +4,8 @@ From **v2.1.0** IP Manager exposes a documented HTTP API for external clients �
 
 For the Home Assistant sensor endpoints specifically, see [Home Assistant API](Home-Assistant-API).
 
+Building a native client? [iOS Client Handover](iOS-Client-Handover) covers everything added since v2.3.0, with the gotchas.
+
 ---
 
 ## API keys
@@ -43,7 +45,9 @@ Grant the narrowest scope that works. Home Assistant only ever reads, so a read-
 }
 ```
 
-`apiVersion` gains a minor bump for additive changes and a major bump for anything a client must be updated to handle.
+`apiVersion` gains a minor bump for additive changes and a major bump for anything a client must be updated to handle. It is **1.1** as of v2.15.1.
+
+**Test `capabilities`, not `apiVersion` or the server version.** A capability flag answers the only question a client actually has — "can I call this?" — and stays correct when a feature is present but switched off (`networkWatch` is `true` on any server that has the endpoints; whether the user enabled it is answered by `GET /api/watch/status`).
 
 > **Native clients:** from **v2.3.0** every endpoint below accepts `X-API-Key` with no session cookie. Before that, around 48 routes applied session-only authentication internally and returned `401` to key-authenticated callers even though the key was valid. If a client sees `401` on Domains, Ping, Service Health, ARP, DNS or Proxmox, the server is older than v2.3.0.
 
@@ -92,9 +96,13 @@ Every failure uses the same body shape:
 
 An API key is deliberately refused on account and maintenance routes, regardless of scope. Those require a browser session:
 
-`/api/auth/*` · `/api/keys/*` · `/api/update/*` · `/api/support/*` · `/api/backup/*` · `/api/ha/key`
+`/api/auth/*` · `/api/keys/*` · `/api/update/*` · `/api/support/*` · `/api/backup/*` · `/api/ha/key` · `/api/audit-log` · `/api/notifications/*`
 
 So a key can never mint another key, change your password, trigger an update, or download a support bundle.
+
+`/api/audit-log` and `/api/notifications/*` are on that list for specific reasons: the audit log records failed-login usernames and source addresses, and the notification configuration could otherwise be repointed at a destination of the caller's choosing. Both stay behind a browser session.
+
+A key used against any of these returns **403**, not 401 — the key is valid, the route is not available to it.
 
 ---
 
@@ -154,6 +162,37 @@ They are omitted for session-authenticated requests, because the web UI writes t
 | `POST` | `/api/whats-new/seen` | write | Acknowledge. `{ "suppress": true }` stops them permanently |
 | `POST` | `/api/whats-new/reset` | write | Undo a permanent suppression |
 | `POST` | `/api/pihole/test` | write | Try settings without saving them. Returns `{ ok, leaseCount, namedCount }` or `{ ok: false, error }` |
+
+### Discovery and identification
+
+| Method | Path | Scope | Description |
+|---|---|---|---|
+| `GET` | `/api/health` | read | `{ ok, mode }`. Unauthenticated-friendly liveness check used by the web client to detect API mode |
+| `GET` | `/api/mac/vendor?mac=…` | read | IEEE OUI lookup for one MAC. `{ mac, vendor }`, `vendor` is `null` when unknown |
+| `POST` | `/api/proxmox/discover` | write | Probe a Proxmox host for reachable nodes before configuring sync |
+| `GET` | `/api/arp-presence/config` | read | Background discovery sweep settings and last-seen tracking |
+| `POST` | `/api/arp-presence/config` | write | Update them |
+| `POST` | `/api/arp-presence/scan` | write | Run the background discovery sweep now |
+| `POST` | `/api/arp-presence/clear-last-seen` | write | Forget stored last-seen timestamps |
+| `GET` | `/api/dns-config` | read | Per-network resolver configuration |
+| `POST` | `/api/dns-config` | write | Update it |
+| `POST` | `/api/import` | write | Bulk import. `{ rows, mode, networkId }` where `mode` is `merge` or `replace`. **Prefer the per-entry endpoints** — this replaces or merges wholesale |
+
+### Domains
+
+| Method | Path | Scope | Description |
+|---|---|---|---|
+| `DELETE` | `/api/domains/:id` | write | Stop tracking a domain |
+| `POST` | `/api/domains/:id/refresh` | write | Re-query RDAP for one domain now |
+
+### Server and updates
+
+| Method | Path | Scope | Description |
+|---|---|---|---|
+| `GET` | `/api/version-check` | read | `{ current, latest, updateAvailable }` — compares against the published release |
+| `GET` | `/api/changelog` | read | The raw CHANGELOG, for showing release notes in a client |
+
+Update *execution* (`/api/update/*`) is session-only and cannot be triggered with a key.
 
 ### Status
 

@@ -4,6 +4,14 @@ For the full release history see the [CHANGELOG](https://github.com/xy-io/ip-man
 
 ---
 
+## v2.16.0 — API documentation brought up to date
+
+Fourteen endpoints added since v2.3.0 were working but undocumented, so anything built against the written contract — a script, a phone app, a Home Assistant integration — had no way to find them. All are now in the [API reference](API), along with a page covering everything a native client needs.
+
+Nothing changed on the server: this is documentation catching up, plus a check that stops it falling behind again.
+
+---
+
 ## v2.15.1 — The what's new box now actually appears
 
 v2.14.0 added a summary shown after each update, and then did not show it — because an install with no record of a previous version was treated as brand new, and a brand new install has nothing to announce. Every existing install updating into the feature fell into that gap, so the one release where it mattered was the one where it stayed silent.

@@ -6,6 +6,25 @@ The current version's release notes are always shown in [README.md](./README.md)
 
 ---
 
+## v2.16.0
+
+**API documentation brought up to date, and kept there**
+
+An audit found **42 undocumented routes**, of which **14 were genuinely reachable with an API key**. Everything the web front end could do, an external client could too — it just had no way to know. All are now documented: `/api/health`, `/api/mac/vendor`, `/api/import`, `/api/proxmox/discover`, the four `/api/arp-presence/*` routes, `/api/dns-config`, the two domain routes, `/api/version-check` and `/api/changelog`.
+
+**Two smaller defects in the contract:**
+
+- `apiVersion` was still **1.0** despite six additive features since v2.3.0. A client that pinned it could not tell a v2.3.0 server from a v2.15.1 one. Now **1.1** — still additive, nothing existing changed shape.
+- The documented session-only list omitted `/api/audit-log` and `/api/notifications/*`, which really do refuse API keys. A client author would have got a `403` with no explanation of why.
+
+**A new page: [iOS Client Handover](iOS-Client-Handover).** Everything the server gained between v2.3.0 and now, written for whoever builds the native app — response shapes, the opt-in features that are invisible on a default install, and the traps. Chief among them: honour `canFillName` before applying an mDNS suggestion, exclude randomised MACs from anything resembling an intruder count, and show scan `warnings` rather than an unexplained empty list.
+
+**Enforced rather than remembered.** `server/test/apiDocs.test.js` fails when a key-reachable route is missing from the reference, when the session-only list drifts from what the server enforces, when a capability flag is advertised but undocumented, or when the documented `apiVersion` disagrees with the served one. Documentation that depends on someone remembering is documentation that goes stale; this makes a platform change and its API documentation land in the same release by construction.
+
+Verified by removing a documented endpoint and confirming the suite fails.
+
+---
+
 ## v2.15.1
 
 **The "what's new" dialog now actually appears**

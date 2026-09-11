@@ -18,6 +18,7 @@ Deploy it as a lightweight LXC container on Proxmox and get a live dashboard sho
 | 💙 [Service Health Checks](Service-Health-Checks) | HTTP/HTTPS probes per device |
 | 🌐 [Domain Tracker](Domain-Tracker) | Track domain expiry via RDAP |
 | 🔌 [API](API) | Named API keys and the full endpoint reference |
+| 📱 [iOS Client Handover](iOS-Client-Handover) | Everything a native client needs, since v2.3.0 |
 | 🏠 [Home Assistant API](Home-Assistant-API) | Pull network data into Home Assistant |
 | 🔔 [Notifications](Notifications) | Alerts via ntfy or webhook when something breaks |
 | 📋 [Activity Log](Activity-Log) | Who signed in and what changed |
