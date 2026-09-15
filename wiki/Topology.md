@@ -75,3 +75,7 @@ Turning on **Show gateway links** is the quick way to see something on a network
 - Dependencies pointing at entries that no longer exist are ignored rather than drawn as dangling links.
 - The layout is deterministic — the same devices appear in the same places each time you open it, rather than shuffling on every load.
 - Both are available to API clients: `GET /api/topology`, `GET /api/topology/impact/:ip` and `GET /api/ips/:ip/history`. See [API](API).
+
+## Planned maintenance
+
+From v2.18.0, flagged devices have a separate `maintenance` status and count, rather than being counted as online or offline. See [Maintenance & Offline Filter](Maintenance-and-Offline-Filter).

@@ -34,7 +34,8 @@ Network overview — the most useful endpoint for dashboard sensors.
 {
   "devices_total": 87,
   "devices_online": 71,
-  "devices_offline": 16,
+  "devices_offline": 13,
+  "devices_maintenance": 3,
   "devices_unknown": 0,
   "networks": 1,
   "domains_total": 11,
@@ -43,6 +44,8 @@ Network overview — the most useful endpoint for dashboard sensors.
   "updated": "2026-08-05T10:15:00.000Z"
 }
 ```
+
+From v2.18.0, `devices_maintenance` is counted separately from online, offline and unknown. These endpoints include inventory placeholder entries; their totals need not match the dashboard’s Offline filter, which excludes Free and Reserved rows. See [Maintenance & Offline Filter](Maintenance-and-Offline-Filter).
 
 ### `GET /api/ha/devices`
 
@@ -56,7 +59,8 @@ Every tracked entry with its current status.
 | `type` | Device type, or `null` |
 | `network` | Network name, or `null` |
 | `tags` | Array of tags |
-| `ping` | `online`, `offline`, or `unknown` |
+| `ping` | Actual observed reachability: `online`, `offline`, or `unknown`, even during maintenance |
+| `maintenance` | Boolean; suppress your own offline automation when this is `true` |
 | `health` | Service health check result, or `null` if not enabled |
 | `health_code` | HTTP status code from the health check, or `null` |
 
@@ -115,8 +119,11 @@ automation:
       - platform: template
         value_template: >
           {{ state_attr('sensor.network_device_list', 'devices')
+             | default([], true)
              | selectattr('ip', 'eq', '192.168.0.50')
-             | map(attribute='ping') | first == 'offline' }}
+             | rejectattr('maintenance', 'eq', true)
+             | selectattr('ping', 'eq', 'offline')
+             | list | count > 0 }}
         for: "00:05:00"
     action:
       - service: notify.mobile_app

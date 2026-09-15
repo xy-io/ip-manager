@@ -43,7 +43,7 @@ The script will:
 - Generate a **unique random password** for first login
 - Print your credentials at the end
 
-> **Save the credentials printed at the end of the install.** They are also logged to the systemd journal and stored in `/opt/ip-manager/server/credentials.env`.
+> **Save the credentials printed at the end of the install.** The generated password is shown in the systemd journal at first setup; the credentials file stores its bcrypt hash, not the recoverable password.
 
 ---
 
@@ -55,7 +55,7 @@ Open your browser and navigate to the container's IP address:
 http://<container-ip>
 ```
 
-Use the username and password printed at the end of the install script. You will be prompted to change the password on first login.
+Use the username and password printed at the end of the install script. A generated password opens the dashboard. Only legacy default credentials require an immediate password change; you can change generated credentials in Settings.
 
 See [First Login & Security](First-Login) for next steps.
 
@@ -89,7 +89,7 @@ cat /opt/ip-manager/server/credentials.env
 |---|---|
 | `/opt/ip-manager/` | Application root |
 | `/opt/ip-manager/server/credentials.env` | Username and password |
-| `/opt/ip-manager/server/data.db` | SQLite database (all your data) |
+| `/opt/ip-manager/server/ip-manager.db` | SQLite application database (credentials and rclone configuration are separate files) |
 | `/etc/nginx/sites-available/ip-manager` | Nginx config |
 | `systemctl status ip-manager-api` | Service status |
 

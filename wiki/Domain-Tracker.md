@@ -1,6 +1,6 @@
 # Domain Tracker
 
-The Domain Tracker lets you monitor domain registration expiry alongside your IP entries — all in one place. It uses IANA RDAP to fetch registrar details, expiry dates, and nameservers automatically. No API keys or third-party services required.
+The Domain Tracker lets you monitor domain registration expiry alongside your IP entries — all in one place. It uses IANA RDAP to fetch registrar details, expiry dates, and nameservers automatically. No lookup API key is required. Lookups contact IANA and the relevant registry’s RDAP service. Returned fields and availability depend on that registry.
 
 ---
 
@@ -61,13 +61,9 @@ To refresh a single domain immediately, click the **↻** button on its card.
 
 ## Supported TLDs
 
-Domain Tracker uses the **IANA RDAP bootstrap registry**, which covers **1,400+ TLDs** including:
+Domain Tracker uses IANA bootstrap data to locate registry RDAP services. Many generic and country-code domains are supported, but support is not universal: the registry must publish an accessible RDAP endpoint and provide the requested fields.
 
-- All legacy TLDs: `.com`, `.net`, `.org`, `.co.uk`, etc.
-- New generic TLDs: `.app`, `.dev`, `.io`, `.tech`, `.online`, `.watch`, `.pro`, `.xyz`, and hundreds more
-- Country-code TLDs: most ccTLDs that publish RDAP endpoints
-
-Some ccTLDs do not operate public RDAP servers (notably a few older ones). For these, the card will show "Could not fetch RDAP data" — this is a limitation of the TLD's registry, not the app.
+A missing expiry date can mean that the registry did not return it, rather than that the domain has no expiry. Registry outages and rate limits can also cause lookup failures.
 
 ---
 
@@ -76,7 +72,7 @@ Some ccTLDs do not operate public RDAP servers (notably a few older ones). For t
 **"Could not fetch RDAP data"**
 - The domain's TLD registry may not support RDAP, or their server may be temporarily unavailable
 - Try the manual refresh button — transient failures are common
-- Some older ccTLDs (e.g. certain `.uk` variants) have non-standard RDAP implementations
+- Registry coverage, returned fields and rate limits vary; check whether the registry publishes the details you need
 
 **Registrar shown as a number**
 - This was a bug in versions prior to v1.31, where the IANA numeric registrar ID was displayed instead of the name. Update to v1.31 or later to fix this.

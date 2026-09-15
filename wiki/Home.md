@@ -2,7 +2,7 @@
 
 A clean, fast web app for managing your home network's IP addresses — built to replace the spreadsheet you've been using for years.
 
-Deploy it as a lightweight LXC container on Proxmox and get a live dashboard showing every device on your network, their status, services, and more.
+Documentation updated for **v2.18.0**. Deploy it as a lightweight LXC container on Proxmox to track your inventory, reachability, services and dependencies.
 
 ---
 
@@ -25,7 +25,8 @@ Deploy it as a lightweight LXC container on Proxmox and get a live dashboard sho
 | 🕸 [Topology](Topology) | How your devices depend on each other |
 | 📡 [mDNS Discovery](mDNS-Discovery) | Friendly names, straight from the network |
 | 👁 [Network Watch](Network-Watch) | Opt-in record of devices seen on your network |
-| 💾 [Backup & Restore](Backup-and-Restore) | Export and restore your data |
+| 🔧 [Maintenance & Offline Filter](Maintenance-and-Offline-Filter) | Separate planned downtime from faults |
+| 💾 [Backup & Restore](Backup-and-Restore) | Inventory exports, scheduled backups and full recovery |
 | 🔄 [Updating](Updating) | Keep the app up to date |
 | ✅ [Testing](Testing) | Verify an install end-to-end |
 | 📋 [Release Checklist](Release-Checklist) | What every release must confirm, and what tests cannot |
@@ -37,14 +38,16 @@ Deploy it as a lightweight LXC container on Proxmox and get a live dashboard sho
 
 - **Live ping monitoring** — every IP gets a green/red status dot, refreshed every 60 seconds via fping
 - **Service health checks** — optional HTTP/HTTPS probe per entry; sky-blue = up, orange = down
-- **ARP scan & discovery** — one-click sweep finds everything on your subnet
+- **ARP scan & discovery** — sweep a reachable local subnet for responding devices
 - **Proxmox integration** — import VMs and LXC containers directly from the API, with scheduled background sync
 - **DNS reverse lookup** — PTR records resolved against your own DNS server (Pi-hole, Unbound, etc.)
-- **Domain Tracker** — track domain expiry via IANA RDAP, no API keys needed, 1,400+ TLDs supported
+- **Domain Tracker** — retrieve registry-provided domain details via RDAP without a lookup API key; coverage depends on the registry
 - **Multi-network / VLAN** — manage multiple subnets independently, switch between them instantly
 - **500+ service icons** — automatic logos for Home Assistant, Proxmox, Sonarr, Pi-hole, and many more
 - **Import & export** — CSV/Excel import with column mapping; export to formatted .xlsx
-- **Backup & restore** — single JSON file captures everything; restore on any machine in one click
+- **Backup & restore** — export networks and inventory as JSON, schedule uploads with rclone, or use a container/database backup for fuller recovery; see the guide for exclusions
+- **Maintenance mode** — planned downtime stays out of offline counts and offline alerts until you clear the flag
+- **Offline filter** — one-click view of non-responding devices, excluding placeholders, unknown status and maintenance
 - **QR codes** — generate a QR code for any IP entry
 - **CIDR & subnet calculators** — built-in network calculators in the Tools menu
 - **HTTP API** — named, scoped API keys for external clients; per-entry create/update/delete plus read-only status endpoints for Home Assistant

@@ -32,8 +32,8 @@ Grant the narrowest scope that works. Home Assistant only ever reads, so a read-
 
 ```json
 {
-  "apiVersion": "1.0",
-  "serverVersion": "2.3.0",
+  "apiVersion": "1.2",
+  "serverVersion": "2.18.0",
   "capabilities": {
     "inventory": true, "networks": true, "ping": true, "serviceHealth": true,
     "domains": true, "domainWrite": true, "arpScan": true, "arpPresence": true,

@@ -105,7 +105,7 @@ cat /opt/ip-manager/server/.update-result.json
 If your install was set up before v1.29, your `credentials.env` file may be empty or tracked by git. The update script handles this automatically:
 
 - If `credentials.env` is tracked by git, it is un-tracked before pulling (so git doesn't conflict with it)
-- If `credentials.env` is empty, the server falls back to `admin`/`admin` and forces a password change on next login
+- If no usable file or environment credentials exist, the server generates fresh credentials and logs them. Legacy `admin`/`admin` credentials, when present, trigger the mandatory password change.
 
 ### Nginx timeout (pre-v1.28)
 
@@ -125,11 +125,10 @@ journalctl -u ip-manager-api -n 50 --no-pager
 ```
 This shows the last 50 lines of service logs. Common causes: missing dependency, port conflict, syntax error in a config file.
 
-**Rolled back / want to revert**
-```bash
-cd /opt/ip-manager
-git log --oneline -10          # find the commit you want to revert to
-git checkout <commit-hash>
-npm run build
-systemctl restart ip-manager-api
-```
+**Need to return to an older release?**
+
+Use a known-good container backup or investigate the updater’s automatic rollback first. Do not use a bare `git checkout` as a recovery procedure: it can leave dependencies, database state and credentials inconsistent. See [Backup & Restore](Backup-and-Restore).
+
+## See what changed
+
+From v2.14.0, an established installation can show release summaries after an update. Use **Settings → Updates → Show what's new** to revisit them. Summaries can be disabled and enabled again there. See [What's New](Whats-New).

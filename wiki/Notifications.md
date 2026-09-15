@@ -114,3 +114,7 @@ Raise the consecutive-cycle threshold, or turn off `device.online` so recoveries
 
 **A device alerts every night**
 Something is going to sleep. Either raise the threshold or take that device out of ping monitoring.
+
+## Planned maintenance
+
+From v2.18.0, **Under maintenance** suppresses device-offline notifications for that entry until you clear the flag. It does not disable unrelated alert types. See [Maintenance & Offline Filter](Maintenance-and-Offline-Filter). Network Watch remains observation-only and does not send its own alerts.

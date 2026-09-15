@@ -80,6 +80,7 @@ The failure is not asking you to regenerate a file. It is the prompt to decide, 
 5. Version bumped in `package.json` **and** `src/shared/common.js`
 6. Entries written in `CHANGELOG.md`, `README.md`, `ROADMAP.md` and [What's New](Whats-New)
 7. Wiki links resolve
+8. Publish the `wiki/*.md` files to the separate GitHub wiki repository and compare the published pages with the source. Updating the main repository alone does not publish the wiki.
 
 ---
 
