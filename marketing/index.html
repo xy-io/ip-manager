@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>IP Manager — Home Lab Network Control Centre</title>
+  <meta name="description" content="Self-hosted IP management for home labs: live monitoring, maintenance mode, topology, device discovery, Proxmox, Pi-hole and Home Assistant integration." />
+  <link rel="canonical" href="https://ip-manager.app/" />
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -318,6 +320,14 @@
       .stats-grid { grid-template-columns: 1fr 1fr; }
       h1 { font-size: 2rem; }
     }
+    .feat-card p, .integ-card p, .step p { font-size: 1rem; }
+    .feat-card h3, .integ-card h3 { font-size: 1.05rem; }
+    .integ-card a { color: var(--emerald); text-underline-offset: .2em; }
+    .two-col > div { min-width: 0; }
+    .two-col p, .two-col li { font-size: 1rem !important; }
+    .two-col a { font-size: .875rem !important; }
+    .two-col li { align-items: baseline !important; }
+    .feat-card, .integ-card { overflow-wrap: anywhere; }
   </style>
 </head>
 <body>
@@ -340,7 +350,7 @@
 
 <!-- WHAT'S NEW BANNER -->
 <div class="whats-new-bar">
-  <strong>v2.6.0</strong> just landed — the app bundle is half the size, so first load is markedly faster.
+  <strong>v2.18.0</strong> — Maintenance mode keeps planned downtime out of your offline alerts.
   <a href="#changelog">See what's new →</a>
 </div>
 
@@ -357,7 +367,7 @@
   <h1>Know every IP<br/>on your <span>network</span></h1>
 
   <p class="hero-sub">
-    A full-stack web app that replaces your sprawling IP spreadsheet with a beautiful, real-time dashboard — built for home labs, deployed as a lightweight LXC container. Track IPs, services, domains, and health all in one place.
+    Replace your IP spreadsheet with a self-hosted dashboard for your home lab. Track addresses, services and domains, discover devices, trace dependencies, and see what needs attention — from one lightweight LXC container.
   </p>
 
   <div class="hero-actions">
@@ -401,7 +411,7 @@
     </div>
     <div>
       <div class="stat-item-num">500+</div>
-      <div class="stat-item-label">Built-in service icons</div>
+      <div class="stat-item-label">Service icon library</div>
     </div>
     <div>
       <div class="stat-item-num">60s</div>
@@ -409,7 +419,7 @@
     </div>
     <div>
       <div class="stat-item-num">Zero</div>
-      <div class="stat-item-label">Cloud deps or sign-ups</div>
+      <div class="stat-item-label">Required cloud accounts</div>
     </div>
   </div>
 </div>
@@ -420,14 +430,81 @@
   <div class="container">
     <div class="section-label">Everything you need</div>
     <h2 class="section-title">A proper tool for a proper lab</h2>
-    <p class="section-body">No more hunting through spreadsheets. IP Manager gives your home network the visibility it deserves — live status, smart search, domain tracking, and Proxmox integration all in one place.</p>
+    <p class="section-body">Find an address, investigate an outage, or plan a server restart. Keep your inventory, live status, device history and network relationships together.</p>
 
     <div class="features-grid">
 
       <div class="feat-card">
+        <div class="feat-icon amber">🔧</div>
+        <h3>Maintenance Mode</h3>
+        <p>Mark a device Under maintenance during planned work. It leaves the offline count and stops triggering offline alerts. Clear the flag when you are ready; the Maintenance filter reminds you when a flagged device responds again.</p>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon green">🔎</div>
+        <h3>Offline Filter</h3>
+        <p>Show only devices that are not responding, with a live count and your existing type, location and tag filters. Free, reserved, unknown and maintenance entries stay out of the fault list.</p>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon indigo">🔗</div>
+        <h3>Network Topology &amp; Impact</h3>
+        <p>See recorded dependencies and Proxmox guest-to-host relationships in Tools → Topology. Select a device to trace what depends on it before a restart. Optional gateway links add subnet context.</p>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon sky">🕒</div>
+        <h3>Device Status History</h3>
+        <p>Expand an IP card to see when the device last responded, its outage count over the last 30 days, and a timeline of status transitions. Investigate intermittent failures without guessing.</p>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon teal">📡</div>
+        <h3>mDNS Discovery</h3>
+        <p>Discover names and advertised services from compatible Apple devices, Chromecasts, printers, NAS boxes and more. Review suggestions to fill blank names without replacing your own labels. Multicast normally stays within a subnet.</p>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon green">👁</div>
+        <h3>Network Watch</h3>
+        <p>Enable an optional view of device identities seen on your network. Review unrecognised devices and add them through a pre-filled edit form. Randomised MAC addresses are excluded from the unrecognised count. Observation only: this feature does not send alerts.</p>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon purple">🏷</div>
+        <h3>Better Device Identification</h3>
+        <p>See manufacturer and virtualisation-platform badges, including Proxmox, QEMU/KVM and Hyper-V, plus duplicate ARP reply indicators. Optional Pi-hole DHCP names help identify devices when Pi-hole is your DHCP server.</p>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon amber">🔔</div>
+        <h3>Notifications &amp; Activity Log</h3>
+        <p>Send device-offline, service-health, domain-expiry and backup-failure alerts to ntfy or a webhook. Consecutive-failure thresholds reduce transient ping alerts. Review the latest 500 activity events, including sign-ins and inventory changes.</p>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon indigo">🔑</div>
+        <h3>API Keys &amp; Automation</h3>
+        <p>Give each script or client a named read-only or read/write key that you can revoke independently. Edit individual entries with conflict detection and discover supported capabilities. Account administration remains session-only. See the API reference for endpoint access.</p>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon sky">🏠</div>
+        <h3>Home Assistant</h3>
+        <p>Bring device counts, reachability, service health and domain expiry into your Home Assistant dashboard. Generate a configuration snippet in Settings and use a dedicated API key. Maintenance status is included.</p>
+      </div>
+
+      <div class="feat-card">
+        <div class="feat-icon pink">✨</div>
+        <h3>Faster Loading &amp; Update Summaries</h3>
+        <p>Less to download on first load: heavier tools and dialogs load when needed. After an update, see a short summary of changes, revisit it in Settings → Updates, or switch those summaries off.</p>
+      </div>
+
+
+      <div class="feat-card">
         <div class="feat-icon green">🟢</div>
         <h3>Live Ping Monitoring</h3>
-        <p>Every card shows a real-time reachability dot. The server runs fping against all tracked IPs every 60 seconds — green means online, red means gone. No client-side polling required.</p>
+        <p>The server checks tracked IPs with fping every 60 seconds. Reachability dots show which devices respond, while maintenance status distinguishes planned downtime from faults.</p>
       </div>
 
       <div class="feat-card">
@@ -436,10 +513,10 @@
         <p>Opt-in HTTP/HTTPS probe per entry. A sky-blue dot means the service is responding; orange means it's down. Ports are auto-suggested for 60+ common services. Self-signed TLS certs are handled gracefully.</p>
       </div>
 
-      <div class="feat-card new-card">
+      <div class="feat-card">
         <div class="feat-icon teal">🌐</div>
-        <h3>Domain Tracker <span class="new-badge">New</span></h3>
-        <p>Track domain registrations alongside your IP entries. Add any domain and the app fetches registrar, expiry date, and nameservers via IANA RDAP — no API keys needed, 1,400+ TLDs supported. Colour-coded expiry badges and daily auto-refresh.</p>
+        <h3>Domain Tracker</h3>
+        <p>Track registrations alongside your IP entries. RDAP lookups fetch registrar, expiry and nameserver details where the registry provides them, with colour-coded expiry badges and daily refresh. No lookup API key required.</p>
       </div>
 
       <div class="feat-card">
@@ -487,7 +564,7 @@
       <div class="feat-card">
         <div class="feat-icon green">💾</div>
         <h3>Backup &amp; Restore</h3>
-        <p>One click downloads a full JSON backup — all entries, all networks, all tags, change history, everything. Restore to a new machine instantly.</p>
+        <p>Download a JSON backup of your inventory, networks, tags and change history, then restore it on another installation. Network Watch’s observation ledger is deliberately excluded from backups.</p>
       </div>
 
       <div class="feat-card">
@@ -504,8 +581,8 @@
 
       <div class="feat-card">
         <div class="feat-icon amber">🔒</div>
-        <h3>Secure by Default</h3>
-        <p>Fresh installs generate a unique random password on first start — never ships with a known default. The installer prints credentials at the end of setup. If an install still has default credentials, the API locks down until the password is changed.</p>
+        <h3>Security &amp; Two-Factor Authentication</h3>
+        <p>Fresh installs generate a unique password, stored as a bcrypt hash. Login throttling and expiring sessions protect browser access. Optional two-factor authentication adds an authenticator code and ten recovery codes; API clients keep using their own keys.</p>
       </div>
 
       <div class="feat-card">
@@ -524,7 +601,7 @@
   <div class="container">
     <div class="section-label">Getting started</div>
     <h2 class="section-title">Up and running in minutes</h2>
-    <p class="section-body">Deploy once to an LXC container and forget the setup. The app is self-contained — no cloud services, no external dependencies, everything local.</p>
+    <p class="section-body">Deploy to your own LXC container, configure your networks, and start building your inventory. Core data stays in local SQLite; enable external integrations only where you need them.</p>
 
     <div class="steps">
       <div class="step">
@@ -545,14 +622,14 @@
         <div class="step-num">3</div>
         <div>
           <h3>Import or discover your devices</h3>
-          <p>Run an ARP scan to discover everything currently on the network, import your existing spreadsheet via CSV/Excel, or pull all VMs and LXC containers straight from Proxmox. Mix and match all three. Assign service icons, add notes, link secondary IPs, and enable per-entry health checks as you go.</p>
+          <p>Import a CSV or Excel sheet, scan for reachable devices, or pull guests from Proxmox. Use mDNS to suggest missing names, and optionally enable Network Watch in Settings. Add tags, dependency links and service health checks as you go.</p>
         </div>
       </div>
       <div class="step">
         <div class="step-num">4</div>
         <div>
           <h3>Let it run</h3>
-          <p>The server pings every tracked IP every 60 seconds using fping — status dots update automatically. Service health checks probe HTTP/HTTPS endpoints on the same cycle. Reverse DNS lookups run every 24 hours in the background. Proxmox sync keeps new VMs in sync on your chosen schedule. Add domains to the Domain Tracker and expiry dates are fetched and refreshed automatically.</p>
+          <p>Monitor reachability and service health, filter offline devices, and investigate status history or topology. Configure ntfy or webhook alerts if wanted. Mark planned work as maintenance, and use scheduled Proxmox sync and domain refresh to keep records current.</p>
         </div>
       </div>
     </div>
@@ -565,9 +642,30 @@
   <div class="container">
     <div class="section-label">Works with your stack</div>
     <h2 class="section-title">Deep integrations for home labs</h2>
-    <p class="section-body">Built around the tools that serious home labbers actually run — not cloud services you don't need.</p>
+    <p class="section-body">Connect the tools already running in your lab, with optional integrations for discovery, automation and alerts.</p>
 
     <div class="integrations-grid">
+
+      <div class="integ-card">
+        <div class="integ-icon" style="background:rgba(16,185,129,.12)">🏷</div>
+        <div><h3>Pi-hole DHCP Names</h3><p>When Pi-hole v6 is your DHCP server, Network Watch can use lease hostnames as a fallback. Configure its address and application password, then test the connection. Leave this off if your router handles DHCP.</p></div>
+      </div>
+
+      <div class="integ-card">
+        <div class="integ-icon" style="background:rgba(16,185,129,.12)">🏠</div>
+        <div><h3>Home Assistant &amp; Public API</h3><p>Connect dashboards, scripts and compatible clients using named, scoped keys. Read device and domain status, or use a write-enabled key for supported inventory operations. <a href="https://github.com/xy-io/ip-manager/wiki/API">Browse the API reference</a>.</p></div>
+      </div>
+
+      <div class="integ-card">
+        <div class="integ-icon" style="background:rgba(16,185,129,.12)">🔔</div>
+        <div><h3>ntfy &amp; Webhooks</h3><p>Choose which operational events to send to your notification service, test delivery, and set the offline threshold. These alerts cover tracked devices and services; Network Watch itself remains observation-only.</p></div>
+      </div>
+
+      <div class="integ-card">
+        <div class="integ-icon" style="background:rgba(16,185,129,.12)">📡</div>
+        <div><h3>mDNS / Bonjour / Avahi</h3><p>Ask compatible devices for their advertised names and services. Review inventory matches before applying suggestions; discovery does not normally cross VLANs without additional network configuration.</p></div>
+      </div>
+
 
       <div class="integ-card">
         <div class="integ-icon" style="background:rgba(245,158,11,.12)">⬡</div>
@@ -589,7 +687,7 @@
         <div class="integ-icon" style="background:rgba(16,185,129,.12)">📡</div>
         <div>
           <h3>arp-scan</h3>
-          <p>Discovers every device broadcasting on your subnet using one lightweight ARP broadcast packet per IP. Completes a /24 in under a second. Automatically surfaces new or untracked devices for easy import.</p>
+          <p>Sweep a local subnet for responding devices and review new addresses for import. Discovery depends on network reachability and available scan tools; failures and fallback warnings help explain an empty result.</p>
         </div>
       </div>
 
@@ -605,7 +703,7 @@
         <div class="integ-icon" style="background:rgba(14,165,233,.12)">🌍</div>
         <div>
           <h3>IANA RDAP (Domain Tracker)</h3>
-          <p>Domain expiry data is fetched directly from the IANA bootstrap registry — no third-party APIs, no API keys, no rate limits. Supports all 1,400+ registered TLDs including newer ones like .dev, .app, .io, .watch, and .online.</p>
+          <p>IANA bootstrap data directs lookups to the appropriate RDAP registry. No API key is needed; available fields, domain coverage and rate limits depend on the registry.</p>
         </div>
       </div>
 
@@ -630,13 +728,13 @@
     <p class="section-body">IP Manager is under continuous development — new features, fixes, and improvements ship regularly. Every release is a real improvement, shipped when it's ready rather than on a fixed schedule.</p>
 
     <!-- Latest release highlight -->
-    <div style="margin-top:2.5rem;display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;max-width:860px;">
+    <div class="two-col" style="margin-top:2.5rem;display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;max-width:860px;">
 
       <div style="background:var(--slate-900);border:1px solid rgba(16,185,129,.3);border-radius:14px;padding:1.5rem;">
         <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--emerald);margin-bottom:.6rem">Latest release</div>
-        <div style="font-size:1.6rem;font-weight:800;color:#fff;margin-bottom:.35rem;">v2.6.0</div>
-        <div style="font-size:.85rem;font-weight:600;color:#e2e8f0;margin-bottom:.5rem;">Half the bundle removed from first load</div>
-        <p style="font-size:.78rem;color:var(--slate-300);line-height:1.6;margin-bottom:1.1rem;">Spreadsheet and QR libraries now load only when you use them, cutting the initial download from 277 kB to 127 kB gzipped — a noticeably faster first load on mobile.</p>
+        <div style="font-size:1.6rem;font-weight:800;color:#fff;margin-bottom:.35rem;">v2.18.0</div>
+        <div style="font-size:.85rem;font-weight:600;color:#e2e8f0;margin-bottom:.5rem;">Maintenance mode for planned downtime</div>
+        <p style="font-size:.78rem;color:var(--slate-300);line-height:1.6;margin-bottom:1.1rem;">Take a device out of offline counts and alerts while you work on it. An amber maintenance status keeps planned downtime visible, and a reminder appears when it responds again. You choose when to clear the flag.</p>
         <a href="https://github.com/xy-io/ip-manager/releases/latest" target="_blank" rel="noopener"
            style="display:inline-flex;align-items:center;gap:.4rem;font-size:.8rem;font-weight:600;color:var(--emerald);text-decoration:none;">
           View release notes
@@ -650,23 +748,23 @@
           <ul style="list-style:none;display:flex;flex-direction:column;gap:.55rem;">
             <li style="display:flex;align-items:center;gap:.6rem;font-size:.8rem;color:var(--slate-300);">
               <span style="width:6px;height:6px;border-radius:50%;background:var(--emerald);flex-shrink:0"></span>
-              <span><strong style="color:#e2e8f0">v2.5.0</strong> — Server code split into modules</span>
+              <span><strong style="color:#e2e8f0">v2.17.0</strong> — Offline filter with a live count</span>
             </li>
             <li style="display:flex;align-items:center;gap:.6rem;font-size:.8rem;color:var(--slate-300);">
               <span style="width:6px;height:6px;border-radius:50%;background:var(--emerald);flex-shrink:0"></span>
-              <span><strong style="color:#e2e8f0">v2.4.0</strong> — Security hardening &amp; correctness fixes</span>
+              <span><strong style="color:#e2e8f0">v2.15.0</strong> — Add devices directly from Network Watch</span>
             </li>
             <li style="display:flex;align-items:center;gap:.6rem;font-size:.8rem;color:var(--slate-300);">
               <span style="width:6px;height:6px;border-radius:50%;background:var(--emerald);flex-shrink:0"></span>
-              <span><strong style="color:#e2e8f0">v2.3.0</strong> — Full API-key compatibility</span>
+              <span><strong style="color:#e2e8f0">v2.13.0</strong> — Optional Pi-hole DHCP names</span>
             </li>
             <li style="display:flex;align-items:center;gap:.6rem;font-size:.8rem;color:var(--slate-300);">
               <span style="width:6px;height:6px;border-radius:50%;background:var(--emerald);flex-shrink:0"></span>
-              <span><strong style="color:#e2e8f0">v2.2.0</strong> — Notifications, activity log &amp; accessibility</span>
+              <span><strong style="color:#e2e8f0">v2.10.0–2.11.0</strong> — mDNS discovery &amp; Network Watch</span>
             </li>
             <li style="display:flex;align-items:center;gap:.6rem;font-size:.8rem;color:var(--slate-300);">
               <span style="width:6px;height:6px;border-radius:50%;background:var(--emerald);flex-shrink:0"></span>
-              <span><strong style="color:#e2e8f0">v2.1.0</strong> — Public API with named access keys</span>
+              <span><strong style="color:#e2e8f0">v2.8.0–2.9.0</strong> — Two-factor login, history &amp; topology</span>
             </li>
           </ul>
         </div>
@@ -687,7 +785,7 @@
   <div class="container">
     <div class="section-label">Built by home labbers, for home labbers</div>
     <h2 class="section-title">Lightweight by design</h2>
-    <p class="section-body">No Docker, no Kubernetes, no cloud billing. A single Node.js process with a SQLite database — deployable anywhere that runs JavaScript.</p>
+    <p class="section-body">A Node.js server and local SQLite database, with an installer for an Ubuntu LXC behind Nginx. No hosted database or cloud subscription is required for core operation.</p>
 
     <div class="tech-row">
       <div class="tech-pill"><span class="tech-pill-dot" style="background:#68a063"></span> Node.js</div>
@@ -714,7 +812,7 @@
       </div>
       <div style="flex:1;min-width:200px;">
         <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--amber);margin-bottom:.5rem">License</div>
-        <div style="font-size:.875rem;color:#e2e8f0;line-height:1.7">PolyForm Noncommercial — free for personal and home lab use. Source available on GitHub. No telemetry, no phone-home, nothing leaves your network.</div>
+        <div style="font-size:.875rem;color:#e2e8f0;line-height:1.7">PolyForm Noncommercial — free for personal and home lab use. Source available on GitHub. No telemetry. Optional notifications and backups, domain lookups, icon downloads and update checks contact their configured services.</div>
       </div>
     </div>
   </div>
@@ -745,7 +843,7 @@
 <section class="cta-section">
   <div class="container">
     <h2>Ready to take control<br/>of your network?</h2>
-    <p>Deploy in under 5 minutes. No sign-ups, no cloud, no nonsense.</p>
+    <p>Start with the installation guide. Run your inventory on your own hardware, with no cloud account required.</p>
     <div class="hero-actions" style="justify-content:center">
       <a href="https://github.com/xy-io/ip-manager" class="btn-primary">
         <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
@@ -757,7 +855,7 @@
 </section>
 
 <footer>
-  <p>IP Manager v2.6.0 · Built for home labs · <span>PolyForm Noncommercial License</span></p>
+  <p>IP Manager v2.18.0 · Built for home labs · <span>PolyForm Noncommercial License</span></p>
 </footer>
 
 <script>
