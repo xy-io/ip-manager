@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Privacy policy for the IP Manager iPhone and iPad companion app. Your network inventory stays on your device and your chosen server.">
+<title>Privacy Policy — IP Manager for iPhone and iPad</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1220;--text:#e5edf6;--muted:#b5c3d4;--accent:#6ee7b7}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:17px/1.7 system-ui,-apple-system,sans-serif}
+main{max-width:800px;margin:auto;padding:40px 24px 72px}a{color:var(--accent);overflow-wrap:anywhere}a:focus-visible{outline:3px solid var(--accent);outline-offset:5px}
+h1{font-size:clamp(2rem,7vw,3.3rem);line-height:1.15}h2{margin-top:2rem;font-size:1.35rem}p,li{color:var(--muted)}
+.summary{border-left:4px solid var(--accent);padding:12px 20px;background:#152437;border-radius:0 12px 12px 0}
+footer{border-top:1px solid #334155;margin-top:40px;padding-top:20px}
+</style>
+</head>
+<body><main>
+<nav aria-label="Home"><a href="./">← IP Manager</a></nav>
+<h1>Privacy policy</h1>
+<p>IP Manager for iPhone and iPad · Effective 21 September 2026</p>
+<div class="summary"><strong>We do not collect or host your network inventory.</strong><p>The companion app connects to the IP Manager server you choose. Network records are held on that server and may be cached on your device. There is no developer-operated cloud inventory, advertising SDK or app analytics service.</p></div>
+<h2>Who provides the app</h2>
+<p>The app is provided by Jay Allen (“we”, “us”). For privacy questions, contact <a href="mailto:privacy@ip-manager.app">privacy@ip-manager.app</a>. This policy covers the iPhone and iPad companion app and privacy enquiries. Your self-hosted server is operated separately by you or your organisation, whose policies govern its data and services.</p>
+<h2>Information handled by the app</h2>
+<p>To provide its features, the app reads and sends information directly to your configured server: network and subnet records, IP and MAC addresses, device names, hostnames, locations, tags, notes, monitoring results, service details, discovery records and tracked domain details. Editing or running a tool sends the relevant request to that server. We do not receive this inventory through an app-operated collection service.</p>
+<p>Your server address and preferences are stored on-device. The API key is saved in Apple’s Keychain. Inventory may be cached locally so the app can show last-known information. Proxmox credentials entered in setup are sent to your configured IP Manager server; they are not saved in app preferences, and the app does not retrieve the server’s saved token.</p>
+<p>Demo mode uses sample inventory and does not contact your configured IP Manager server. Public icons and Apple services may still use the network.</p>
+<h2>Other services and connections</h2>
+<ul>
+<li><strong>Service icons:</strong> the app can request the public selfh.st icon catalogue from GitHub and images from jsDelivr. Providers receive ordinary request information, such as your public IP address and the resource requested. These requests do not include your server API key or inventory records. See <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub’s privacy statement</a> and <a href="https://www.jsdelivr.com/terms/privacy-policy">jsDelivr’s privacy policy</a>.</li>
+<li><strong>Apple:</strong> App Store and StoreKit services process downloads, product information and any purchases. The app uses entitlement information where applicable; we do not receive payment-card details. Siri and Shortcuts process your requests through Apple’s system features, and app actions may retrieve information from your server. See <a href="https://www.apple.com/legal/privacy/">Apple’s privacy policy</a>.</li>
+<li><strong>Links and sharing:</strong> opening a service, documentation page or external SSH client, or choosing a share action, passes the selected information to the website, app or recipient you choose. Their own privacy practices apply.</li>
+<li><strong>Your server:</strong> domain lookups, discovery, monitoring and integrations run according to its configuration. The server operator controls any onward connections, logging, retention and backups.</li>
+</ul>
+<h2>Permissions, notifications and Live Activities</h2>
+<p>iOS may request Local Network access to reach a server on your LAN. Optional local notifications can contain device or domain information. Live Activities hide device names and addresses by default, but can display them if you choose. Notification previews and Lock Screen visibility are also controlled by iOS Settings. The app does not provide a developer-operated APNs push-notification service.</p>
+<p>You can disable notifications or Local Network permission in iOS Settings, stop a Live Activity, and control Siri and Shortcuts through system settings. Revoking a permission may prevent the related feature from working.</p>
+<h2>Retention, deletion and security</h2>
+<p>Local inventory is refreshed or replaced as the app is used. Removing the saved connection in the app’s Settings removes its saved credential and that connection’s cached inventory. App preferences and other caches may remain until removed with the app or by the operating system. Keychain items can survive app removal, so remove the connection first and revoke its API key on the server if access must be terminated. Device backups are governed by your system settings.</p>
+<p>Removing a connection or deleting the app does not delete server records or server backups. Manage these through your server administrator. Network Watch retention and ledger-erasure controls act on that server; erasing its history is permanent. Third-party providers retain request or transaction information under their own policies.</p>
+<p>Use HTTPS and a trusted network or VPN, protect your device, and issue appropriately scoped API keys. No network or storage system can be guaranteed completely secure. Do not send API keys, passwords or unredacted production inventory in support messages or public GitHub issues.</p>
+<h2>If you contact us</h2>
+<p>If you email us, we receive your email address and the information you choose to include. We use it to respond to your enquiry, resolve support or privacy requests, and maintain relevant correspondence—not for advertising or sale. Email routing and mailbox providers process that correspondence to deliver and store it; privacy@ip-manager.app uses Cloudflare Email Routing. See <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare’s privacy policy</a>.</p>
+<p>We retain correspondence only as necessary to handle the enquiry and any related legal obligations or disputes, then delete it when no longer needed. You can request deletion by emailing the address above. Public GitHub issues are public and are subject to GitHub’s own retention and account controls.</p>
+<h2>Your privacy rights</h2>
+<p>Depending on your location, you may have rights to access, correct, delete or restrict use of personal information, object to processing, or request a portable copy. Contact us about information you have supplied to us. Contact your server operator about server-held data, which we cannot access or delete. Where applicable, we handle support correspondence on the basis of our legitimate interest in responding to enquiries and complying with legal obligations. You may also complain to your local data-protection authority, including the <a href="https://ico.org.uk/make-a-complaint/">UK Information Commissioner’s Office</a>.</p>
+<h2>Children and policy changes</h2>
+<p>This is a network-administration utility, not a service directed at children. We do not knowingly solicit children’s personal information. Contact us if you believe such information has been sent to us.</p>
+<p>Changes to this policy will be published here with a revised effective date. Material changes to the app’s data handling will also be described in app release information.</p>
+<footer><a href="./">IP Manager</a> · <a href="mailto:privacy@ip-manager.app">privacy@ip-manager.app</a></footer>
+</main></body>
+</html>
